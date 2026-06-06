@@ -9,6 +9,7 @@ import {
 import {
     grid, score, tickCount, order, startOrder,
     initGrid, buildMachine, removeMachine, upgradeMachine, placeBelt, dirBetween,
+    serialize, loadState,
 } from './grid.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
@@ -48,6 +49,35 @@ const state = {
     drag: null, // { last: Pos|null, mode: 'lay'|'erase' } while a drag is active
 };
 
+// --- Persistence (localStorage I/O is orchestration, not simulation) ---
+const SAVE_KEY = 'factory.save.v1';
+
+function saveGame() {
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(serialize()));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function loadGame() {
+    let data;
+    try {
+        data = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
+    } catch {
+        return false;
+    }
+    const events = loadState(data);
+    if (!events) return false; // missing / wrong version
+    renderer.reset();
+    renderer.applyEvents(events, 0); // recreate in-transit sprites at rest
+    state.drag = null;
+    state.hovered = { x: -1, y: -1 };
+    nextOrderTick = null; // let the restored order resume cleanly
+    return true;
+}
+
 // --- HUD ---
 const ui = createUI({
     root: document.getElementById('toolbar'),
@@ -55,6 +85,8 @@ const ui = createUI({
     onRotate: () => (state.dir = nextDir(state.dir)),
     onTogglePause: () => (state.paused = !state.paused),
     onSpeedChange: (delta) => (state.speed = clamp(state.speed + delta * 0.25, 0.25, 4)),
+    onSave: saveGame,
+    onLoad: loadGame,
     getState: () => {
         const onGrid = state.hovered.x >= 0;
         return {

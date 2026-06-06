@@ -37,10 +37,12 @@ function section(title) {
  *   onRotate: () => void,
  *   onTogglePause: () => void,
  *   onSpeedChange: (delta: number) => void,
+ *   onSave: () => boolean,
+ *   onLoad: () => boolean,
  *   getState: () => any,
  * }} opts
  */
-export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, getState }) {
+export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, getState }) {
     root.innerHTML = '';
 
     const title = document.createElement('h1');
@@ -102,6 +104,25 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     speedRow.append(button('– Slower', () => onSpeedChange(-1)), button('+ Faster', () => onSpeedChange(1)));
     sim.append(pauseBtn, speedRow);
     root.appendChild(sim);
+
+    // Save / load to localStorage.
+    const save = section('Save');
+    const saveStatus = document.createElement('div');
+    saveStatus.className = 'save-status';
+    let saveStatusTimer = null;
+    const flashSave = (msg) => {
+        saveStatus.textContent = msg;
+        if (saveStatusTimer) clearTimeout(saveStatusTimer);
+        saveStatusTimer = setTimeout(() => (saveStatus.textContent = ''), 2000);
+    };
+    const saveRow = document.createElement('div');
+    saveRow.className = 'row';
+    saveRow.append(
+        button('Save', () => flashSave(onSave() ? 'Saved ✓' : 'Save failed')),
+        button('Load', () => flashSave(onLoad() ? 'Loaded ✓' : 'No save')),
+    );
+    save.append(saveRow, saveStatus);
+    root.appendChild(save);
 
     // Inspector.
     const inspect = section('Inspector');

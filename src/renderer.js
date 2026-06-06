@@ -121,6 +121,13 @@ export function createRenderer(app) {
         itemSprites.delete(itemId);
     }
 
+    // Drop every item sprite — used on load, before re-spawning the restored
+    // in-transit items, so no orphaned graphics or stale ids survive.
+    function reset() {
+        for (const entry of itemSprites.values()) entry.gfx.destroy();
+        itemSprites.clear();
+    }
+
     function applyEvents(events, tickDurationMs) {
         for (const ev of events) {
             if (ev.kind === 'spawn') {
@@ -432,5 +439,5 @@ export function createRenderer(app) {
         }
     }
 
-    return { world, applyEvents, tweenItems, draw };
+    return { world, applyEvents, tweenItems, draw, reset };
 }

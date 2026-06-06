@@ -151,6 +151,68 @@ export function machineCost(type) {
     return MACHINE_COST[type] ?? 0;
 }
 
+// ---- Save / load --------------------------------------------------------
+const SAVE_VERSION = 1;
+
+/**
+ * Snapshot the simulation as a plain, JSON-serializable object. Terrain
+ * (ore nodes, pre-placed sink) is recreated by initGrid() on load, so only
+ * machines, in-transit items, and the economy/order clock are stored. Machine
+ * objects are already plain data, so they serialize as-is.
+ */
+export function serialize() {
+    const cells = [];
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            const cell = grid[x][y];
+            if (!cell.machine && !cell.item) continue;
+            const entry = { x, y };
+            if (cell.machine) entry.machine = cell.machine;
+            if (cell.item) entry.item = { type: cell.item.type }; // id is reassigned on load
+            cells.push(entry);
+        }
+    }
+    return { version: SAVE_VERSION, score, tickCount, order: { ...order }, cells };
+}
+
+/**
+ * Rebuild the simulation from a serialize() snapshot. Returns spawn events for
+ * the renderer to recreate sprites for in-transit items — and ONLY those:
+ * buffer contents and pendingOutput have no sprite, so they are never spawned.
+ * Returns null (a no-op for the caller) if the data is missing or the wrong
+ * version. The renderer's existing sprites must be cleared by the caller first.
+ * @returns {FactoryEvent[] | null}
+ */
+export function loadState(data) {
+    if (!data || data.version !== SAVE_VERSION) return null;
+
+    initGrid(); // reset to empty cells + ore terrain + the pre-placed sink
+
+    /** @type {FactoryEvent[]} */
+    const events = [];
+    for (const entry of data.cells ?? []) {
+        const { x, y } = entry;
+        if (!inBounds(x, y)) continue;
+        const cell = grid[x][y];
+        if (entry.machine) {
+            // Overlay saved fields onto fresh defaults so a save missing a newer
+            // field (e.g. toggle) still loads cleanly.
+            cell.machine = { ...makeMachine(entry.machine.type, entry.machine.dir), ...entry.machine };
+        }
+        if (entry.item) {
+            const item = { id: nextItemId++, type: entry.item.type };
+            cell.item = item;
+            events.push({ kind: 'spawn', item, at: { x, y } });
+        }
+    }
+
+    if (typeof data.score === 'number') score = data.score;
+    if (typeof data.tickCount === 'number') tickCount = data.tickCount;
+    if (data.order) Object.assign(order, data.order);
+
+    return events;
+}
+
 export function canBuildMachine(x, y, type) {
     if (!inBounds(x, y)) return false;
     if (!(type in MACHINE_COST)) return false;
