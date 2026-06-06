@@ -161,6 +161,46 @@ export function createRenderer(app) {
         g.fill({ color, alpha });
     }
 
+    // Which direction is an item travelling as it enters this belt? We look for a
+    // single neighbour whose output dir points back into (x,y). Returns null when
+    // there's no feeder or several (a merge), so those fall back to a straight belt.
+    function incomingFlowDir(x, y, machine) {
+        let found = null;
+        for (const v of Object.values(DIR_VEC)) {
+            const nx = x + v.dx;
+            const ny = y + v.dy;
+            if (nx < 0 || ny < 0 || nx >= GRID_WIDTH || ny >= GRID_HEIGHT) continue;
+            const nm = grid[nx][ny].machine;
+            if (!nm) continue;
+            const nd = DIR_VEC[nm.dir];
+            // neighbour feeds us when its output points opposite to v (i.e. at us)
+            if (nd && nd.dx === -v.dx && nd.dy === -v.dy) {
+                if (found) return null; // multiple feeders → keep it straight
+                found = nm.dir;
+            }
+        }
+        return found;
+    }
+
+    // A smooth 90° elbow: a thick rounded stroke from the entry edge through the
+    // tile centre to the exit edge, plus an arrowhead pointing at the output.
+    function drawBeltCorner(g, px, py, inDir, outDir, alpha) {
+        const cx = px + TILE_SIZE / 2;
+        const cy = py + TILE_SIZE / 2;
+        const din = DIR_VEC[inDir];
+        const dout = DIR_VEC[outDir];
+        const reach = TILE_SIZE / 2 - 4;
+        // item enters from the side opposite to its travel direction
+        const ex = cx - din.dx * reach;
+        const ey = cy - din.dy * reach;
+        const sx = cx + dout.dx * reach;
+        const sy = cy + dout.dy * reach;
+        g.moveTo(ex, ey);
+        g.quadraticCurveTo(cx, cy, sx, sy);
+        g.stroke({ width: 12, color: 0xffffff, alpha: 0.85 * alpha, cap: 'round', join: 'round' });
+        drawArrow(g, px, py, outDir, 0xffffff, 0.85 * alpha);
+    }
+
     function drawResource(g, type, px, py) {
         g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
         g.fill({ color: RESOURCE_COLOR[type] ?? 0x666666, alpha: 0.45 });
@@ -172,16 +212,28 @@ export function createRenderer(app) {
         }
     }
 
-    function drawMachineBody(g, machine, px, py, alpha = 1) {
+    function drawMachineBody(g, machine, px, py, alpha = 1, coords = null) {
         const cx = px + TILE_SIZE / 2;
         const cy = py + TILE_SIZE / 2;
 
         if (machine.type === 'belt') {
             g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
             g.fill({ color: 0x2f7bd1, alpha });
-            drawArrow(g, px, py, machine.dir, 0xffffff, 0.85 * alpha);
-            g.circle(cx, cy, 2.5);
-            g.fill({ color: 0xffffff, alpha });
+
+            // Bend the belt when its feeder arrives from a perpendicular side.
+            // coords is omitted for the build ghost, which stays a straight belt.
+            const inDir = coords ? incomingFlowDir(coords.x, coords.y, machine) : null;
+            const out = DIR_VEC[machine.dir];
+            const isCorner = inDir && inDir !== machine.dir
+                && !(DIR_VEC[inDir].dx === -out.dx && DIR_VEC[inDir].dy === -out.dy);
+
+            if (isCorner) {
+                drawBeltCorner(g, px, py, inDir, machine.dir, alpha);
+            } else {
+                drawArrow(g, px, py, machine.dir, 0xffffff, 0.85 * alpha);
+                g.circle(cx, cy, 2.5);
+                g.fill({ color: 0xffffff, alpha });
+            }
             return;
         }
 
@@ -283,7 +335,7 @@ export function createRenderer(app) {
 
                 if (cell.resource) drawResource(visuals, cell.resource, px, py);
                 if (cell.machine) {
-                    drawMachineBody(visuals, cell.machine, px, py);
+                    drawMachineBody(visuals, cell.machine, px, py, 1, { x, y });
                     drawTierPips(visuals, cell.machine, px, py);
                     drawProgress(visuals, cell.machine, px, py);
                 }
