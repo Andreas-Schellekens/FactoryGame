@@ -79,6 +79,18 @@ body {
   font-weight: 700;
 }
 
+.stat.order-status {
+  font-weight: 600;
+}
+
+.stat.order-status.completed {
+  color: #7bd88f;
+}
+
+.stat.order-status.failed {
+  color: #e06c75;
+}
+
 .stat.mono {
   font-family: var(--mono);
   font-size: 12px;

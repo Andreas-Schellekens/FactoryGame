@@ -2,8 +2,14 @@
 // renderer/UI, starts the loop, and translates input into grid edits.
 import * as PIXI from 'pixi.js';
 import './style.css';
-import { TILE_SIZE, GRID_WIDTH, GRID_HEIGHT } from './config.js';
-import { grid, score, initGrid, buildMachine, removeMachine, upgradeMachine, placeBelt, dirBetween } from './grid.js';
+import {
+    TILE_SIZE, GRID_WIDTH, GRID_HEIGHT,
+    ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS,
+} from './config.js';
+import {
+    grid, score, tickCount, order, startOrder,
+    initGrid, buildMachine, removeMachine, upgradeMachine, placeBelt, dirBetween,
+} from './grid.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
@@ -60,11 +66,32 @@ const ui = createUI({
             hoverX: state.hovered.x,
             hoverY: state.hovered.y,
             hovered: onGrid ? grid[state.hovered.x][state.hovered.y] : null,
+            order: { ...order, remaining: Math.max(0, order.deadlineTick - tickCount) },
         };
     },
 });
 
-app.ticker.add(() => ui.update());
+// --- Orders (generation/cadence is policy, so it lives here) ---
+const randInt = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
+const issueOrder = () =>
+    startOrder({ target: randInt(ORDER_TARGET), ticks: randInt(ORDER_TICKS), reward: randInt(ORDER_REWARD) });
+
+let nextOrderTick = null; // tickCount at which to issue the next order, or null
+function tickOrders() {
+    if (!order.active && order.status !== 'none' && nextOrderTick === null) {
+        nextOrderTick = tickCount + ORDER_GRACE_TICKS; // grace pause after a result
+    }
+    if (nextOrderTick !== null && tickCount >= nextOrderTick) {
+        nextOrderTick = null;
+        issueOrder();
+    }
+}
+issueOrder(); // first demand
+
+app.ticker.add(() => {
+    tickOrders();
+    ui.update();
+});
 startGameLoop(app, renderer, state);
 
 // --- Input ---

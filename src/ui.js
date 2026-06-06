@@ -57,6 +57,17 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     stats.append(money, speedStat);
     root.appendChild(stats);
 
+    // Order — a timed demand for a bonus reward.
+    const orderSec = section('Order');
+    const orderDemand = document.createElement('div');
+    orderDemand.className = 'stat';
+    const orderProgress = document.createElement('div');
+    orderProgress.className = 'stat mono';
+    const orderStatus = document.createElement('div');
+    orderStatus.className = 'stat order-status';
+    orderSec.append(orderDemand, orderProgress, orderStatus);
+    root.appendChild(orderSec);
+
     // Build tools (each shows its cost).
     const build = section('Build');
     const toolButtons = {};
@@ -128,11 +139,33 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         return parts.length ? parts.join('\n') : 'empty';
     }
 
+    function renderOrder(o) {
+        orderStatus.classList.remove('completed', 'failed');
+        if (!o || o.status === 'none') {
+            orderDemand.textContent = 'No active order';
+            orderProgress.textContent = '';
+            orderStatus.textContent = '';
+            return;
+        }
+        orderDemand.textContent = `Deliver ${o.target} ${o.productType}`;
+        orderProgress.textContent = `${o.delivered}/${o.target} delivered`;
+        if (o.status === 'active') {
+            orderStatus.textContent = `⏱ ${o.remaining} ticks left`;
+        } else if (o.status === 'completed') {
+            orderStatus.textContent = `✓ Completed  +${o.reward}`;
+            orderStatus.classList.add('completed');
+        } else if (o.status === 'failed') {
+            orderStatus.textContent = '✗ Failed';
+            orderStatus.classList.add('failed');
+        }
+    }
+
     function update() {
         const s = getState();
         if (!s) return;
         money.textContent = `💰 ${s.money}`;
         speedStat.textContent = `Speed: ${s.speed.toFixed(2)}×${s.paused ? ' (paused)' : ''}`;
+        renderOrder(s.order);
         pauseBtn.firstChild.textContent = s.paused ? 'Resume' : 'Pause';
         hover.textContent = s.hovered ? `(${s.hoverX}, ${s.hoverY})\n${describe(s.hovered)}` : '—';
 

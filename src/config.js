@@ -33,3 +33,11 @@ export const PROCESS_TICKS = {
 
 // Max units of each input type a processor will hold in its buffer.
 export const BUFFER_CAP = 4;
+
+// Orders: a timed demand for N products that pays a bonus on completion.
+// main.js generates each order by picking from these ranges; grid.js pays the
+// reward and counts deliveries.
+export const ORDER_TARGET = [3, 8];      // [min, max] products demanded
+export const ORDER_TICKS = [120, 240];   // [min, max] ticks to fulfil it
+export const ORDER_REWARD = [40, 120];   // [min, max] bonus paid on completion
+export const ORDER_GRACE_TICKS = 12;     // pause between one order ending and the next

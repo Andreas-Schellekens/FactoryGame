@@ -23,8 +23,41 @@ export let score = STARTING_MONEY;
 
 let nextItemId = 1;
 
+// Monotonic simulation clock: advanced once per updateFactoryLogic() tick and
+// never reset. Orders store their own start/deadline relative to this.
+export let tickCount = 0;
+
+// The single active order (mutated in place — a stable reference other modules
+// read each frame, like `score`). `status` is the completion/failure signal.
+export const order = {
+    active: false,
+    status: 'none',        // 'none' | 'active' | 'completed' | 'failed'
+    productType: 'circuit',
+    target: 0,             // products demanded
+    reward: 0,             // bonus paid into score on completion
+    startTick: 0,
+    deadlineTick: 0,       // startTick + ticks
+    delivered: 0,          // products sunk since this order started
+};
+
 // The only item type the sink will pay for.
 export const PRODUCT_TYPE = 'circuit';
+
+/**
+ * Issue a new order. Difficulty (target/ticks/reward) is chosen by the caller
+ * (policy lives in main.js); grid.js only stamps the clock-relative deadline,
+ * counts deliveries, and pays the reward.
+ */
+export function startOrder({ target, ticks, reward, productType = PRODUCT_TYPE }) {
+    order.active = true;
+    order.status = 'active';
+    order.productType = productType;
+    order.target = target;
+    order.reward = reward;
+    order.startTick = tickCount;
+    order.deadlineTick = tickCount + ticks;
+    order.delivered = 0;
+}
 
 const DIRS = {
     right: { dx: 1, dy: 0 },
@@ -33,8 +66,8 @@ const DIRS = {
     up: { dx: 0, dy: -1 },
 };
 
-// The two directions perpendicular to a given one — the splitter's outputs and
-// the merger's inputs. `dir` is the primary flow direction for both machines.
+// The two directions perpendicular to a given one. `dir` is the primary flow
+// direction for both machines (splitter output / merger input run through it).
 const PERP = {
     right: ['down', 'up'],
     left: ['up', 'down'],
@@ -42,14 +75,28 @@ const PERP = {
     down: ['left', 'right'],
 };
 
+const OPPOSITE = { right: 'left', left: 'right', up: 'down', down: 'up' };
+
+// Splitter: one input (the back, opposite `dir`) fans out to three outputs —
+// straight ahead plus both perpendiculars.
+function splitterOutputs(dir) {
+    return [dir, ...PERP[dir]];
+}
+
+// Merger: three inputs (the back plus both perpendiculars) feed one output
+// straight ahead along `dir`.
+function mergerInputs(dir) {
+    return [OPPOSITE[dir], ...PERP[dir]];
+}
+
 // Does the machine at (fx,fy) send items toward (tx,ty)? Belts/processors output
-// along `dir`; a splitter outputs along both perpendiculars. Used as the merger's
-// pull gate so it only takes items from neighbours actually aimed at it.
+// along `dir`; a splitter outputs along its three output sides. Used as the
+// merger's pull gate so it only takes items from neighbours actually aimed at it.
 function outputsToward(m, fx, fy, tx, ty) {
     const wantDx = tx - fx;
     const wantDy = ty - fy;
     if (m.type === 'splitter') {
-        return PERP[m.dir].some((od) => DIRS[od].dx === wantDx && DIRS[od].dy === wantDy);
+        return splitterOutputs(m.dir).some((od) => DIRS[od].dx === wantDx && DIRS[od].dy === wantDy);
     }
     const d = DIRS[m.dir];
     return d.dx === wantDx && d.dy === wantDy;
@@ -248,15 +295,32 @@ export function updateFactoryLogic() {
     /** @type {FactoryEvent[]} */
     const events = [];
 
-    // 1) Sinks consume products and pay out.
+    tickCount++;
+
+    // 1) Sinks consume products and pay out (and credit the active order).
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const cell = grid[x][y];
             if (cell.machine?.type === 'sink' && cell.item?.type === PRODUCT_TYPE) {
                 events.push({ kind: 'consume', item: cell.item, at: { x, y } });
+                if (order.active && cell.item.type === order.productType) order.delivered++;
                 cell.item = null;
                 score += PRODUCT_REWARD;
             }
+        }
+    }
+
+    // Resolve the order the same tick its final product is sunk: complete (and
+    // pay the bonus) on reaching the target, else fail when the deadline passes.
+    // The status flip is the only completion/failure signal — the HUD polls it.
+    if (order.active) {
+        if (order.delivered >= order.target) {
+            score += order.reward;
+            order.active = false;
+            order.status = 'completed';
+        } else if (tickCount >= order.deadlineTick) {
+            order.active = false;
+            order.status = 'failed';
         }
     }
 
@@ -299,15 +363,16 @@ export function updateFactoryLogic() {
                 continue;
             }
 
-            // Splitter: push the item to one of its two perpendicular outputs,
-            // round-robin. The toggle advances on every successful push (even a
-            // fall-through to the non-preferred side) so a blocked side can't
-            // permanently skew the balance.
+            // Splitter: push the item to one of its three outputs (straight
+            // ahead + both perpendiculars), round-robin. `toggle` is the side to
+            // try first and advances past the side actually used on every
+            // successful push, so a blocked side can't permanently skew the
+            // balance.
             if (m.type === 'splitter') {
                 if (cell.item === null) continue;
-                const [a, b] = PERP[m.dir];
-                const order = m.toggle ? [b, a] : [a, b];
-                for (const od of order) {
+                const outs = splitterOutputs(m.dir);
+                for (let i = 0; i < outs.length; i++) {
+                    const od = outs[(m.toggle + i) % outs.length];
                     const d = DIRS[od];
                     const nx = x + d.dx;
                     const ny = y + d.dy;
@@ -318,7 +383,7 @@ export function updateFactoryLogic() {
                         target.item = item;
                         cell.item = null;
                         events.push({ kind: 'move', item, from: { x, y }, to: { x: nx, y: ny } });
-                        m.toggle ^= 1;
+                        m.toggle = (m.toggle + i + 1) % outs.length;
                         break;
                     }
                 }
@@ -326,9 +391,10 @@ export function updateFactoryLogic() {
             }
 
             // Merger: push its held item forward along `dir`, then pull a new one
-            // from one of its two perpendicular inputs (round-robin, same toggle
-            // rule). It only pulls from a neighbour aimed at it, and only takes
-            // over the move itself (cellAccepts is false), so no item double-moves.
+            // from one of its three inputs (the back + both perpendiculars),
+            // round-robin with the same toggle rule as the splitter. It only
+            // pulls from a neighbour aimed at it, and only takes over the move
+            // itself (cellAccepts is false), so no item double-moves.
             if (m.type === 'merger') {
                 if (cell.item) {
                     const d = DIRS[m.dir];
@@ -342,9 +408,9 @@ export function updateFactoryLogic() {
                     }
                 }
                 if (cell.item === null) {
-                    const [a, b] = PERP[m.dir];
-                    const order = m.toggle ? [b, a] : [a, b];
-                    for (const sd of order) {
+                    const ins = mergerInputs(m.dir);
+                    for (let i = 0; i < ins.length; i++) {
+                        const sd = ins[(m.toggle + i) % ins.length];
                         const d = DIRS[sd];
                         const sx = x + d.dx;
                         const sy = y + d.dy;
@@ -356,7 +422,7 @@ export function updateFactoryLogic() {
                         cell.item = item;
                         src.item = null;
                         events.push({ kind: 'move', item, from: { x: sx, y: sy }, to: { x, y } });
-                        m.toggle ^= 1;
+                        m.toggle = (m.toggle + i + 1) % ins.length;
                         break;
                     }
                 }

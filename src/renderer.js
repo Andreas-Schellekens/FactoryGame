@@ -271,9 +271,9 @@ export function createRenderer(app) {
         if (machine.type === 'splitter') {
             g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
             g.fill({ color: 0x16a085, alpha });
-            // one input from the back, two bright outputs on the perpendicular sides
+            // one input from the back, three bright outputs on the other sides
             drawInArrow(g, px, py, OPPOSITE[machine.dir], 0xffffff, 0.4 * alpha);
-            for (const od of PERP[machine.dir]) drawArrow(g, px, py, od, 0xffffff, 0.85 * alpha);
+            for (const od of [machine.dir, ...PERP[machine.dir]]) drawArrow(g, px, py, od, 0xffffff, 0.85 * alpha);
             g.circle(cx, cy, 2.5);
             g.fill({ color: 0xffffff, alpha });
             return;
@@ -282,8 +282,8 @@ export function createRenderer(app) {
         if (machine.type === 'merger') {
             g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
             g.fill({ color: 0xca6f1e, alpha });
-            // two inputs on the perpendicular sides, one bright output along dir
-            for (const sd of PERP[machine.dir]) drawInArrow(g, px, py, sd, 0xffffff, 0.4 * alpha);
+            // three inputs on the other sides, one bright output along dir
+            for (const sd of [OPPOSITE[machine.dir], ...PERP[machine.dir]]) drawInArrow(g, px, py, sd, 0xffffff, 0.4 * alpha);
             drawArrow(g, px, py, machine.dir, 0xffffff, 0.9 * alpha);
             g.circle(cx, cy, 2.5);
             g.fill({ color: 0xffffff, alpha });
