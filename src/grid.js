@@ -100,6 +100,41 @@ export function buildMachine(x, y, type, dir = 'right') {
     return true;
 }
 
+/**
+ * Cardinal direction for a single orthogonal step from `from` to `to`.
+ * Returns null for diagonals, jumps, or no movement — also serves as the
+ * "is this an orthogonal unit step?" gate for drag-laying.
+ * @param {Pos} from @param {Pos} to
+ */
+export function dirBetween(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    if (dx === 1 && dy === 0) return 'right';
+    if (dx === -1 && dy === 0) return 'left';
+    if (dx === 0 && dy === 1) return 'down';
+    if (dx === 0 && dy === -1) return 'up';
+    return null;
+}
+
+/**
+ * Lay a single belt cell while drag-building. Encapsulates the
+ * build-or-reorient decision and the economy gate so callers never mutate a
+ * cell directly.
+ * @returns {'built'|'oriented'|'blocked'|'unaffordable'|'offgrid'}
+ */
+export function placeBelt(x, y, dir) {
+    if (!inBounds(x, y)) return 'offgrid';
+    const cell = grid[x][y];
+    if (cell.machine?.type === 'belt') {
+        cell.machine.dir = dir; // re-orient in place (free) to follow the drag
+        return 'oriented';
+    }
+    if (cell.machine) return 'blocked'; // non-belt machine — leave it alone
+    if (score < MACHINE_COST.belt) return 'unaffordable';
+    buildMachine(x, y, 'belt', dir); // builds + charges (already known affordable/empty)
+    return 'built';
+}
+
 /** @returns {FactoryEvent[]} events for any item destroyed with the machine */
 export function removeMachine(x, y) {
     const events = [];
