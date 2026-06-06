@@ -85,7 +85,10 @@ body {
   color: var(--text-dim);
   word-break: break-word;
   white-space: pre-line;
-  min-height: 2.5em;
+  /* Reserve room for the tallest inspector readout (coords + node + machine +
+     buffer + out + item = 6 lines) so hovering different cells never reflows. */
+  line-height: 1.4;
+  min-height: 8.4em;
 }
 
 .row {
