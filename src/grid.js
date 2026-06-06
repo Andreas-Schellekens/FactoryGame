@@ -33,6 +33,28 @@ const DIRS = {
     up: { dx: 0, dy: -1 },
 };
 
+// The two directions perpendicular to a given one — the splitter's outputs and
+// the merger's inputs. `dir` is the primary flow direction for both machines.
+const PERP = {
+    right: ['down', 'up'],
+    left: ['up', 'down'],
+    up: ['right', 'left'],
+    down: ['left', 'right'],
+};
+
+// Does the machine at (fx,fy) send items toward (tx,ty)? Belts/processors output
+// along `dir`; a splitter outputs along both perpendiculars. Used as the merger's
+// pull gate so it only takes items from neighbours actually aimed at it.
+function outputsToward(m, fx, fy, tx, ty) {
+    const wantDx = tx - fx;
+    const wantDy = ty - fy;
+    if (m.type === 'splitter') {
+        return PERP[m.dir].some((od) => DIRS[od].dx === wantDx && DIRS[od].dy === wantDy);
+    }
+    const d = DIRS[m.dir];
+    return d.dx === wantDx && d.dy === wantDy;
+}
+
 // Recipes. Smelter turns one ore into its matching ingot; the assembler
 // combines one of each ingot into a product.
 const SMELT = { ironOre: 'ironIngot', copperOre: 'copperIngot' };
@@ -95,7 +117,9 @@ export function buildMachine(x, y, type, dir = 'right') {
     if (!canBuildMachine(x, y, type)) return false;
     const cell = grid[x][y];
     score -= MACHINE_COST[type];
-    const extra = type === 'extractor' ? { produces: cell.resource } : {};
+    const extra = type === 'extractor' ? { produces: cell.resource }
+        : (type === 'splitter' || type === 'merger') ? { toggle: 0 }
+        : {};
     cell.machine = makeMachine(type, dir, extra);
     return true;
 }
@@ -174,7 +198,10 @@ function cellAccepts(cell, itemType) {
     if (!m || cell.item !== null) return false;
     switch (m.type) {
         case 'belt':
-            return true;
+        case 'splitter':
+            return true; // accept any item into the free slot, like a belt
+        case 'merger':
+            return false; // pull-only: items enter via the merger's own pull
         case 'sink':
             return itemType === PRODUCT_TYPE;
         case 'smelter':
@@ -246,22 +273,94 @@ export function updateFactoryLogic() {
         }
     }
 
-    // 3) Belts move items forward (reverse scan to limit multi-cell chaining).
+    // 3) Movers relocate items (reverse scan to limit multi-cell chaining).
+    // Belts, splitters and mergers all move (never transform) items, so they
+    // share this phase and the belt's single-hop / back-pressure semantics.
     for (let x = GRID_WIDTH - 1; x >= 0; x--) {
         for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
             const cell = grid[x][y];
             const m = cell.machine;
-            if (m?.type !== 'belt' || cell.item === null) continue;
-            const d = DIRS[m.dir];
-            const nx = x + d.dx;
-            const ny = y + d.dy;
-            if (!inBounds(nx, ny)) continue;
-            const target = grid[nx][ny];
-            if (cellAccepts(target, cell.item.type)) {
-                const item = cell.item;
-                target.item = item;
-                cell.item = null;
-                events.push({ kind: 'move', item, from: { x, y }, to: { x: nx, y: ny } });
+            if (!m) continue;
+
+            // Belt: push the item one cell along `dir`.
+            if (m.type === 'belt') {
+                if (cell.item === null) continue;
+                const d = DIRS[m.dir];
+                const nx = x + d.dx;
+                const ny = y + d.dy;
+                if (!inBounds(nx, ny)) continue;
+                const target = grid[nx][ny];
+                if (cellAccepts(target, cell.item.type)) {
+                    const item = cell.item;
+                    target.item = item;
+                    cell.item = null;
+                    events.push({ kind: 'move', item, from: { x, y }, to: { x: nx, y: ny } });
+                }
+                continue;
+            }
+
+            // Splitter: push the item to one of its two perpendicular outputs,
+            // round-robin. The toggle advances on every successful push (even a
+            // fall-through to the non-preferred side) so a blocked side can't
+            // permanently skew the balance.
+            if (m.type === 'splitter') {
+                if (cell.item === null) continue;
+                const [a, b] = PERP[m.dir];
+                const order = m.toggle ? [b, a] : [a, b];
+                for (const od of order) {
+                    const d = DIRS[od];
+                    const nx = x + d.dx;
+                    const ny = y + d.dy;
+                    if (!inBounds(nx, ny)) continue;
+                    const target = grid[nx][ny];
+                    if (cellAccepts(target, cell.item.type)) {
+                        const item = cell.item;
+                        target.item = item;
+                        cell.item = null;
+                        events.push({ kind: 'move', item, from: { x, y }, to: { x: nx, y: ny } });
+                        m.toggle ^= 1;
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            // Merger: push its held item forward along `dir`, then pull a new one
+            // from one of its two perpendicular inputs (round-robin, same toggle
+            // rule). It only pulls from a neighbour aimed at it, and only takes
+            // over the move itself (cellAccepts is false), so no item double-moves.
+            if (m.type === 'merger') {
+                if (cell.item) {
+                    const d = DIRS[m.dir];
+                    const nx = x + d.dx;
+                    const ny = y + d.dy;
+                    if (inBounds(nx, ny) && cellAccepts(grid[nx][ny], cell.item.type)) {
+                        const item = cell.item;
+                        grid[nx][ny].item = item;
+                        cell.item = null;
+                        events.push({ kind: 'move', item, from: { x, y }, to: { x: nx, y: ny } });
+                    }
+                }
+                if (cell.item === null) {
+                    const [a, b] = PERP[m.dir];
+                    const order = m.toggle ? [b, a] : [a, b];
+                    for (const sd of order) {
+                        const d = DIRS[sd];
+                        const sx = x + d.dx;
+                        const sy = y + d.dy;
+                        if (!inBounds(sx, sy)) continue;
+                        const src = grid[sx][sy];
+                        if (!src.item || !src.machine) continue;
+                        if (!outputsToward(src.machine, sx, sy, x, y)) continue;
+                        const item = src.item;
+                        cell.item = item;
+                        src.item = null;
+                        events.push({ kind: 'move', item, from: { x: sx, y: sy }, to: { x, y } });
+                        m.toggle ^= 1;
+                        break;
+                    }
+                }
+                continue;
             }
         }
     }

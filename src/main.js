@@ -28,7 +28,7 @@ app.stage.eventMode = 'static';
 app.stage.hitArea = new PIXI.Rectangle(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
 // --- Shared UI/input state (kept out of the simulation) ---
-const buildableTools = new Set(['belt', 'extractor', 'smelter', 'assembler']);
+const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler']);
 const rotations = ['right', 'down', 'left', 'up'];
 const nextDir = (dir) => rotations[(rotations.indexOf(dir) + 1) % rotations.length] ?? 'right';
 
@@ -84,7 +84,7 @@ function actAt(gx, gy, button) {
     }
 }
 
-const keyTools = { 1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'assembler', 5: 'upgrade', 6: 'erase' };
+const keyTools = { 1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'assembler', 5: 'upgrade', 6: 'erase', 7: 'splitter', 8: 'merger' };
 window.addEventListener('keydown', (e) => {
     if (e.key in keyTools) state.tool = keyTools[e.key];
     if (e.key === 'r' || e.key === 'R') state.dir = nextDir(state.dir);
@@ -171,3 +171,7 @@ app.stage.on('pointerdown', (event) => {
 const endDrag = () => (state.drag = null);
 app.stage.on('pointerup', endDrag);
 app.stage.on('pointerupoutside', endDrag);
+
+// Dev-only debug hook so tests/tools can observe belt directions through
+// corners (and the rest of the grid). Stripped from production builds.
+if (import.meta.env.DEV) window.__grid = grid;

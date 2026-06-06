@@ -62,6 +62,8 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     const toolButtons = {};
     const buildDefs = [
         ['belt', 'Belt'],
+        ['splitter', 'Splitter'],
+        ['merger', 'Merger'],
         ['extractor', 'Extractor'],
         ['smelter', 'Smelter'],
         ['assembler', 'Assembler'],
@@ -104,7 +106,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         '<b>Chain:</b> <span class="r1">ore</span> → Extractor → Smelter → Assembler → Sink',
         'Place an <b>Extractor</b> on an ore node, route ingots into an <b>Assembler</b>, sink the product.',
         '<b>LMB</b> use tool &nbsp; <b>RMB</b> erase &nbsp; <b>R</b> rotate',
-        '<b>1–4</b> build &nbsp; <b>5</b> upgrade &nbsp; <b>6</b> erase &nbsp; <b>Space</b> pause',
+        '<b>1–4,7,8</b> build &nbsp; <b>5</b> upgrade &nbsp; <b>6</b> erase &nbsp; <b>Space</b> pause',
     ].join('<br>');
     root.appendChild(help);
 

@@ -12,6 +12,16 @@ const DIR_VEC = {
     up: { dx: 0, dy: -1 },
 };
 
+// Splitter outputs / merger inputs sit on these two perpendicular sides.
+const PERP = {
+    right: ['down', 'up'],
+    left: ['up', 'down'],
+    up: ['right', 'left'],
+    down: ['left', 'right'],
+};
+
+const OPPOSITE = { right: 'left', left: 'right', up: 'down', down: 'up' };
+
 // Visual identity for each item type.
 const ITEM_STYLE = {
     ironOre: { shape: 'chunk', color: 0x9aa0aa, speck: 0x5f6470 },
@@ -201,6 +211,27 @@ export function createRenderer(app) {
         drawArrow(g, px, py, outDir, 0xffffff, 0.85 * alpha);
     }
 
+    // An arrow sitting on the `side` edge pointing inward (toward the centre) —
+    // marks an input on splitters/mergers, the mirror of drawArrow.
+    function drawInArrow(g, px, py, side, color, alpha) {
+        const cx = px + TILE_SIZE / 2;
+        const cy = py + TILE_SIZE / 2;
+        const d = DIR_VEC[side] ?? DIR_VEC.right;
+        const baseX = cx + d.dx * (TILE_SIZE / 2 - 4);
+        const baseY = cy + d.dy * (TILE_SIZE / 2 - 4);
+        const tipX = baseX - d.dx * 10;
+        const tipY = baseY - d.dy * 10;
+        const perpX = -d.dy;
+        const perpY = d.dx;
+        const half = 6;
+        g.poly([
+            tipX, tipY,
+            baseX + perpX * half, baseY + perpY * half,
+            baseX - perpX * half, baseY - perpY * half,
+        ]);
+        g.fill({ color, alpha });
+    }
+
     function drawResource(g, type, px, py) {
         g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
         g.fill({ color: RESOURCE_COLOR[type] ?? 0x666666, alpha: 0.45 });
@@ -234,6 +265,28 @@ export function createRenderer(app) {
                 g.circle(cx, cy, 2.5);
                 g.fill({ color: 0xffffff, alpha });
             }
+            return;
+        }
+
+        if (machine.type === 'splitter') {
+            g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
+            g.fill({ color: 0x16a085, alpha });
+            // one input from the back, two bright outputs on the perpendicular sides
+            drawInArrow(g, px, py, OPPOSITE[machine.dir], 0xffffff, 0.4 * alpha);
+            for (const od of PERP[machine.dir]) drawArrow(g, px, py, od, 0xffffff, 0.85 * alpha);
+            g.circle(cx, cy, 2.5);
+            g.fill({ color: 0xffffff, alpha });
+            return;
+        }
+
+        if (machine.type === 'merger') {
+            g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
+            g.fill({ color: 0xca6f1e, alpha });
+            // two inputs on the perpendicular sides, one bright output along dir
+            for (const sd of PERP[machine.dir]) drawInArrow(g, px, py, sd, 0xffffff, 0.4 * alpha);
+            drawArrow(g, px, py, machine.dir, 0xffffff, 0.9 * alpha);
+            g.circle(cx, cy, 2.5);
+            g.fill({ color: 0xffffff, alpha });
             return;
         }
 
@@ -309,7 +362,8 @@ export function createRenderer(app) {
     }
 
     function drawProgress(g, machine, px, py) {
-        if (machine.type === 'belt' || machine.type === 'sink') return;
+        if (machine.type === 'belt' || machine.type === 'sink'
+            || machine.type === 'splitter' || machine.type === 'merger') return;
         const frac = machineProgressFraction(machine);
         if (frac <= 0) return;
         const w = TILE_SIZE - 16;

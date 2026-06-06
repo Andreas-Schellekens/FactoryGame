@@ -11,6 +11,8 @@ export const PRODUCT_REWARD = 12;  // money earned per product consumed by the s
 // Placement cost per machine type (belts are cheap, processors are not).
 export const MACHINE_COST = {
     belt: 1,
+    splitter: 5,
+    merger: 5,
     extractor: 15,
     smelter: 20,
     assembler: 30,
