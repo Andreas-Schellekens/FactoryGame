@@ -64,9 +64,16 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     const stats = section('Status');
     const money = document.createElement('div');
     money.className = 'stat money';
+    const powerStat = document.createElement('div');
+    powerStat.className = 'stat';
+    const powerBar = document.createElement('div');
+    powerBar.className = 'bar';
+    const powerFill = document.createElement('div');
+    powerFill.className = 'bar-fill';
+    powerBar.appendChild(powerFill);
     const speedStat = document.createElement('div');
     speedStat.className = 'stat';
-    stats.append(money, speedStat);
+    stats.append(money, powerStat, powerBar, speedStat);
     root.appendChild(stats);
 
     // Order — a timed demand for a bonus reward.
@@ -213,6 +220,10 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const s = getState();
         if (!s) return;
         money.textContent = `💰 ${s.money}`;
+        const th = s.power.throttle;
+        powerStat.textContent = `⚡ ${s.power.demand} / ${s.power.supply}${th < 1 ? `  (${Math.round(th * 100)}%)` : ''}`;
+        powerFill.style.width = `${Math.round(th * 100)}%`;
+        powerFill.style.background = th >= 1 ? 'var(--green)' : th >= 0.5 ? '#e0a83a' : 'var(--red)';
         speedStat.textContent = `Speed: ${s.speed.toFixed(2)}×${s.paused ? ' (paused)' : ''}`;
         renderOrder(s.order);
         pauseBtn.firstChild.textContent = s.paused ? 'Resume' : 'Pause';

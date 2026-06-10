@@ -2,8 +2,8 @@
 // (each with a distinct sprite), the hover ghost, and the animated item sprites.
 // Knows nothing about input or the game loop.
 import * as PIXI from 'pixi.js';
-import { TILE_SIZE, GRID_WIDTH, GRID_HEIGHT, MAX_TIER } from './config.js';
-import { grid, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE } from './grid.js';
+import { TILE_SIZE, GRID_WIDTH, GRID_HEIGHT, MAX_TIER, TICK_RATE, POWER_DRAW } from './config.js';
+import { grid, power, research, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE } from './grid.js';
 
 const DIR_VEC = {
     right: { dx: 1, dy: 0 },
@@ -34,7 +34,7 @@ const ITEM_STYLE = {
     research: { shape: 'flask', color: 0xb07cf0 },
 };
 
-const RESOURCE_COLOR = { ironOre: 0x6b7280, copperOre: 0xa86a39, coalOre: 0x2f3239 };
+const RESOURCE_COLOR = { ironOre: 0x6b7280, copperOre: 0xa86a39, coalOre: 0x4d525e };
 
 /**
  * @param {import('pixi.js').Application} app
@@ -43,7 +43,11 @@ export function createRenderer(app) {
     const world = new PIXI.Container();
     app.stage.addChild(world);
 
-    const visuals = new PIXI.Graphics(); // grid, ore nodes, machines
+    const background = new PIXI.Graphics(); // static: checker tiles, grid lines, vignette
+    background.eventMode = 'none';
+    world.addChild(background);
+
+    const visuals = new PIXI.Graphics(); // ore nodes, machines (redrawn each frame)
     visuals.eventMode = 'none';
     world.addChild(visuals);
 
@@ -61,6 +65,44 @@ export function createRenderer(app) {
     function cellCenterPx(x, y) {
         return { x: x * TILE_SIZE + TILE_SIZE / 2, y: y * TILE_SIZE + TILE_SIZE / 2 };
     }
+
+    // Animation clock: advanced per frame in draw(), scaled by sim speed and
+    // frozen while paused, so belt scroll / glow pulses track the simulation
+    // pace instead of wall time.
+    const tickMs = 1000 / TICK_RATE;
+    let animMs = 0;
+    let lastDrawNow = performance.now();
+
+    // Static depth pass, drawn once: alternating tile tints so the field
+    // doesn't read as a flat slab, the cell grid lines, and a soft edge
+    // vignette. Everything dynamic stays in `visuals`.
+    function drawBackground() {
+        background.clear();
+        const W = GRID_WIDTH * TILE_SIZE;
+        const H = GRID_HEIGHT * TILE_SIZE;
+        background.rect(0, 0, W, H);
+        background.fill(0x20232b);
+        for (let x = 0; x < GRID_WIDTH; x++) {
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                if ((x + y) % 2 === 0) continue;
+                background.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                background.fill({ color: 0x262a34, alpha: 0.8 });
+            }
+        }
+        for (let x = 0; x <= GRID_WIDTH; x++) {
+            background.moveTo(x * TILE_SIZE, 0).lineTo(x * TILE_SIZE, H);
+        }
+        for (let y = 0; y <= GRID_HEIGHT; y++) {
+            background.moveTo(0, y * TILE_SIZE).lineTo(W, y * TILE_SIZE);
+        }
+        background.stroke({ width: 1, color: 0x333333 });
+        // vignette: stacked translucent strokes darkening toward the border
+        for (let i = 0; i < 18; i++) {
+            background.rect(i, i, W - i * 2, H - i * 2);
+            background.stroke({ width: 1, color: 0x000000, alpha: 0.022 * (1 - i / 18) });
+        }
+    }
+    drawBackground();
 
     // ---- Item sprites -------------------------------------------------------
     function createItemGfx(type) {
@@ -221,8 +263,41 @@ export function createRenderer(app) {
         return found;
     }
 
+    // How far (in px) the belt surface has scrolled, modulo `period`. Belts
+    // cover one tile per tick (two with fastBelts), and the clock already
+    // carries sim speed/pause, so the chevrons track item motion exactly.
+    function beltScroll(period) {
+        const cellsPerTick = research.unlocked.fastBelts ? 2 : 1;
+        return ((animMs / tickMs) * TILE_SIZE * cellsPerTick) % period;
+    }
+
+    // A small "V" with its tip at (cx,cy), pointing along the unit vector (dx,dy).
+    function drawChevron(g, cx, cy, dx, dy, color, alpha) {
+        const s = 6;
+        const perpX = -dy;
+        const perpY = dx;
+        g.moveTo(cx - dx * s + perpX * s, cy - dy * s + perpY * s);
+        g.lineTo(cx, cy);
+        g.lineTo(cx - dx * s - perpX * s, cy - dy * s - perpY * s);
+        g.stroke({ width: 3, color, alpha, cap: 'round', join: 'round' });
+    }
+
+    // Scrolling chevrons along a straight belt — the moving surface.
+    function drawStraightChevrons(g, px, py, dir, alpha) {
+        const cx = px + TILE_SIZE / 2;
+        const cy = py + TILE_SIZE / 2;
+        const d = DIR_VEC[dir];
+        const spacing = TILE_SIZE / 3;
+        const offset = beltScroll(TILE_SIZE);
+        for (let k = 0; k < 3; k++) {
+            const t = ((k * spacing + offset) % TILE_SIZE) - TILE_SIZE / 2;
+            if (Math.abs(t) > TILE_SIZE / 2 - 10) continue; // keep inside the body
+            drawChevron(g, cx + d.dx * t, cy + d.dy * t, d.dx, d.dy, 0xffffff, 0.8 * alpha);
+        }
+    }
+
     // A smooth 90° elbow: a thick rounded stroke from the entry edge through the
-    // tile centre to the exit edge, plus an arrowhead pointing at the output.
+    // tile centre to the exit edge, with chevrons scrolling along the curve.
     function drawBeltCorner(g, px, py, inDir, outDir, alpha) {
         const cx = px + TILE_SIZE / 2;
         const cy = py + TILE_SIZE / 2;
@@ -236,8 +311,21 @@ export function createRenderer(app) {
         const sy = cy + dout.dy * reach;
         g.moveTo(ex, ey);
         g.quadraticCurveTo(cx, cy, sx, sy);
-        g.stroke({ width: 12, color: 0xffffff, alpha: 0.85 * alpha, cap: 'round', join: 'round' });
-        drawArrow(g, px, py, outDir, 0xffffff, 0.85 * alpha);
+        g.stroke({ width: 13, color: 0xffffff, alpha: 0.85 * alpha, cap: 'round', join: 'round' });
+        // chevrons ride the quadratic from entry (u=0) to exit (u=1)
+        const phase = beltScroll(TILE_SIZE) / TILE_SIZE;
+        for (let k = 0; k < 3; k++) {
+            const u = (k / 3 + phase / 3) % 1;
+            const iu = 1 - u;
+            const qx = iu * iu * ex + 2 * iu * u * cx + u * u * sx;
+            const qy = iu * iu * ey + 2 * iu * u * cy + u * u * sy;
+            let tx = 2 * iu * (cx - ex) + 2 * u * (sx - cx);
+            let ty = 2 * iu * (cy - ey) + 2 * u * (sy - cy);
+            const len = Math.hypot(tx, ty) || 1;
+            tx /= len;
+            ty /= len;
+            drawChevron(g, qx, qy, tx, ty, 0x1b4d85, 0.9 * alpha);
+        }
     }
 
     // An arrow sitting on the `side` edge pointing inward (toward the centre) —
@@ -262,8 +350,13 @@ export function createRenderer(app) {
     }
 
     function drawResource(g, type, px, py) {
+        const color = RESOURCE_COLOR[type] ?? 0x666666;
+        // ambient glow, tinted by the ore color, gently out of phase per tile
+        const pulse = 0.5 + 0.5 * Math.sin(animMs / 700 + (px + py) * 0.05);
+        g.roundRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2, 9);
+        g.stroke({ width: 3, color, alpha: 0.2 + 0.3 * pulse });
         g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-        g.fill({ color: RESOURCE_COLOR[type] ?? 0x666666, alpha: 0.45 });
+        g.fill({ color, alpha: 0.45 });
         // a few speckles to read as ore
         const dots = [[0.3, 0.35], [0.62, 0.4], [0.45, 0.66], [0.7, 0.7], [0.32, 0.62]];
         for (const [fx, fy] of dots) {
@@ -275,6 +368,9 @@ export function createRenderer(app) {
     function drawMachineBody(g, machine, px, py, alpha = 1, coords = null) {
         const cx = px + TILE_SIZE / 2;
         const cy = py + TILE_SIZE / 2;
+        // Drives the subtle "working" body animations; 0 for build ghosts
+        // (no progress field) and idle machines.
+        const frac = machine.progress != null ? machineProgressFraction(machine) : 0;
 
         if (machine.type === 'belt') {
             g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
@@ -290,9 +386,7 @@ export function createRenderer(app) {
             if (isCorner) {
                 drawBeltCorner(g, px, py, inDir, machine.dir, alpha);
             } else {
-                drawArrow(g, px, py, machine.dir, 0xffffff, 0.85 * alpha);
-                g.circle(cx, cy, 2.5);
-                g.fill({ color: 0xffffff, alpha });
+                drawStraightChevrons(g, px, py, machine.dir, alpha);
             }
             return;
         }
@@ -324,9 +418,9 @@ export function createRenderer(app) {
             g.fill({ color: 0x3c4452, alpha });
             g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
             g.stroke({ width: 2, color: 0x222831, alpha });
-            // drill chevrons
+            // drill chevrons — they march downward as the extractor works
             for (let i = 0; i < 3; i++) {
-                const yy = cy - 10 + i * 8;
+                const yy = cy - 10 + ((i * 8 + frac * 8) % 24);
                 g.poly([cx - 9, yy, cx, yy + 6, cx + 9, yy]);
                 g.stroke({ width: 3, color: 0xf1c40f, alpha });
             }
@@ -339,11 +433,13 @@ export function createRenderer(app) {
             g.fill({ color: 0x6e3b2a, alpha });
             g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
             g.stroke({ width: 2, color: 0x3d2017, alpha });
-            // glowing furnace mouth
+            // glowing furnace mouth — heat builds with progress and flickers
+            const flicker = frac > 0 ? 0.12 * Math.sin(animMs / 70 + px) : 0;
+            const heat = 0.45 + 0.55 * frac + flicker;
             g.roundRect(cx - 12, cy - 4, 24, 14, 3);
-            g.fill({ color: 0xff7a18, alpha });
+            g.fill({ color: 0xff7a18, alpha: alpha * Math.min(1, heat) });
             g.roundRect(cx - 12, cy - 4, 24, 5, 2);
-            g.fill({ color: 0xffd166, alpha: 0.9 * alpha });
+            g.fill({ color: 0xffd166, alpha: 0.9 * alpha * Math.min(1, heat) });
             drawArrow(g, px, py, machine.dir, 0xffd166, 0.9 * alpha);
             return;
         }
@@ -353,11 +449,12 @@ export function createRenderer(app) {
             g.fill({ color: 0x5b3a78, alpha });
             g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
             g.stroke({ width: 2, color: 0x35224a, alpha });
-            // gear
+            // gear — rotates one tooth per completed operation
+            const rot = frac * (Math.PI / 4);
             g.circle(cx, cy - 2, 11);
             g.fill({ color: 0xcdb4f0, alpha });
             for (let i = 0; i < 8; i++) {
-                const a = (i / 8) * Math.PI * 2;
+                const a = (i / 8) * Math.PI * 2 + rot;
                 g.rect(cx + Math.cos(a) * 10 - 2, cy - 2 + Math.sin(a) * 10 - 2, 4, 4);
                 g.fill({ color: 0xcdb4f0, alpha });
             }
@@ -372,13 +469,17 @@ export function createRenderer(app) {
             g.fill({ color: 0x2c3e6b, alpha });
             g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
             g.stroke({ width: 2, color: 0x1a2540, alpha });
-            // flask glyph
+            // flask glyph — a bubble rises through it while analysing
             g.circle(cx, cy + 4, 9);
             g.fill({ color: 0xb07cf0, alpha });
             g.rect(cx - 3, cy - 12, 6, 8);
             g.fill({ color: 0xb07cf0, alpha });
             g.circle(cx - 3, cy + 2, 2.5);
             g.fill({ color: 0xffffff, alpha: 0.6 * alpha });
+            if (frac > 0) {
+                g.circle(cx + 3, cy + 9 - frac * 14, 2);
+                g.fill({ color: 0xffffff, alpha: 0.8 * alpha });
+            }
             return;
         }
 
@@ -429,8 +530,54 @@ export function createRenderer(app) {
         g.fill(0x6ee7b7);
     }
 
+    // Power feedback on top of the body: fueled generators show a flickering
+    // flame; working powered machines get a pulsing glow whose speed and
+    // brightness scale with the network throttle; a starved machine (or an
+    // unfueled generator) goes dark with a red "no power" pip.
+    function drawNoPower(g, px, py) {
+        g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
+        g.fill({ color: 0x000000, alpha: 0.45 });
+        const blink = 0.6 + 0.4 * Math.sin(animMs / 250);
+        g.circle(px + TILE_SIZE - 11, py + 11, 4);
+        g.fill({ color: 0xe74c3c, alpha: blink });
+    }
+
+    function drawPowerStatus(g, m, px, py) {
+        if (m.type === 'generator') {
+            if (m.fuelTicks > 0) {
+                const cx = px + TILE_SIZE / 2;
+                const f = 0.7 + 0.3 * Math.sin(animMs / 90 + px);
+                g.poly([cx - 6, py + 18, cx, py + 18 - 10 * f, cx + 6, py + 18]);
+                g.fill({ color: 0xff7a18, alpha: 0.95 });
+                g.poly([cx - 3, py + 18, cx, py + 18 - 5 * f, cx + 3, py + 18]);
+                g.fill({ color: 0xffd166, alpha: 0.95 });
+            } else {
+                drawNoPower(g, px, py);
+            }
+            return;
+        }
+        if (!POWER_DRAW[m.type]) return;
+        const working = m.pendingOutput !== null || m.progress > 0;
+        if (!working) return;
+        const th = power.throttle;
+        if (th <= 0.02) {
+            drawNoPower(g, px, py);
+            return;
+        }
+        const freq = 0.002 + 0.006 * th; // brownout → slower pulse
+        const pulse = 0.5 + 0.5 * Math.sin(animMs * freq + px + py);
+        const a = (0.12 + 0.4 * th) * (0.4 + 0.6 * pulse); // brownout → dimmer
+        g.roundRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4, 9);
+        g.stroke({ width: 3, color: 0x7fdfff, alpha: a });
+    }
+
     // ---- Per-frame draw -----------------------------------------------------
     function draw(state) {
+        const now = performance.now();
+        const frameDt = Math.min(100, now - lastDrawNow);
+        lastDrawNow = now;
+        if (!state.paused) animMs += frameDt * state.speed;
+
         visuals.clear();
 
         for (let x = 0; x < GRID_WIDTH; x++) {
@@ -439,12 +586,10 @@ export function createRenderer(app) {
                 const px = x * TILE_SIZE;
                 const py = y * TILE_SIZE;
 
-                visuals.rect(px, py, TILE_SIZE, TILE_SIZE);
-                visuals.stroke({ width: 1, color: 0x333333 });
-
                 if (cell.resource) drawResource(visuals, cell.resource, px, py);
                 if (cell.machine) {
                     drawMachineBody(visuals, cell.machine, px, py, 1, { x, y });
+                    drawPowerStatus(visuals, cell.machine, px, py);
                     drawTierPips(visuals, cell.machine, px, py);
                     drawProgress(visuals, cell.machine, px, py);
                 }
