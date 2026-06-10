@@ -26,12 +26,13 @@ const OPPOSITE = { right: 'left', left: 'right', up: 'down', down: 'up' };
 const ITEM_STYLE = {
     ironOre: { shape: 'chunk', color: 0x9aa0aa, speck: 0x5f6470 },
     copperOre: { shape: 'chunk', color: 0xc77b3b, speck: 0x8a4f22 },
+    coalOre: { shape: 'chunk', color: 0x3b3f48, speck: 0x14161b },
     ironIngot: { shape: 'bar', color: 0xdce1e9 },
     copperIngot: { shape: 'bar', color: 0xe2913f },
     circuit: { shape: 'chip', color: 0x39d353 },
 };
 
-const RESOURCE_COLOR = { ironOre: 0x6b7280, copperOre: 0xa86a39 };
+const RESOURCE_COLOR = { ironOre: 0x6b7280, copperOre: 0xa86a39, coalOre: 0x2f3239 };
 
 /**
  * @param {import('pixi.js').Application} app
@@ -342,6 +343,17 @@ export function createRenderer(app) {
             g.circle(cx, cy - 2, 4);
             g.fill({ color: 0x5b3a78, alpha });
             drawArrow(g, px, py, machine.dir, 0xcdb4f0, 0.9 * alpha);
+            return;
+        }
+
+        if (machine.type === 'generator') {
+            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
+            g.fill({ color: 0x274156, alpha });
+            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
+            g.stroke({ width: 2, color: 0x16242f, alpha });
+            // lightning bolt
+            g.poly([cx + 5, cy - 14, cx - 7, cy + 3, cx - 1, cy + 3, cx - 5, cy + 14, cx + 7, cy - 3, cx + 1, cy - 3]);
+            g.fill({ color: 0xf7e463, alpha });
             return;
         }
 

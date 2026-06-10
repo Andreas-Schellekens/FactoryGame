@@ -16,6 +16,21 @@ export const MACHINE_COST = {
     extractor: 15,
     smelter: 20,
     assembler: 30,
+    generator: 30,
+};
+
+// Power network: a global (wireless) grid, not items on belts. Each tick
+// supply vs demand yields a throttle in [0,1] that scales every powered
+// machine's progress — a brownout slows the whole factory instead of
+// stalling it.
+export const BASE_POWER_SUPPLY = 20;    // free "starter grid"; covers a small factory
+export const POWER_PER_GENERATOR = 10;  // supply added per fueled generator, per tick
+export const GENERATOR_FUEL_TICKS = 20; // ticks one coalOre keeps a generator burning
+// Per-tick draw of machines that need power to make progress. Extractors are
+// deliberately unpowered so the bootstrap chain can never brown out itself.
+export const POWER_DRAW = {
+    smelter: 4,
+    assembler: 6,
 };
 
 // Tier system: machines start at tier 1 and can be upgraded to MAX_TIER.

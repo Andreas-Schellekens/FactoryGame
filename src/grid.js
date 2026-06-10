@@ -8,6 +8,10 @@ import {
     MAX_TIER,
     PROCESS_TICKS,
     BUFFER_CAP,
+    BASE_POWER_SUPPLY,
+    POWER_PER_GENERATOR,
+    GENERATOR_FUEL_TICKS,
+    POWER_DRAW,
 } from './config.js';
 
 export const grid = [];
@@ -42,6 +46,17 @@ export const order = {
 
 // The only item type the sink will pay for.
 export const PRODUCT_TYPE = 'circuit';
+
+// Global power network (mutated in place, like `order` — a stable reference
+// other modules read each frame). Recomputed every tick from generators and
+// the demand of powered machines that want to work; never saved. `throttle`
+// scales powered processors' progress, so an undersupplied factory slows
+// down smoothly instead of stalling.
+export const power = {
+    supply: BASE_POWER_SUPPLY,
+    demand: 0,
+    throttle: 1,
+};
 
 /**
  * Issue a new order. Difficulty (target/ticks/reward) is chosen by the caller
@@ -107,7 +122,10 @@ function outputsToward(m, fx, fy, tx, ty) {
 const SMELT = { ironOre: 'ironIngot', copperOre: 'copperIngot' };
 const ASSEMBLE = { inputs: { ironIngot: 1, copperIngot: 1 }, output: PRODUCT_TYPE };
 
-const PROCESSORS = new Set(['smelter', 'assembler']);
+// Machines that absorb the item in their input slot into a buffer. The
+// generator is one of them (it eats coalOre as fuel) even though it never
+// runs a recipe — its burn happens in the power phase.
+const PROCESSORS = new Set(['smelter', 'assembler', 'generator']);
 export const UPGRADABLE = new Set(['extractor', 'smelter', 'assembler']);
 
 function inBounds(x, y) {
@@ -140,6 +158,8 @@ export function initGrid() {
     // Ore deposits (terrain) — extractors must be placed on top of these.
     grid[1][1].resource = 'ironOre';
     grid[1][2].resource = 'ironOre';
+    grid[1][4].resource = 'coalOre';
+    grid[1][5].resource = 'coalOre';
     grid[1][7].resource = 'copperOre';
     grid[1][8].resource = 'copperOre';
 
@@ -228,6 +248,7 @@ export function buildMachine(x, y, type, dir = 'right') {
     score -= MACHINE_COST[type];
     const extra = type === 'extractor' ? { produces: cell.resource }
         : (type === 'splitter' || type === 'merger') ? { toggle: 0 }
+        : type === 'generator' ? { fuelTicks: 0 }
         : {};
     cell.machine = makeMachine(type, dir, extra);
     return true;
@@ -317,6 +338,8 @@ function cellAccepts(cell, itemType) {
             return itemType in SMELT && (m.buffer[itemType] || 0) < BUFFER_CAP;
         case 'assembler':
             return itemType in ASSEMBLE.inputs && (m.buffer[itemType] || 0) < BUFFER_CAP;
+        case 'generator':
+            return itemType === 'coalOre' && (m.buffer.coalOre || 0) < BUFFER_CAP;
         default:
             return false;
     }
@@ -493,6 +516,32 @@ export function updateFactoryLogic() {
         }
     }
 
+    // 3.5) Power network. Generators burn buffered coal for supply; every
+    // powered machine that wants to work adds its draw to demand. The ratio
+    // becomes this tick's throttle for phase 4. Computed after movers so
+    // freshly delivered coal counts the tick it arrives in the buffer.
+    power.supply = BASE_POWER_SUPPLY;
+    power.demand = 0;
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            const m = grid[x][y].machine;
+            if (!m) continue;
+            if (m.type === 'generator') {
+                if (m.fuelTicks <= 0 && (m.buffer.coalOre || 0) > 0) {
+                    m.buffer.coalOre--;
+                    m.fuelTicks = GENERATOR_FUEL_TICKS;
+                }
+                if (m.fuelTicks > 0) {
+                    m.fuelTicks--;
+                    power.supply += POWER_PER_GENERATOR;
+                }
+            } else if (POWER_DRAW[m.type] && recipeFor(m)) {
+                power.demand += POWER_DRAW[m.type];
+            }
+        }
+    }
+    power.throttle = power.demand > 0 ? Math.min(1, power.supply / power.demand) : 1;
+
     // 4) Processors run their recipe over time, then eject the result.
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
@@ -510,7 +559,9 @@ export function updateFactoryLogic() {
                 m.progress = 0;
                 continue;
             }
-            m.progress++;
+            // Powered machines advance by the network throttle (progress may
+            // be fractional); unpowered processors run at full speed.
+            m.progress += POWER_DRAW[m.type] ? power.throttle : 1;
             if (m.progress >= processInterval(m)) {
                 for (const k in recipe.inputs) m.buffer[k] -= recipe.inputs[k];
                 m.pendingOutput = recipe.output;

@@ -80,6 +80,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         ['extractor', 'Extractor'],
         ['smelter', 'Smelter'],
         ['assembler', 'Assembler'],
+        ['generator', 'Generator'],
     ];
     for (const [tool, label] of buildDefs) {
         const b = button(label, () => onToolChange(tool), { sub: MACHINE_COST[tool] });
@@ -154,6 +155,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             parts.push(line);
             const buf = Object.entries(m.buffer || {}).filter(([, n]) => n > 0);
             if (buf.length) parts.push('buffer: ' + buf.map(([k, n]) => `${k}×${n}`).join(', '));
+            if (m.type === 'generator') parts.push(m.fuelTicks > 0 ? `fuel: ${m.fuelTicks} ticks` : 'fuel: empty');
             if (m.pendingOutput) parts.push(`out: ${m.pendingOutput}`);
         }
         if (cell.item) parts.push(`item: ${cell.item.type}`);
