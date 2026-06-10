@@ -1,7 +1,16 @@
 // src/ui.js — the HUD, built as plain DOM (not drawn on the canvas), so it
 // never overlaps the playfield. Driven entirely through the callbacks and the
 // getState() pull function passed in from main.js.
-import { MACHINE_COST } from './config.js';
+import { MACHINE_COST, TECH_COST } from './config.js';
+
+// Tech-tree node metadata (labels/descriptions are presentation; the costs
+// live in config.js and the unlock state in grid.js).
+const TECH_NODES = [
+    { id: 'power', label: 'Power Grid', desc: 'Unlock the coal-fueled Generator' },
+    { id: 'fastBelts', label: 'Express Belts', desc: 'Belts and routers move twice per tick' },
+    { id: 'advancedProduct', label: 'Adv. Circuits', desc: 'Assemble a high-value advanced circuit' },
+    { id: 'tier4', label: 'Tier 4', desc: 'Raise the machine upgrade cap to tier 4' },
+];
 
 function button(label, onClick, { id, sub } = {}) {
     const el = document.createElement('button');
@@ -39,10 +48,11 @@ function section(title) {
  *   onSpeedChange: (delta: number) => void,
  *   onSave: () => boolean,
  *   onLoad: () => boolean,
+ *   onUnlock: (techId: string) => boolean,
  *   getState: () => any,
  * }} opts
  */
-export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, getState }) {
+export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState }) {
     root.innerHTML = '';
 
     const title = document.createElement('h1');
@@ -81,6 +91,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         ['smelter', 'Smelter'],
         ['assembler', 'Assembler'],
         ['generator', 'Generator'],
+        ['lab', 'Lab'],
     ];
     for (const [tool, label] of buildDefs) {
         const b = button(label, () => onToolChange(tool), { sub: MACHINE_COST[tool] });
@@ -88,6 +99,20 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         build.appendChild(b);
     }
     root.appendChild(build);
+
+    // Research / tech tree: points readout + one spend-to-unlock button per node.
+    const researchSec = section('Research');
+    const researchPoints = document.createElement('div');
+    researchPoints.className = 'stat research-points';
+    researchSec.appendChild(researchPoints);
+    const techButtons = {};
+    for (const node of TECH_NODES) {
+        const b = button(node.label, () => onUnlock(node.id), { sub: `${TECH_COST[node.id]} rp` });
+        b.title = node.desc;
+        techButtons[node.id] = b;
+        researchSec.appendChild(b);
+    }
+    root.appendChild(researchSec);
 
     // Editing tools.
     const edit = section('Tools');
@@ -139,7 +164,8 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         '<b>Chain:</b> <span class="r1">ore</span> → Extractor → Smelter → Assembler → Sink',
         'Place an <b>Extractor</b> on an ore node, route ingots into an <b>Assembler</b>, sink the product.',
         '<b>LMB</b> use tool &nbsp; <b>RMB</b> erase &nbsp; <b>R</b> rotate',
-        '<b>1–4,7,8</b> build &nbsp; <b>5</b> upgrade &nbsp; <b>6</b> erase &nbsp; <b>Space</b> pause',
+        '<b>1–4,7–0</b> build &nbsp; <b>5</b> upgrade &nbsp; <b>6</b> erase &nbsp; <b>Space</b> pause',
+        'Craft <b>research</b> (2 circuits) in an Assembler, feed it to a <b>Lab</b>, unlock tech.',
     ].join('<br>');
     root.appendChild(help);
 
@@ -195,6 +221,19 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         for (const [tool, btn] of Object.entries(toolButtons)) {
             btn.classList.toggle('active', s.tool === tool);
             if (tool in MACHINE_COST) btn.classList.toggle('disabled', s.money < MACHINE_COST[tool]);
+        }
+        // Generator stays locked (regardless of money) until the power tech.
+        const genLocked = !s.research.unlocked.power;
+        if (genLocked) toolButtons.generator.classList.add('disabled');
+        toolButtons.generator.title = genLocked ? 'Requires Power Grid research' : '';
+
+        researchPoints.textContent = `🧪 ${s.research.points} research`;
+        for (const node of TECH_NODES) {
+            const btn = techButtons[node.id];
+            const unlocked = s.research.unlocked[node.id];
+            btn.classList.toggle('unlocked', unlocked);
+            btn.classList.toggle('disabled', !unlocked && s.research.points < TECH_COST[node.id]);
+            btn.querySelector('.cost').textContent = unlocked ? '✓' : `${TECH_COST[node.id]} rp`;
         }
     }
 

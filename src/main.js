@@ -7,7 +7,7 @@ import {
     ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS,
 } from './config.js';
 import {
-    grid, score, tickCount, order, power, startOrder,
+    grid, score, tickCount, order, power, research, unlockTech, startOrder,
     initGrid, buildMachine, removeMachine, upgradeMachine, placeBelt, dirBetween,
     serialize, loadState,
 } from './grid.js';
@@ -35,7 +35,7 @@ app.stage.eventMode = 'static';
 app.stage.hitArea = new PIXI.Rectangle(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
 
 // --- Shared UI/input state (kept out of the simulation) ---
-const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'generator']);
+const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'generator', 'lab']);
 const rotations = ['right', 'down', 'left', 'up'];
 const nextDir = (dir) => rotations[(rotations.indexOf(dir) + 1) % rotations.length] ?? 'right';
 
@@ -87,6 +87,7 @@ const ui = createUI({
     onSpeedChange: (delta) => (state.speed = clamp(state.speed + delta * 0.25, 0.25, 4)),
     onSave: saveGame,
     onLoad: loadGame,
+    onUnlock: (id) => unlockTech(id),
     getState: () => {
         const onGrid = state.hovered.x >= 0;
         return {
@@ -100,6 +101,7 @@ const ui = createUI({
             hovered: onGrid ? grid[state.hovered.x][state.hovered.y] : null,
             order: { ...order, remaining: Math.max(0, order.deadlineTick - tickCount) },
             power: { ...power },
+            research: { points: research.points, unlocked: { ...research.unlocked } },
         };
     },
 });
@@ -144,7 +146,7 @@ function actAt(gx, gy, button) {
     }
 }
 
-const keyTools = { 1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'assembler', 5: 'upgrade', 6: 'erase', 7: 'splitter', 8: 'merger', 9: 'generator' };
+const keyTools = { 1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'assembler', 5: 'upgrade', 6: 'erase', 7: 'splitter', 8: 'merger', 9: 'generator', 0: 'lab' };
 window.addEventListener('keydown', (e) => {
     if (e.key in keyTools) state.tool = keyTools[e.key];
     if (e.key === 'r' || e.key === 'R') state.dir = nextDir(state.dir);

@@ -12,6 +12,8 @@ import {
     POWER_PER_GENERATOR,
     GENERATOR_FUEL_TICKS,
     POWER_DRAW,
+    RESEARCH_PER_ITEM,
+    TECH_COST,
 } from './config.js';
 
 export const grid = [];
@@ -57,6 +59,29 @@ export const power = {
     demand: 0,
     throttle: 1,
 };
+
+// Research state (mutated in place, like `order`). Labs add to `points`;
+// `unlockTech` spends them on the permanent unlock flags below, which gate
+// building (generator), recipes (advancedCircuit), the tier-4 upgrade cap,
+// and belt speed. Persisted by serialize()/loadState().
+export const research = {
+    points: 0,
+    unlocked: {
+        power: false,
+        fastBelts: false,
+        advancedProduct: false,
+        tier4: false,
+    },
+};
+
+/** Spend research points on a tech node. @returns {boolean} success */
+export function unlockTech(id) {
+    const cost = TECH_COST[id];
+    if (cost == null || research.unlocked[id] || research.points < cost) return false;
+    research.points -= cost;
+    research.unlocked[id] = true;
+    return true;
+}
 
 /**
  * Issue a new order. Difficulty (target/ticks/reward) is chosen by the caller
@@ -117,16 +142,29 @@ function outputsToward(m, fx, fy, tx, ty) {
     return d.dx === wantDx && d.dy === wantDy;
 }
 
-// Recipes. Smelter turns one ore into its matching ingot; the assembler
-// combines one of each ingot into a product.
+// Recipes. Smelter turns one ore into its matching ingot; the assembler runs
+// the first recipe in ASSEMBLE whose tech (if any) is unlocked and whose
+// inputs its buffer satisfies — so what the player routes in steers which
+// product comes out. The lab "recipe" has no item output: completing it adds
+// RESEARCH_PER_ITEM points instead (special-cased in the processor phase).
 const SMELT = { ironOre: 'ironIngot', copperOre: 'copperIngot' };
-const ASSEMBLE = { inputs: { ironIngot: 1, copperIngot: 1 }, output: PRODUCT_TYPE };
+const ASSEMBLE = [
+    { inputs: { ironIngot: 1, copperIngot: 1 }, output: PRODUCT_TYPE },
+    { inputs: { circuit: 2, ironIngot: 1 }, output: 'advancedCircuit', tech: 'advancedProduct' },
+    { inputs: { circuit: 2 }, output: 'research' },
+];
+const LAB_RECIPE = { inputs: { research: 1 }, output: null };
+
+// Assembler recipes whose tech gate (if any) is currently unlocked.
+function assemblerRecipes() {
+    return ASSEMBLE.filter((r) => !r.tech || research.unlocked[r.tech]);
+}
 
 // Machines that absorb the item in their input slot into a buffer. The
 // generator is one of them (it eats coalOre as fuel) even though it never
 // runs a recipe — its burn happens in the power phase.
-const PROCESSORS = new Set(['smelter', 'assembler', 'generator']);
-export const UPGRADABLE = new Set(['extractor', 'smelter', 'assembler']);
+const PROCESSORS = new Set(['smelter', 'assembler', 'generator', 'lab']);
+export const UPGRADABLE = new Set(['extractor', 'smelter', 'assembler', 'lab']);
 
 function inBounds(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
@@ -192,7 +230,14 @@ export function serialize() {
             cells.push(entry);
         }
     }
-    return { version: SAVE_VERSION, score, tickCount, order: { ...order }, cells };
+    return {
+        version: SAVE_VERSION,
+        score,
+        tickCount,
+        order: { ...order },
+        research: { points: research.points, unlocked: { ...research.unlocked } },
+        cells,
+    };
 }
 
 /**
@@ -230,6 +275,10 @@ export function loadState(data) {
     if (typeof data.tickCount === 'number') tickCount = data.tickCount;
     if (data.order) Object.assign(order, data.order);
 
+    // Reset research to defaults, then overlay — pre-research saves load locked.
+    research.points = data.research?.points ?? 0;
+    for (const k in research.unlocked) research.unlocked[k] = data.research?.unlocked?.[k] ?? false;
+
     return events;
 }
 
@@ -239,6 +288,7 @@ export function canBuildMachine(x, y, type) {
     const cell = grid[x][y];
     if (cell.machine !== null) return false;
     if (type === 'extractor' && cell.resource === null) return false; // needs an ore node
+    if (type === 'generator' && !research.unlocked.power) return false; // research-gated
     return score >= MACHINE_COST[type];
 }
 
@@ -305,7 +355,9 @@ export function removeMachine(x, y) {
 
 export function upgradeCost(x, y) {
     const m = inBounds(x, y) ? grid[x][y].machine : null;
-    if (!m || !UPGRADABLE.has(m.type) || m.tier >= MAX_TIER) return null;
+    // The top tier is research-gated: capped at MAX_TIER - 1 until `tier4`.
+    const tierCap = research.unlocked.tier4 ? MAX_TIER : MAX_TIER - 1;
+    if (!m || !UPGRADABLE.has(m.type) || m.tier >= tierCap) return null;
     return UPGRADE_COST[m.tier + 1];
 }
 
@@ -337,7 +389,10 @@ function cellAccepts(cell, itemType) {
         case 'smelter':
             return itemType in SMELT && (m.buffer[itemType] || 0) < BUFFER_CAP;
         case 'assembler':
-            return itemType in ASSEMBLE.inputs && (m.buffer[itemType] || 0) < BUFFER_CAP;
+            return assemblerRecipes().some((r) => itemType in r.inputs)
+                && (m.buffer[itemType] || 0) < BUFFER_CAP;
+        case 'lab':
+            return itemType === 'research' && (m.buffer.research || 0) < BUFFER_CAP;
         case 'generator':
             return itemType === 'coalOre' && (m.buffer.coalOre || 0) < BUFFER_CAP;
         default:
@@ -354,10 +409,17 @@ function recipeFor(machine) {
         return null;
     }
     if (machine.type === 'assembler') {
-        for (const k in ASSEMBLE.inputs) {
-            if ((machine.buffer[k] || 0) < ASSEMBLE.inputs[k]) return null;
+        for (const recipe of assemblerRecipes()) {
+            let ok = true;
+            for (const k in recipe.inputs) {
+                if ((machine.buffer[k] || 0) < recipe.inputs[k]) { ok = false; break; }
+            }
+            if (ok) return recipe;
         }
-        return { inputs: ASSEMBLE.inputs, output: ASSEMBLE.output };
+        return null;
+    }
+    if (machine.type === 'lab') {
+        return (machine.buffer.research || 0) > 0 ? LAB_RECIPE : null;
     }
     return null;
 }
@@ -425,6 +487,10 @@ export function updateFactoryLogic() {
     // 3) Movers relocate items (reverse scan to limit multi-cell chaining).
     // Belts, splitters and mergers all move (never transform) items, so they
     // share this phase and the belt's single-hop / back-pressure semantics.
+    // With the fastBelts tech the whole phase runs twice, so items travel up
+    // to two cells per tick (the renderer chains the two move events).
+    const moverPasses = research.unlocked.fastBelts ? 2 : 1;
+    for (let pass = 0; pass < moverPasses; pass++)
     for (let x = GRID_WIDTH - 1; x >= 0; x--) {
         for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
             const cell = grid[x][y];
@@ -564,9 +630,14 @@ export function updateFactoryLogic() {
             m.progress += POWER_DRAW[m.type] ? power.throttle : 1;
             if (m.progress >= processInterval(m)) {
                 for (const k in recipe.inputs) m.buffer[k] -= recipe.inputs[k];
-                m.pendingOutput = recipe.output;
                 m.progress = 0;
-                if (tryEject(m, x, y, m.pendingOutput, events)) m.pendingOutput = null;
+                if (recipe.output === null) {
+                    // Lab: the "product" is research points, not an item.
+                    research.points += RESEARCH_PER_ITEM;
+                } else {
+                    m.pendingOutput = recipe.output;
+                    if (tryEject(m, x, y, m.pendingOutput, events)) m.pendingOutput = null;
+                }
             }
         }
     }

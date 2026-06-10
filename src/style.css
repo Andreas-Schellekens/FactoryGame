@@ -147,6 +147,15 @@ body {
   opacity: 0.5;
 }
 
+.btn.unlocked {
+  border-color: var(--green);
+  cursor: default;
+}
+
+.btn.unlocked .cost {
+  color: var(--green);
+}
+
 .btn.active .cost {
   color: #fff;
   background: rgba(0, 0, 0, 0.2);

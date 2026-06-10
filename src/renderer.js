@@ -30,6 +30,7 @@ const ITEM_STYLE = {
     ironIngot: { shape: 'bar', color: 0xdce1e9 },
     copperIngot: { shape: 'bar', color: 0xe2913f },
     circuit: { shape: 'chip', color: 0x39d353 },
+    research: { shape: 'flask', color: 0xb07cf0 },
 };
 
 const RESOURCE_COLOR = { ironOre: 0x6b7280, copperOre: 0xa86a39, coalOre: 0x2f3239 };
@@ -84,6 +85,17 @@ export function createRenderer(app) {
             g.stroke({ width: 2, color: 0x000000, alpha: 0.25 });
             g.rect(-w / 2 + 3, -h / 2 + 3, w - 6, 3);
             g.fill({ color: 0xffffff, alpha: 0.35 });
+        } else if (style.shape === 'flask') {
+            // research flask: round body, short neck, liquid line
+            const r2 = TILE_SIZE * 0.18;
+            g.circle(0, r2 * 0.35, r2);
+            g.fill(style.color);
+            g.rect(-r2 * 0.35, -r2 * 1.3, r2 * 0.7, r2);
+            g.fill(style.color);
+            g.circle(0, r2 * 0.35, r2);
+            g.stroke({ width: 2, color: 0x000000, alpha: 0.3 });
+            g.circle(-r2 * 0.3, 0, r2 * 0.25);
+            g.fill({ color: 0xffffff, alpha: 0.5 });
         } else {
             // chip / product
             const s = TILE_SIZE * 0.44;
@@ -137,9 +149,15 @@ export function createRenderer(app) {
                 const sprite = ensureItemSprite(ev.item, ev.to.x, ev.to.y);
                 const from = cellCenterPx(ev.from.x, ev.from.y);
                 const to = cellCenterPx(ev.to.x, ev.to.y);
-                sprite.anim = { from, to, t: 0, dur: tickDurationMs };
-                sprite.gfx.x = from.x;
-                sprite.gfx.y = from.y;
+                if (sprite.anim && sprite.anim.t === 0) {
+                    // Second hop in the same tick (fastBelts): extend the tween
+                    // to the final cell instead of snapping to the midpoint.
+                    sprite.anim.to = to;
+                } else {
+                    sprite.anim = { from, to, t: 0, dur: tickDurationMs };
+                    sprite.gfx.x = from.x;
+                    sprite.gfx.y = from.y;
+                }
             } else if (ev.kind === 'consume') {
                 removeItemSprite(ev.item.id);
             }
@@ -343,6 +361,21 @@ export function createRenderer(app) {
             g.circle(cx, cy - 2, 4);
             g.fill({ color: 0x5b3a78, alpha });
             drawArrow(g, px, py, machine.dir, 0xcdb4f0, 0.9 * alpha);
+            return;
+        }
+
+        if (machine.type === 'lab') {
+            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
+            g.fill({ color: 0x2c3e6b, alpha });
+            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
+            g.stroke({ width: 2, color: 0x1a2540, alpha });
+            // flask glyph
+            g.circle(cx, cy + 4, 9);
+            g.fill({ color: 0xb07cf0, alpha });
+            g.rect(cx - 3, cy - 12, 6, 8);
+            g.fill({ color: 0xb07cf0, alpha });
+            g.circle(cx - 3, cy + 2, 2.5);
+            g.fill({ color: 0xffffff, alpha: 0.6 * alpha });
             return;
         }
 
