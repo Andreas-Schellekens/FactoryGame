@@ -30,6 +30,7 @@ const ITEM_STYLE = {
     ironIngot: { shape: 'bar', color: 0xdce1e9 },
     copperIngot: { shape: 'bar', color: 0xe2913f },
     circuit: { shape: 'chip', color: 0x39d353 },
+    advancedCircuit: { shape: 'chip', color: 0xf5b041, accent: 0x6e4a0a, pin: 0xfdebd0 },
     research: { shape: 'flask', color: 0xb07cf0 },
 };
 
@@ -98,17 +99,19 @@ export function createRenderer(app) {
             g.fill({ color: 0xffffff, alpha: 0.5 });
         } else {
             // chip / product
+            const accent = style.accent ?? 0x0c3a16;
+            const pin = style.pin ?? 0xcde8d2;
             const s = TILE_SIZE * 0.44;
             g.roundRect(-s / 2, -s / 2, s, s, 4);
             g.fill(style.color);
             g.roundRect(-s / 2, -s / 2, s, s, 4);
-            g.stroke({ width: 2, color: 0x0c3a16 });
+            g.stroke({ width: 2, color: accent });
             g.rect(-s / 4, -s / 4, s / 2, s / 2);
-            g.stroke({ width: 1.5, color: 0x0c3a16, alpha: 0.7 });
+            g.stroke({ width: 1.5, color: accent, alpha: 0.7 });
             for (const off of [-s / 6, s / 6]) {
                 g.rect(off - 1, -s / 2 - 3, 2, 3);
                 g.rect(off - 1, s / 2, 2, 3);
-                g.fill(0xcde8d2);
+                g.fill(pin);
             }
         }
         return g;

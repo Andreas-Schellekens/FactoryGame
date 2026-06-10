@@ -6,7 +6,13 @@ export const TICK_RATE = 4;    // simulation steps per second
 
 // Economy
 export const STARTING_MONEY = 200; // enough to bootstrap one full production chain
-export const PRODUCT_REWARD = 12;  // money earned per product consumed by the sink
+export const PRODUCT_REWARD = 12;  // money earned per circuit consumed by the sink
+// Payout per item type the sink accepts. The advanced circuit (2 circuits +
+// 1 ironIngot, research-gated) is worth more than the sum of its parts.
+export const SINK_VALUE = {
+    circuit: PRODUCT_REWARD,
+    advancedCircuit: 40,
+};
 
 // Placement cost per machine type (belts are cheap, processors are not).
 export const MACHINE_COST = {

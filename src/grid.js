@@ -2,7 +2,7 @@ import {
     GRID_WIDTH,
     GRID_HEIGHT,
     STARTING_MONEY,
-    PRODUCT_REWARD,
+    SINK_VALUE,
     MACHINE_COST,
     UPGRADE_COST,
     MAX_TIER,
@@ -385,7 +385,7 @@ function cellAccepts(cell, itemType) {
         case 'merger':
             return false; // pull-only: items enter via the merger's own pull
         case 'sink':
-            return itemType === PRODUCT_TYPE;
+            return itemType in SINK_VALUE;
         case 'smelter':
             return itemType in SMELT && (m.buffer[itemType] || 0) < BUFFER_CAP;
         case 'assembler':
@@ -448,11 +448,11 @@ export function updateFactoryLogic() {
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const cell = grid[x][y];
-            if (cell.machine?.type === 'sink' && cell.item?.type === PRODUCT_TYPE) {
+            if (cell.machine?.type === 'sink' && cell.item && SINK_VALUE[cell.item.type]) {
                 events.push({ kind: 'consume', item: cell.item, at: { x, y } });
                 if (order.active && cell.item.type === order.productType) order.delivered++;
+                score += SINK_VALUE[cell.item.type];
                 cell.item = null;
-                score += PRODUCT_REWARD;
             }
         }
     }
