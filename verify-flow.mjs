@@ -27,7 +27,7 @@ await page.waitForTimeout(800); // let the camera settle
 const center = (gx, gy) => page.evaluate(([x, y]) => window.__renderer.projectCell(x, y), [gx, gy]);
 
 const readMoney = async () =>
-    page.locator('.stat.money').evaluate((el) => parseInt(el.textContent.replace(/[^0-9-]/g, ''), 10));
+    page.locator('.tb-value.credits').evaluate((el) => parseInt(el.textContent.replace(/[^0-9-]/g, ''), 10));
 
 async function selectTool(key) {
     await page.keyboard.press(key); // 1 belt, 2 extractor, 3 smelter, 4 assembler

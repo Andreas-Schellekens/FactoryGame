@@ -1,5 +1,5 @@
 // src/campaign.js — the campaign's mechanical skeleton: the buildings you
-// start with, and the Project LIFELINE phases (deliveries to the Dispatch Pad)
+// start with, and the Protocol: Selene phases (deliveries to the Dispatch Pad)
 // that unlock everything else. Pure data, read by grid.js. Every player-facing
 // word about these phases lives in story.js.
 

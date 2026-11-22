@@ -16,7 +16,19 @@ Each folder keeps the pack's original `License.txt`.
 Credit is not required by the license, but Kenney's work deserves it. Consider
 [donating](https://kenney.nl/donate).
 
+## Fonts
+
+Self-hosted through [Fontsource](https://fontsource.org), all under the
+[SIL Open Font License 1.1](https://openfontlicense.org):
+
+| Font | Use |
+|---|---|
+| [Big Shoulders Display](https://fonts.google.com/specimen/Big+Shoulders+Display) (Patric King, XXIX) | mission headlines |
+| [Archivo](https://fonts.google.com/specimen/Archivo) (Omnibus-Type) | brand wordmark and body text |
+| [IBM Plex Mono](https://fonts.google.com/specimen/IBM+Plex+Mono) (IBM) | telemetry, labels, memos |
+
 ## Code and art
 
-Game code, story, procedural item meshes and the HUD's SVG art (Nile/Nihil logo,
-DELTA, cannon blueprint) are original to this project.
+Game code, story, procedural item meshes and the HUD's SVG art (NILE/NIHIL
+marks, the Protocol: Selene mission patch, DELTA's badge) are original to this
+project.

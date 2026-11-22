@@ -9,7 +9,7 @@ export const TICK_RATE = 4;    // simulation steps per second
 // The three small fields next to the pad are the tutorial's starter area; the
 // rest reward expanding. Terrain is recreated from this on load.
 export const PAD_POS = { x: 19, y: 12 };
-// The LIFELINE construction site: reserved cells beside the pad where the
+// The Selene construction site: reserved cells beside the pad where the
 // cannon rises phase by phase. Nothing can be built here.
 export const CANNON_AREA = { x: 20, y: 11, w: 3, h: 3 };
 export const ORE_FIELDS = [

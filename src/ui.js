@@ -1,21 +1,41 @@
-// src/ui.js — the HUD, built as plain DOM (not drawn on the canvas), so it
-// never overlaps the playfield. Driven entirely through the callbacks and the
-// getState() pull function passed in from main.js; it reads no game state
-// directly. Owns: the sidebar (status, project, objectives, build, order,
-// research, tools, inspector), DELTA's comms panel (message queue +
-// typewriter), phase banners, toasts, the title screen and the ending.
+// src/ui.js — the HUD, as plain DOM floating over the full-window 3D view
+// (design: "D · Mission Control" on the Nile Brand Directions canvas).
+// Driven entirely through the callbacks and the getState() pull function
+// passed in from main.js; it reads no game state directly.
+//
+// Layout (all inside `root`, which ignores the pointer except on panels):
+//   top bar   — company mark, credits, power gauge, sim speed, save/load/keys
+//   ribbon    — the current phase, hanging under the top bar; celebrates completions
+//   console   — Protocol: Selene patch, phase requirements, flight plan
+//               (objectives), research, priority request
+//   keys      — build tools and edit tools as hardware keys
+//   comms     — DELTA's CAPCOM terminal (message queue + typewriter + log)
+//   tooltip   — the inspector, following the hovered cell
+// Title screen and ending are full-screen overlays on <body>.
 import { MACHINE_COST, TECH_COST, TICK_RATE } from './config.js';
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
-    AI, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, brandName,
+    AI, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor,
 } from './story.js';
-import { logoSVG, deltaSVG, broadcastSVG, memoSVG, cannonSVG, endingSceneSVG } from './brand.js';
+import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, endingSceneSVG } from './brand.js';
 
-// UI colour per item (mirrors the renderer's ITEM_STYLE).
-const ITEM_COLOR = {
-    ironOre: '#9aa0aa', copperOre: '#c77b3b', coalOre: '#3b3f48',
-    ironIngot: '#dce1e9', copperIngot: '#e2913f',
-    circuit: '#39d353', advancedCircuit: '#f5b041', research: '#b07cf0',
+const ICON = {
+    belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
+    extractor: 'M12 3v10M8 13h8l-4 8z',
+    smelter: 'M12 3c2 3 5 5 5 9a5 5 0 0 1-10 0c0-2 1-4 3-5 0 2 1 3 2 3 0-3 0-5 0-7z',
+    assembler: 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1',
+    splitter: 'M4 12h6M10 12l8-6M10 12h10M10 12l8 6',
+    merger: 'M4 6l8 6M4 18l8-6M4 12h16',
+    generator: 'M13 2L4 14h7l-1 8 9-12h-7z',
+    lab: 'M9 3h6M10 3v6L5 19a1 1 0 0 0 1 2h12a1 1 0 0 0 1-2l-5-10V3',
+    lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
+    upgrade: 'M12 19V5M5 12l7-7 7 7',
+    erase: 'M6 6l12 12M18 6L6 18',
+    rotate: 'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5',
+    pause: 'M8 5v14M16 5v14',
+    play: 'M7 5l12 7-12 7z',
+    faster: 'M6 7l5 5-5 5M13 7l5 5-5 5',
+    slower: 'M18 7l-5 5 5 5M11 7l-5 5 5 5',
 };
 
 // Build palette order + hotkeys (keys are handled in main.js).
@@ -24,6 +44,11 @@ const BUILD_DEFS = [
     ['splitter', '7'], ['merger', '8'], ['generator', '9'], ['lab', '0'],
 ];
 
+const SEGMENTS = 15;
+const pad2 = (n) => String(n).padStart(2, '0');
+/** Credits as a mono readout: "01 250". */
+const credits = (n) => String(Math.max(0, Math.floor(n))).padStart(5, '0').replace(/\B(?=(\d{3})+$)/g, ' ');
+
 function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -31,158 +56,191 @@ function el(tag, cls, text) {
     return e;
 }
 
-function button(label, onClick, { sub, cls } = {}) {
-    const b = el('button', `btn${cls ? ` ${cls}` : ''}`);
+function iconSVG(path, size = 24) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d="${path}"></path></svg>`;
+}
+
+/** A hardware key: number in the corner, icon, small caption. */
+function hwKey({ k, label, iconPath, sub = '', cls = '', onClick }) {
+    const b = el('button', `hwkey ${cls}`);
+    b.type = 'button';
+    b.setAttribute('aria-label', label);
+    b.innerHTML = `<span class="hwkey-k">${k}</span>${iconSVG(iconPath)}<span class="hwkey-sub"></span>`;
+    b.querySelector('.hwkey-sub').textContent = sub;
     b.addEventListener('click', onClick);
-    b.appendChild(el('span', 'btn-label', label));
-    if (sub != null) b.appendChild(el('span', 'cost', sub));
     return b;
 }
 
-function section(title) {
-    const wrap = el('div', 'section');
-    wrap.appendChild(el('div', 'section-title', title));
-    return wrap;
+function textButton(label, onClick, cls = '') {
+    const b = el('button', `tbtn ${cls}`, label);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
 }
 
 const fmtTime = (secs) => {
     const s = Math.floor(secs);
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
-    const pad = (n) => String(n).padStart(2, '0');
-    return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
+    return h ? `${h}:${pad2(m)}:${pad2(s % 60)}` : `${m}:${pad2(s % 60)}`;
 };
 
 /**
  * @param {{
- *   root: HTMLElement, view: HTMLElement, commsRoot: HTMLElement,
+ *   root: HTMLElement,
  *   onToolChange: (tool: string) => void, onRotate: () => void,
  *   onTogglePause: () => void, onSpeedChange: (delta: number) => void,
  *   onSave: () => boolean, onLoad: () => boolean, onUnlock: (techId: string) => boolean,
  *   getState: () => any,
  * }} opts
  */
-export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState }) {
+export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState }) {
     root.innerHTML = '';
     let phaseShown = -1; // phase the phase-dependent DOM was last built for
     let brandPhase = 0;  // for comms headers / portraits
 
-    // ---- Brand header ----------------------------------------------------
-    const brand = el('div', 'brand');
-    const logoBox = el('div', 'brand-logo');
-    const gameTitle = el('div', 'brand-title', GAME_TITLE.toUpperCase());
-    brand.append(logoBox, gameTitle);
-    root.appendChild(brand);
+    // ---- Top bar ----------------------------------------------------------------
+    const top = el('header', 'topbar');
+    const brandCell = el('div', 'tb-cell tb-brand');
+    const brandMark = el('span', 'tb-mark');
+    const brandWord = el('span', 'tb-word');
+    brandCell.append(brandMark, brandWord);
 
-    // ---- Status ----------------------------------------------------------
-    const stats = section('Status');
-    const money = el('div', 'stat money');
-    const powerStat = el('div', 'stat');
-    const powerBar = el('div', 'bar');
-    const powerFill = el('div', 'bar-fill');
-    powerBar.appendChild(powerFill);
-    const simRow = el('div', 'row');
-    const pauseBtn = button('Pause', onTogglePause);
-    const speedLabel = el('div', 'speed-label');
-    simRow.append(pauseBtn, button('–', () => onSpeedChange(-1), { cls: 'btn-sq' }), speedLabel, button('+', () => onSpeedChange(1), { cls: 'btn-sq' }));
-    stats.append(money, powerStat, powerBar, simRow);
-    root.appendChild(stats);
+    const creditsCell = el('div', 'tb-cell tb-readout');
+    const creditsValue = el('span', 'tb-value credits');
+    creditsCell.append(el('span', 'tb-label', 'Credits'), creditsValue);
 
-    // ---- Project LIFELINE --------------------------------------------------
-    const projectSec = section('Project LIFELINE');
-    const cannonBox = el('div', 'cannon');
-    const phaseKicker = el('div', 'phase-kicker');
-    const phaseTitle = el('div', 'phase-title');
-    const phaseBlurb = el('div', 'phase-blurb');
+    const powerCell = el('div', 'tb-cell tb-readout tb-power');
+    const powerLabel = el('span', 'tb-label');
+    const gauge = el('div', 'gauge');
+    const segs = Array.from({ length: SEGMENTS }, () => gauge.appendChild(el('span')));
+    powerCell.append(powerLabel, gauge);
+
+    const simCell = el('div', 'tb-cell tb-sim');
+    const slowerBtn = el('button', 'sqkey');
+    slowerBtn.type = 'button';
+    slowerBtn.setAttribute('aria-label', 'Slower');
+    slowerBtn.innerHTML = iconSVG(ICON.slower, 16);
+    slowerBtn.addEventListener('click', () => onSpeedChange(-1));
+    const pauseBtn = el('button', 'sqkey');
+    pauseBtn.type = 'button';
+    pauseBtn.addEventListener('click', onTogglePause);
+    const speedLabel = el('span', 'tb-speed');
+    const fasterBtn = el('button', 'sqkey');
+    fasterBtn.type = 'button';
+    fasterBtn.setAttribute('aria-label', 'Faster');
+    fasterBtn.innerHTML = iconSVG(ICON.faster, 16);
+    fasterBtn.addEventListener('click', () => onSpeedChange(1));
+    simCell.append(slowerBtn, pauseBtn, speedLabel, fasterBtn);
+
+    const menuCell = el('div', 'tb-cell tb-menu');
+    const helpBtn = textButton('Keys', () => help.classList.toggle('hidden'));
+    menuCell.append(
+        textButton('Save', () => toast(onSave() ? 'Contract saved' : 'Save failed')),
+        textButton('Load', () => toast(onLoad() ? 'Contract restored' : 'No saved contract')),
+        helpBtn,
+    );
+    top.append(brandCell, creditsCell, powerCell, el('div', 'tb-spacer'), simCell, menuCell);
+    root.appendChild(top);
+
+    const help = el('div', 'help hidden');
+    help.innerHTML = [
+        ['LMB', 'build · drag to lay belts'], ['RMB', 'demolish (refunds cost)'], ['R', 'rotate before placing'],
+        ['1–4 7–0', 'buildings'], ['5 / 6', 'upgrade / demolish tool'], ['WASD', 'move view'], ['Wheel', 'zoom'],
+        ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'],
+    ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('');
+    root.appendChild(help);
+
+    // ---- Phase ribbon -------------------------------------------------------------
+    const ribbon = el('div', 'ribbon');
+    const ribbonKicker = el('span', 'ribbon-kicker');
+    const ribbonTitle = el('span', 'ribbon-title');
+    const ribbonExtra = el('span', 'ribbon-extra');
+    ribbon.append(ribbonKicker, ribbonTitle, ribbonExtra);
+    root.appendChild(ribbon);
+    let celebrating = false;
+    let celebrateTimer = null;
+
+    // ---- Console --------------------------------------------------------------------
+    const con = el('aside', 'console');
+    const head = el('div', 'con-head');
+    const patchBox = el('span', 'con-patch');
+    const headText = el('div', 'con-headtext');
+    const headTitle = el('span', 'con-title', GAME_TITLE);
+    const headSub = el('span', 'con-sub');
+    headText.append(headTitle, headSub);
+    head.append(patchBox, headText);
+
+    const reqSec = el('div', 'con-sec');
     const reqList = el('div', 'req-list');
-    const unlockLine = el('div', 'unlock-line');
-    projectSec.append(cannonBox, phaseKicker, phaseTitle, phaseBlurb, reqList, unlockLine);
-    root.appendChild(projectSec);
+    const unlockLine = el('span', 'con-note');
+    reqSec.append(reqList, unlockLine);
     /** @type {Record<string, {count: HTMLElement, fill: HTMLElement, n: number}>} */
     let reqRows = {};
 
-    // ---- Objectives ------------------------------------------------------
-    const objSec = section('Objectives');
-    const objList = el('ul', 'objectives');
-    objSec.appendChild(objList);
-    root.appendChild(objSec);
-    let objSig = null;
+    const planSec = el('div', 'con-sec');
+    const planList = el('ul', 'plan');
+    planSec.append(el('span', 'con-label', 'Flight plan'), planList);
+    let planSig = null;
 
-    // ---- Build -----------------------------------------------------------
-    const build = section('Build');
-    const buildGrid = el('div', 'build-grid');
-    const toolButtons = {};
-    for (const [tool, key] of BUILD_DEFS) {
-        const b = button(BUILDING_NAMES[tool], () => onToolChange(tool), { sub: MACHINE_COST[tool] });
-        b.classList.add('build-btn');
-        b.insertBefore(el('span', 'key', key), b.firstChild);
-        b.title = BUILDING_DESC[tool];
-        toolButtons[tool] = b;
-        buildGrid.appendChild(b);
-    }
-    build.appendChild(buildGrid);
-    root.appendChild(build);
-
-    // ---- Priority request (orders) ----------------------------------------
-    const orderSec = section('Priority Request');
-    const orderDemand = el('div', 'stat');
-    const orderProgress = el('div', 'stat dim');
-    const orderStatus = el('div', 'stat order-status');
-    orderSec.append(orderDemand, orderProgress, orderStatus);
-    root.appendChild(orderSec);
-
-    // ---- Research ----------------------------------------------------------
-    const researchSec = section('Research');
-    const researchPoints = el('div', 'stat research-points');
-    researchSec.appendChild(researchPoints);
+    const researchSec = el('div', 'con-sec');
+    const researchPoints = el('span', 'con-points');
+    const techGrid = el('div', 'tech-grid');
+    researchSec.append(el('span', 'con-label', 'Research'), researchPoints, techGrid);
     const techButtons = {};
     for (const id of Object.keys(TECH_TEXT)) {
-        const b = button(TECH_TEXT[id].label, () => onUnlock(id), { sub: `${TECH_COST[id]} rp` });
+        const b = el('button', 'tech');
+        b.type = 'button';
         b.title = TECH_TEXT[id].desc;
+        b.innerHTML = '<span class="tech-name"></span><span class="tech-cost"></span>';
+        b.querySelector('.tech-name').textContent = TECH_TEXT[id].label;
+        b.addEventListener('click', () => onUnlock(id));
         techButtons[id] = b;
-        researchSec.appendChild(b);
+        techGrid.appendChild(b);
     }
-    root.appendChild(researchSec);
 
-    // ---- Tools + save --------------------------------------------------------
-    const edit = section('Tools');
-    const editRow = el('div', 'row');
-    toolButtons.upgrade = button('Upgrade', () => onToolChange('upgrade'), { sub: '5' });
-    toolButtons.erase = button('Erase', () => onToolChange('erase'), { sub: '6' });
-    editRow.append(toolButtons.upgrade, toolButtons.erase, button('⟳', onRotate, { cls: 'btn-sq' }));
-    const saveRow = el('div', 'row');
-    saveRow.append(
-        button('Save', () => toast(onSave() ? 'Contract saved ✓' : 'Save failed')),
-        button('Load', () => toast(onLoad() ? 'Contract restored ✓' : 'No saved contract')),
-    );
-    edit.append(editRow, saveRow);
-    root.appendChild(edit);
+    const orderSec = el('div', 'con-sec con-order');
+    const orderTitle = el('span', 'con-label');
+    const orderDemand = el('span', 'order-demand');
+    const orderProgress = el('span', 'order-progress');
+    orderSec.append(orderTitle, orderDemand, orderProgress);
 
-    // ---- Inspector -------------------------------------------------------------
-    const inspect = section('Inspector');
-    const hover = el('div', 'stat mono inspector');
-    inspect.appendChild(hover);
-    root.appendChild(inspect);
+    con.append(head, reqSec, planSec, researchSec, orderSec);
+    root.appendChild(con);
 
-    const help = el('div', 'help');
-    help.innerHTML = '<b>LMB</b> build · <b>RMB</b> erase · <b>R</b> rotate<br><b>WASD</b> move · <b>wheel</b> zoom · <b>Q/E</b> turn view<br><b>Space</b> pause · <b>+/−</b> speed';
-    root.appendChild(help);
+    // ---- Keys -------------------------------------------------------------------------
+    const keys = el('div', 'keys');
+    const toolButtons = {};
+    for (const [tool, k] of BUILD_DEFS) {
+        toolButtons[tool] = hwKey({
+            k, label: `${BUILDING_NAMES[tool]}, key ${k}`, iconPath: ICON[tool],
+            onClick: () => onToolChange(tool),
+        });
+        keys.appendChild(toolButtons[tool]);
+    }
+    keys.appendChild(el('span', 'keys-divider'));
+    toolButtons.upgrade = hwKey({ k: '5', label: 'Upgrade, key 5', iconPath: ICON.upgrade, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
+    toolButtons.erase = hwKey({ k: '6', label: 'Demolish, key 6', iconPath: ICON.erase, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
+    const rotateKey = hwKey({ k: 'R', label: 'Rotate, R', iconPath: ICON.rotate, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
+    keys.append(toolButtons.upgrade, toolButtons.erase, rotateKey);
+    root.appendChild(keys);
 
-    // ---- Comms panel (DELTA) -------------------------------------------------
-    commsRoot.innerHTML = '';
-    commsRoot.classList.add('comms', 'idle');
+    // ---- Comms (DELTA) --------------------------------------------------------------------
+    const comms = el('div', 'comms idle');
     const portrait = el('div', 'comms-portrait');
     const body = el('div', 'comms-body');
-    const head = el('div', 'comms-head');
+    const commsHead = el('div', 'comms-head');
     const commsName = el('span', 'comms-name');
     const commsRole = el('span', 'comms-role');
     const commsMore = el('span', 'comms-more');
-    head.append(commsName, commsRole, commsMore);
+    commsHead.append(commsName, commsRole, commsMore);
     const commsText = el('div', 'comms-text');
-    body.append(head, commsText);
+    body.append(commsHead, commsText);
     const logBtn = el('button', 'comms-log-btn', 'Log');
+    logBtn.type = 'button';
     const logPanel = el('div', 'comms-log hidden');
-    commsRoot.append(portrait, body, logBtn, logPanel);
+    comms.append(portrait, body, logBtn, logPanel);
+    root.appendChild(comms);
 
     const queue = [];
     const log = [];
@@ -191,12 +249,11 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
     let holdTimer = null;
 
     function speaker(line) {
+        const b = brandFor(brandPhase);
         const evil = brandPhase >= 4;
-        if (line.who === 'nile') {
-            return { name: `${brandName(brandPhase)} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
-        }
+        if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
         if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: 'not for Pioneer eyes', svg: memoSVG() };
-        return { name: AI.name, role: `${evil ? 'Nihil' : 'Nile'} Dispatch AI`, svg: deltaSVG(line.mood) };
+        return { name: `${AI.name} ▸ CAPCOM`, role: `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
     }
 
     // Typing is time-based (so a throttled timer can't slow DELTA down), then
@@ -210,30 +267,27 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
         typeTimer = null;
         holdTimer = null;
     }
-
     function finishTyping() {
         stopTimers();
         commsText.textContent = current.text;
-        commsRoot.classList.remove('speaking');
+        comms.classList.remove('speaking');
         holdTimer = setTimeout(endLinger, lingerMs(current.text));
     }
-
     function endLinger() {
         stopTimers();
         if (queue.length) nextLine();
-        else commsRoot.classList.add('idle');
+        else comms.classList.add('idle');
     }
-
     function nextLine() {
         stopTimers();
         current = queue.shift() ?? null;
         updateMore();
         if (!current) {
-            commsRoot.classList.add('idle');
+            comms.classList.add('idle');
             return;
         }
         const who = speaker(current);
-        commsRoot.className = `comms who-${current.who} mood-${current.mood ?? 'neutral'} speaking`;
+        comms.className = `comms who-${current.who} mood-${current.mood ?? 'neutral'} speaking`;
         portrait.innerHTML = who.svg;
         commsName.textContent = who.name;
         commsRole.textContent = who.role;
@@ -245,25 +299,20 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
             if (typed >= current.text.length) finishTyping();
         }, 30);
     }
-
     function updateMore() {
-        commsMore.textContent = queue.length ? `▸ ${queue.length} more · click to skip` : '';
+        commsMore.textContent = queue.length ? `${queue.length} queued · click to skip` : '';
     }
-
     function say(line) {
         queue.push(line);
-        // Remember the header as it was when said (the brand changes later).
-        log.push({ ...line, label: speaker(line).name });
+        log.push({ ...line, label: speaker(line).name }); // header as it was when said
         if (log.length > 80) log.shift();
         if (!typeTimer && !holdTimer) nextLine();
         else updateMore();
     }
-
     /** Still mid-conversation (typing, lingering or with lines queued)? */
     const isBusy = () => !!typeTimer || !!holdTimer || queue.length > 0;
 
-    // Click: finish the line being typed, else skip to the next one.
-    commsRoot.addEventListener('click', (e) => {
+    comms.addEventListener('click', (e) => {
         if (e.target === logBtn || logPanel.contains(e.target)) return;
         if (typeTimer) finishTyping();
         else if (holdTimer) endLinger();
@@ -274,35 +323,23 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
         logPanel.innerHTML = '';
         for (const line of log) {
             const p = el('p', `log-line who-${line.who}`);
-            p.appendChild(el('b', null, `${line.label}: `));
+            p.appendChild(el('b', null, `${line.label}  `));
             p.appendChild(document.createTextNode(line.text));
             logPanel.appendChild(p);
         }
         logPanel.scrollTop = logPanel.scrollHeight;
     });
 
-    // ---- Banner + toast (over the playfield) ----------------------------------
-    const banner = el('div', 'banner');
+    // ---- Tooltip + toast -----------------------------------------------------------------
+    const tip = el('div', 'tooltip hidden');
+    const tipTitle = el('span', 'tip-title');
+    const tipBody = el('span', 'tip-body');
+    tip.append(tipTitle, tipBody);
+    root.appendChild(tip);
+
     const toastEl = el('div', 'toast');
-    view.append(banner, toastEl);
-    let bannerTimer = null;
+    root.appendChild(toastEl);
     let toastTimer = null;
-
-    function showBanner(phaseIndex) {
-        const unlocks = PHASES[phaseIndex]?.unlocks ?? [];
-        banner.innerHTML = '';
-        banner.append(
-            el('div', 'banner-kicker', `Phase ${phaseIndex + 1} complete`),
-            el('div', 'banner-title', PHASE_TEXT[phaseIndex]?.title ?? ''),
-        );
-        if (unlocks.length) {
-            banner.appendChild(el('div', 'banner-unlocks', `Unlocked: ${unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}`));
-        }
-        banner.classList.add('show');
-        clearTimeout(bannerTimer);
-        bannerTimer = setTimeout(() => banner.classList.remove('show'), 5500);
-    }
-
     function toast(msg) {
         toastEl.textContent = msg;
         toastEl.classList.add('show');
@@ -310,34 +347,62 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
         toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
     }
 
-    // ---- Title screen + ending (full-screen overlays) ----------------------------
+    /** Phase completion: the ribbon swells into a banner for a few seconds. */
+    function showBanner(phaseIndex) {
+        const unlocks = PHASES[phaseIndex]?.unlocks ?? [];
+        celebrating = true;
+        ribbon.classList.add('celebrate');
+        ribbonKicker.textContent = `Phase ${pad2(phaseIndex + 1)} · accomplished`;
+        ribbonTitle.textContent = PHASE_TEXT[phaseIndex]?.title ?? '';
+        ribbonExtra.textContent = unlocks.length ? `New · ${unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}` : '';
+        clearTimeout(celebrateTimer);
+        celebrateTimer = setTimeout(() => {
+            celebrating = false;
+            ribbon.classList.remove('celebrate');
+            phaseShown = -1; // redraw the ribbon for the current phase
+        }, 5500);
+    }
+
+    // ---- Title screen + ending (full-screen overlays) ----------------------------------------
     function showTitle({ hasSave, onNew, onResume }) {
         const overlay = el('div', 'overlay title-screen');
+        const lockup = el('div', 'lockup');
+        const lockMark = el('span', 'lockup-mark');
+        lockMark.innerHTML = markSVG(false, 54);
+        const lockText = el('div', 'lockup-text');
+        lockText.append(el('span', 'lockup-word', BRAND.nile.name), el('span', 'lockup-full', BRAND.nile.full), el('span', 'lockup-motto', BRAND.nile.motto));
+        lockup.append(lockMark, lockText);
+
         const card = el('div', 'title-card');
-        const logo = el('div', 'title-logo');
-        logo.innerHTML = logoSVG(0);
-        const begin = button('Begin Onboarding', () => {
+        const patch = el('div', 'title-patch');
+        patch.innerHTML = patchSVG(false, 176);
+        const begin = el('button', 'btn-primary', 'Begin onboarding');
+        begin.type = 'button';
+        begin.addEventListener('click', () => {
             if (hasSave && !confirm('Start a new contract? Your saved contract will be overwritten.')) return;
             overlay.remove();
             onNew();
-        }, { cls: 'btn-primary' });
-        const resume = button('Resume Contract', () => {
+        });
+        const resume = el('button', 'btn-secondary', 'Resume contract');
+        resume.type = 'button';
+        resume.disabled = !hasSave;
+        resume.addEventListener('click', () => {
             overlay.remove();
             onResume();
         });
-        if (!hasSave) resume.disabled = true;
         const actions = el('div', 'title-actions');
         actions.append(begin, resume);
         card.append(
-            logo,
-            el('div', 'title-tag', 'Everything, from Source to Delta.'),
+            patch,
             el('h1', 'title-game', GAME_TITLE),
-            el('p', 'title-pitch', 'The Moon is falling. Nile has a plan. You are the plan.'),
+            el('p', 'title-byline', BRAND.nile.byline),
+            el('p', 'title-pitch', 'The Moon is falling. NILE has a plan. You are the plan.'),
             actions,
-            el('p', 'fine-print', 'By clicking Begin you accept the Nile Pioneer Agreement (4,812 pages), including Clause 88.'),
+            el('p', 'fine-print', 'By clicking Begin you accept the NILE Pioneer Agreement (4,812 pages), including Clause 88.'),
         );
-        overlay.appendChild(card);
+        overlay.append(lockup, card);
         document.body.appendChild(overlay);
+        begin.focus();
     }
 
     function showEnding({ stats: s, onContinue, onNewGame }) {
@@ -350,7 +415,7 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
         ENDING.lines.forEach((line, i) => {
             const p = el('p', `ending-line who-${line.who}`);
             p.style.animationDelay = `${delays[i] ?? 3 * i}s`;
-            p.appendChild(el('b', null, `${line.who === 'nile' ? 'NIHIL' : AI.name}: `));
+            p.appendChild(el('b', null, `${line.who === 'nile' ? 'NIHIL' : AI.name}  `));
             p.appendChild(document.createTextNode(line.text));
             lines.appendChild(p);
         });
@@ -364,117 +429,136 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
             ['Moons removed', 1],
         ]) {
             const box = el('div', 'ending-stat');
-            box.append(el('div', 'ending-stat-value', String(value)), el('div', 'ending-stat-label', label));
+            box.append(el('span', 'ending-stat-value', String(value)), el('span', 'ending-stat-label', label));
             statRow.appendChild(box);
         }
         const actions = el('div', 'title-actions');
-        actions.append(
-            button('Keep Building', () => { overlay.remove(); onContinue(); }, { cls: 'btn-primary' }),
-            button('New Contract', onNewGame),
+        const keep = el('button', 'btn-primary', 'Keep building');
+        keep.type = 'button';
+        keep.addEventListener('click', () => {
+            overlay.remove();
+            onContinue();
+        });
+        const fresh = el('button', 'btn-secondary', 'New contract');
+        fresh.type = 'button';
+        fresh.addEventListener('click', onNewGame);
+        actions.append(keep, fresh);
+        final.append(
+            el('span', 'ending-title', 'The end'),
+            el('span', 'ending-sub', `${GAME_TITLE} · ${BRAND.nihil.byline}. ${BRAND.nihil.motto}. Thank you for playing.`),
+            statRow,
+            actions,
         );
-        final.append(el('div', 'ending-title', 'THE END'), el('div', 'ending-sub', 'Project LIGHTS OUT — thank you for playing.'), statRow, actions);
         card.append(scene, lines, final);
         overlay.appendChild(card);
-        // Clicking skips straight to the final card.
         overlay.addEventListener('click', (e) => {
-            if (!actions.contains(e.target)) overlay.classList.add('skip');
+            if (!actions.contains(e.target)) overlay.classList.add('skip'); // skip to the final card
         });
         document.body.appendChild(overlay);
     }
 
-    // ---- Per-frame refresh -----------------------------------------------------
+    // ---- Per-frame refresh -------------------------------------------------------------------
+    /** Inspector text for a cell, or null when there's nothing worth showing. */
     function describe(cell) {
-        if (!cell) return '—';
-        const parts = [];
-        if (cell.blocked) parts.push('Project LIFELINE construction site');
-        if (cell.resource) parts.push(`node: ${ITEM_NAMES[cell.resource]}`);
+        if (!cell) return null;
+        if (cell.blocked) return { title: 'Selene construction site', body: 'Reserved. Deliveries to the pad build the cannon here.' };
+        const lines = [];
+        let title = null;
         if (cell.machine) {
             const m = cell.machine;
-            let line = BUILDING_NAMES[m.type] ?? m.type;
-            if (m.dir && m.type !== 'sink') line += ` ▸${m.dir}`;
-            if (m.tier && m.type !== 'sink' && m.type !== 'belt') line += `  T${m.tier}`;
-            parts.push(line);
+            title = BUILDING_NAMES[m.type] ?? m.type;
+            if (m.tier && !['sink', 'belt', 'splitter', 'merger'].includes(m.type)) title += `  T${m.tier}`;
             const buf = Object.entries(m.buffer || {}).filter(([, n]) => n > 0);
-            if (buf.length) parts.push('buffer: ' + buf.map(([k, n]) => `${ITEM_NAMES[k] ?? k}×${n}`).join(', '));
-            if (m.type === 'generator') parts.push(m.fuelTicks > 0 ? `fuel: ${m.fuelTicks} ticks` : 'fuel: empty');
-            if (m.pendingOutput) parts.push(`out: ${ITEM_NAMES[m.pendingOutput] ?? m.pendingOutput}`);
+            if (buf.length) lines.push('IN   ' + buf.map(([k, n]) => `${(ITEM_NAMES[k] ?? k).toUpperCase()} ×${n}`).join(', '));
+            if (m.type === 'generator') lines.push(m.fuelTicks > 0 ? `FUEL ${m.fuelTicks} TICKS` : 'FUEL EMPTY');
+            if (m.pendingOutput) lines.push(`OUT  ${(ITEM_NAMES[m.pendingOutput] ?? m.pendingOutput).toUpperCase()}`);
+            if (m.dir && m.type !== 'sink') lines.push(`DIR  ${m.dir.toUpperCase()}`);
         }
-        if (cell.item) parts.push(`item: ${ITEM_NAMES[cell.item.type] ?? cell.item.type}`);
-        return parts.length ? parts.join('\n') : 'empty';
+        if (cell.resource) {
+            if (!title) title = 'Ore node';
+            lines.push(`NODE ${ITEM_NAMES[cell.resource].toUpperCase()}`);
+        }
+        if (cell.item) lines.push(`ITEM ${(ITEM_NAMES[cell.item.type] ?? cell.item.type).toUpperCase()}`);
+        return title ? { title, body: lines.join('\n') } : null;
     }
 
     function buildPhaseDom(phase, complete) {
         phaseShown = phase;
         brandPhase = phase;
-        logoBox.innerHTML = logoSVG(phase);
-        gameTitle.textContent = (phase >= 4 ? 'Project Lights Out' : GAME_TITLE).toUpperCase();
-        document.body.classList.toggle('evil', phase >= 4);
+        const evil = phase >= 4;
+        const b = brandFor(phase);
+        document.body.classList.toggle('evil', evil);
         document.body.dataset.phase = String(Math.min(phase, 5)); // sky layers (style.css)
-        cannonBox.innerHTML = cannonSVG(phase);
+        brandMark.innerHTML = markSVG(evil, 28);
+        brandWord.textContent = b.name;
+        brandCell.title = `${b.name} · ${b.full} · ${b.motto}`;
+        patchBox.innerHTML = patchSVG(evil, 48, { text: false });
         reqList.innerHTML = '';
         reqRows = {};
-        if (complete || phase >= PHASES.length) {
-            phaseKicker.textContent = 'All phases complete';
-            phaseTitle.textContent = 'LIFELINE has fired';
-            phaseBlurb.textContent = 'The sky is now a subscription. Keep building, if you like.';
-            unlockLine.textContent = '';
+        const done = complete || phase >= PHASES.length;
+        headSub.textContent = done ? `Complete · ${b.byline}` : `Phase ${pad2(phase + 1)}/${pad2(PHASES.length)} · ${b.byline}`;
+        if (!celebrating) {
+            ribbonKicker.textContent = done ? 'All phases complete' : `Phase ${pad2(phase + 1)} of ${pad2(PHASES.length)}`;
+            ribbonTitle.textContent = done ? 'Selene has fired' : PHASE_TEXT[phase].title;
+            ribbonExtra.textContent = '';
+        }
+        if (done) {
+            unlockLine.textContent = 'The sky is now a subscription. Keep building, if you like.';
             return;
         }
         const def = PHASES[phase];
-        phaseKicker.textContent = `Phase ${phase + 1} / ${PHASES.length}`;
-        phaseTitle.textContent = PHASE_TEXT[phase].title;
-        phaseBlurb.textContent = PHASE_TEXT[phase].blurb;
         for (const [item, n] of Object.entries(def.requires)) {
             const row = el('div', 'req');
-            const dot = el('span', 'dot');
-            dot.style.background = ITEM_COLOR[item] ?? '#fff';
             const name = el('span', 'req-name', ITEM_NAMES[item] ?? item);
             const count = el('span', 'req-count');
-            const bar = el('div', 'bar req-bar');
-            const fill = el('div', 'bar-fill');
+            const bar = el('div', 'req-bar');
+            const fill = el('div', 'req-fill');
             bar.appendChild(fill);
-            row.append(dot, name, count, bar);
+            row.append(name, count, bar);
             reqList.appendChild(row);
             reqRows[item] = { count, fill, n };
         }
         unlockLine.textContent = def.unlocks.length
-            ? `Unlocks: ${def.unlocks.map((t) => BUILDING_NAMES[t]).join(', ')}`
-            : phase === PHASES.length - 1 ? 'Completes Project LIFELINE' : '';
+            ? `Unlocks · ${def.unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}`
+            : phase === PHASES.length - 1 ? 'Completes Protocol: Selene' : PHASE_TEXT[phase].blurb;
     }
 
-    function renderObjectives(list) {
+    function renderPlan(list) {
         const sig = list.map((o) => `${o.id}:${o.done ? 1 : 0}`).join('|');
-        if (sig === objSig) return;
-        objSig = sig;
-        objList.innerHTML = '';
+        if (sig === planSig) return;
+        planSig = sig;
+        planList.innerHTML = '';
         const firstOpen = list.find((o) => !o.done);
         for (const o of list) {
             const li = el('li', o.done ? 'done' : o === firstOpen ? 'active' : '');
-            li.appendChild(el('span', 'check', o.done ? '✓' : '○'));
-            li.appendChild(el('span', null, o.text));
-            objList.appendChild(li);
+            li.appendChild(el('span', 'box'));
+            li.appendChild(el('span', 'plan-text', o.text));
+            if (o === firstOpen) li.appendChild(el('span', 'plan-now', 'Now'));
+            planList.appendChild(li);
         }
-        objSec.classList.toggle('hidden', list.length === 0);
+        planSec.classList.toggle('hidden', list.length === 0);
     }
 
     function renderOrder(o) {
-        orderStatus.classList.remove('completed', 'failed');
+        orderSec.classList.remove('completed', 'failed');
         if (!o || o.status === 'none') {
+            orderTitle.textContent = 'Priority request';
             orderDemand.textContent = 'Awaiting request…';
             orderProgress.textContent = '';
-            orderStatus.textContent = '';
             return;
         }
         orderDemand.textContent = `Deliver ${o.target} × ${ITEM_NAMES[o.productType] ?? o.productType}`;
-        orderProgress.textContent = `${o.delivered}/${o.target} delivered · bonus ${o.reward}`;
         if (o.status === 'active') {
-            orderStatus.textContent = `⏱ ${Math.ceil(o.remaining / TICK_RATE)} s left`;
+            orderTitle.textContent = `Priority request · ${Math.ceil(o.remaining / TICK_RATE)} s`;
+            orderProgress.textContent = `${o.delivered}/${o.target} · BONUS CR ${o.reward}`;
         } else if (o.status === 'completed') {
-            orderStatus.textContent = `✓ Completed  +${o.reward}`;
-            orderStatus.classList.add('completed');
-        } else if (o.status === 'failed') {
-            orderStatus.textContent = '✗ Missed';
-            orderStatus.classList.add('failed');
+            orderTitle.textContent = 'Priority request · completed';
+            orderProgress.textContent = `BONUS CR +${o.reward}`;
+            orderSec.classList.add('completed');
+        } else {
+            orderTitle.textContent = 'Priority request · missed';
+            orderProgress.textContent = 'NO BONUS';
+            orderSec.classList.add('failed');
         }
     }
 
@@ -484,45 +568,62 @@ export function createUI({ root, view, commsRoot, onToolChange, onRotate, onTogg
         const { project } = s;
         if (project.phase !== phaseShown) buildPhaseDom(project.phase, project.complete);
 
-        money.innerHTML = `<span class="cur">◈</span> ${s.money} <span class="unit">credits</span>`;
-        const th = s.power.throttle;
-        powerStat.textContent = `⚡ ${s.power.demand} / ${s.power.supply} power${th < 1 ? `  (${Math.round(th * 100)}%)` : ''}`;
-        powerFill.style.width = `${Math.round(th * 100)}%`;
-        powerFill.style.background = th >= 1 ? 'var(--green)' : th >= 0.5 ? '#e0a83a' : 'var(--red)';
-        pauseBtn.firstChild.textContent = s.paused ? 'Resume' : 'Pause';
+        creditsValue.textContent = credits(s.money);
+        const { supply, demand, throttle } = s.power;
+        powerLabel.textContent = `Power kW · ${demand}/${supply}`;
+        const lit = supply > 0 ? Math.min(SEGMENTS, Math.ceil((demand / supply) * SEGMENTS)) : SEGMENTS;
+        const tone = throttle >= 1 ? 'ok' : throttle >= 0.5 ? 'warn' : 'bad';
+        segs.forEach((seg, i) => (seg.className = i < lit ? tone : ''));
+        pauseBtn.innerHTML = iconSVG(s.paused ? ICON.play : ICON.pause, 16);
+        pauseBtn.setAttribute('aria-label', s.paused ? 'Resume' : 'Pause');
         speedLabel.textContent = `${s.speed.toFixed(2)}×`;
 
         for (const [item, row] of Object.entries(reqRows)) {
             const got = Math.min(row.n, project.delivered[item] ?? 0);
-            row.count.textContent = `${got} / ${row.n}`;
+            row.count.textContent = `${pad2(got)}/${pad2(row.n)}`;
             row.fill.style.width = `${(got / row.n) * 100}%`;
         }
-        renderObjectives(s.objectives ?? []);
+        renderPlan(s.objectives ?? []);
 
         for (const [tool, btn] of Object.entries(toolButtons)) {
             btn.classList.toggle('active', s.tool === tool);
             if (!(tool in MACHINE_COST)) continue;
             const unlocked = s.unlocked[tool];
+            const sub = btn.querySelector('.hwkey-sub');
             btn.classList.toggle('locked', !unlocked);
-            btn.classList.toggle('disabled', unlocked && s.money < MACHINE_COST[tool]);
-            btn.querySelector('.cost').textContent = unlocked ? MACHINE_COST[tool] : `🔒${unlockPhaseOf(tool) + 1}`;
-            btn.title = unlocked ? BUILDING_DESC[tool] : `Unlocks after Phase ${unlockPhaseOf(tool) + 1}`;
+            btn.classList.toggle('broke', unlocked && s.money < MACHINE_COST[tool]);
+            // unlockPhaseOf is the phase whose completion unlocks it; show the phase it arrives in.
+            const arrives = unlockPhaseOf(tool) + 2;
+            sub.textContent = !unlocked ? `PH ${pad2(arrives)}` : s.tool === tool ? BUILDING_NAMES[tool].toUpperCase() : `CR ${MACHINE_COST[tool]}`;
+            btn.title = unlocked ? `${BUILDING_NAMES[tool]} · ${BUILDING_DESC[tool]}` : `${BUILDING_NAMES[tool]} · arrives in phase ${arrives}`;
+            btn.querySelector('svg path').setAttribute('d', unlocked ? ICON[tool] : ICON.lock);
         }
 
         orderSec.classList.toggle('hidden', project.phase < 1);
         renderOrder(s.order);
 
         researchSec.classList.toggle('hidden', !s.unlocked.lab);
-        researchPoints.textContent = `🧪 ${s.research.points} research points`;
+        researchPoints.textContent = `${s.research.points} research points`;
         for (const id of Object.keys(TECH_TEXT)) {
             const btn = techButtons[id];
             const unlocked = s.research.unlocked[id];
             btn.classList.toggle('unlocked', unlocked);
-            btn.classList.toggle('disabled', !unlocked && s.research.points < TECH_COST[id]);
-            btn.querySelector('.cost').textContent = unlocked ? '✓' : `${TECH_COST[id]} rp`;
+            btn.classList.toggle('broke', !unlocked && s.research.points < TECH_COST[id]);
+            btn.querySelector('.tech-cost').textContent = unlocked ? 'ONLINE' : `${TECH_COST[id]} RP`;
         }
 
-        hover.textContent = s.hovered ? `(${s.hoverX}, ${s.hoverY})\n${describe(s.hovered)}` : '—';
+        // Inspector follows the hovered cell.
+        const info = s.hoverScreen ? describe(s.hovered) : null;
+        tip.classList.toggle('hidden', !info);
+        if (info) {
+            tipTitle.textContent = info.title;
+            tipBody.textContent = info.body;
+            const w = tip.offsetWidth || 240;
+            const h = tip.offsetHeight || 80;
+            const x = Math.min(window.innerWidth - w - 12, s.hoverScreen.x + 28);
+            const y = Math.max(64, Math.min(window.innerHeight - h - 120, s.hoverScreen.y - h - 12));
+            tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+        }
     }
 
     update();

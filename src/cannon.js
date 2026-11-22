@@ -1,4 +1,4 @@
-// src/cannon.js — Project LIFELINE on the map: the cannon rising on its
+// src/cannon.js — Protocol: Selene on the map: the cannon rising on its
 // construction site beside the Dispatch Pad, one part per campaign phase.
 // Finished parts are solid; the part being built is a pulsing hologram inside
 // scaffolding; later parts don't exist yet. Completing a phase materialises

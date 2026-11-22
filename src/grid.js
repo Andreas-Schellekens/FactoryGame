@@ -27,7 +27,7 @@ export let score = STARTING_MONEY;
  * @typedef {{ id: number, type: string }} Item
  * @typedef {{ type: string, dir: 'right'|'down'|'left'|'up', tier: number, buffer: Record<string, number>, pendingOutput: string|null, progress: number, produces?: string }} Machine
  * @typedef {{ machine: Machine | null, item: Item | null, resource: string | null, blocked?: boolean }} Cell
- *   (`blocked` = the reserved LIFELINE construction site; terrain, never saved)
+ *   (`blocked` = the reserved Selene construction site; terrain, never saved)
  * @typedef {{ x: number, y: number }} Pos
  * @typedef {{ kind: 'move', item: Item, from: Pos, to: Pos } | { kind: 'spawn', item: Item, at: Pos } | { kind: 'consume', item: Item, at: Pos }} FactoryEvent
  */

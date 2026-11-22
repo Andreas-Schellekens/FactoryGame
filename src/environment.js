@@ -2,7 +2,7 @@
 // Phase 0 is a cosy meadow: green grass, forest, flowers, a farm, a pond, the
 // Pioneer's camp. Every completed phase darkens it (docs/DESIGN.md "Visual
 // arc"): grass dries, trees turn autumn → dark → get felled one by one,
-// flowers vanish, Nile's compound spreads in from the east. Separately, the
+// flowers vanish, NILE's compound spreads in from the east. Separately, the
 // factory leaves its own scars: grass turns to concrete under everything the
 // player builds (and stays paved), smelters and generators scorch the ground.
 // Purely visual; the sky and moon are CSS behind the canvas.
@@ -310,7 +310,7 @@ export function buildEnvironment(scene, assets, effects) {
         addProp(i % 2 ? 'lily' : 'lilySmall', POND.x + Math.cos(a) * r, POND.z + Math.sin(a) * r, 0, 2, { rot: a, y: 0.014 });
     }
 
-    // Rim: forest, meadow and Nile's compound.
+    // Rim: forest, meadow and NILE's compound.
     const BIG_BY_PHASE = {
         1: ['containerA', 'containerB', 'containerC', 'tankLarge'],
         2: ['buildingH', 'dishLarge', 'solar', 'hangar'],
@@ -348,7 +348,7 @@ export function buildEnvironment(scene, assets, effects) {
             else if (f < 0.31) addProp(f < 0.3 ? 'stoneA' : 'stoneSmall', cx, cz, 0, 5, { rot: h * 6 });
         }
     }
-    // Nile's compound: nearer the pad appears sooner. Until then a tree
+    // NILE's compound: nearer the pad appears sooner. Until then a tree
     // stands on the slot; Nile clears it the phase the building arrives.
     bigSlots.sort((a, b) => a.d - b.d);
     bigSlots.forEach((s, i) => {

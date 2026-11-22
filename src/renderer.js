@@ -654,7 +654,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
 
     // The lighting eases toward the current phase's mood; the pad beacon
-    // switches to Nihil red at the reveal.
+    // switches to NIHIL red at the reveal.
     const tmpC = new THREE.Color();
     const tmpV = new THREE.Vector3();
     let evilShown = null;

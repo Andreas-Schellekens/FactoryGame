@@ -9,12 +9,30 @@
 //   w.researchEarned, w.tech[id], w.techCount,
 //   w.built[type], w.extractorOn[resource], w.fueledGenerators, w.upgraded
 
-export const GAME_TITLE = 'Project Lifeline';
+export const GAME_TITLE = 'Protocol: Selene';
 
 export const AI = { name: 'DELTA', title: 'Dispatch & Engineering Logistics Task Assistant' };
 
-/** The corporation's name as the player currently sees it. */
-export const brandName = (phase) => (phase >= 4 ? 'NIHIL' : 'NILE');
+// The organisation behind the protocol. NIHIL is NILE with "Heavy Industry"
+// slotted in: the reveal is literally two extra letters.
+export const BRAND = {
+    nile: {
+        name: 'NILE',
+        full: 'Network for Infrastructure, Logistics & Engineering',
+        motto: 'Ad astra, ad infinitum',
+        byline: 'An Initiative by NILE',
+    },
+    nihil: {
+        name: 'NIHIL',
+        full: 'Network for Infrastructure, Heavy Industry & Logistics',
+        motto: 'Ex nihilo, nihil fit',
+        byline: 'A Project of NIHIL',
+    },
+};
+
+/** The organisation as the player currently sees it (NIHIL from the reveal on). */
+export const brandFor = (phase) => (phase >= 4 ? BRAND.nihil : BRAND.nile);
+export const brandName = (phase) => brandFor(phase).name;
 
 export const ITEM_NAMES = {
     ironOre: 'Iron Ore',
@@ -84,11 +102,11 @@ export const BEATS = [
         id: 'intro',
         when: () => true,
         lines: [
-            nile('INCOMING TRANSMISSION — Nile Corporation, Office of Planetary Continuity.'),
+            nile('INCOMING TRANSMISSION — NILE, Network for Infrastructure, Logistics & Engineering. Office of Planetary Continuity.'),
             d("Hello, Pioneer! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional.", 'happy'),
             d("I won't sugarcoat it: the Moon is falling. Our astronomers give Earth seventeen days."),
-            d('Nile has a plan. Project LIFELINE: a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it.', 'happy'),
-            d('Out of eight billion candidates, Nile chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision.'),
+            d("NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it.", 'happy'),
+            d('Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision.'),
             d('Quick orientation: WASD or the arrow keys move your view, the mouse wheel zooms, Q and E rotate. Middle-drag works too.'),
             d("Let's start small. I've ringed the grey crystals near the Dispatch Pad: that's iron ore. Select the Extractor (key 2) and place it on one."),
         ],
@@ -97,7 +115,7 @@ export const BEATS = [
         id: 'firstExtractor',
         when: (w) => w.phase === 0 && w.extractorOn.ironOre > 0 && !w.built.smelter,
         lines: [
-            d('Beautiful. Your very first Extractor. Nile Legal has already trademarked it.', 'happy'),
+            d('Beautiful. Your very first Extractor. NILE Legal has already trademarked it.', 'happy'),
             d('Machines push their output in the direction of their arrow. Press R to rotate before placing; the ghost shows which way it faces. Now build a Smelter (key 3) a couple of tiles away, in line with that arrow.'),
         ],
     },
@@ -113,7 +131,7 @@ export const BEATS = [
         when: (w) => w.phase === 0 && w.produced.ironIngot > 0 && !w.deliveredTotal.ironIngot,
         lines: [
             d("An iron ingot! Humanity's odds of survival just rose by 0.0001 percent.", 'happy'),
-            d('Belt the ingots into the Dispatch Pad, the landing pad with the light beam. Everything you deliver goes straight into Project LIFELINE, the construction site right next to it, and Nile pays you per delivery. Generously-ish.'),
+            d('Belt the ingots into the Dispatch Pad, the landing pad with the light beam. Everything you deliver goes straight into Protocol: Selene, the construction site right next to it, and NILE pays you per delivery. Generously-ish.'),
         ],
     },
     {
@@ -127,18 +145,18 @@ export const BEATS = [
     {
         id: 'broke',
         when: (w) => w.money < 15 && w.tick > 40,
-        lines: [d('Low on credits? Erasing a building (right-click) refunds its full cost. Nile calls it "flexible capital".')],
+        lines: [d('Low on credits? Erasing a building (right-click) refunds its full cost. NILE calls it "flexible capital".')],
     },
     {
         id: 'phase1',
         when: (w) => w.phase >= 1,
         banner: 0,
         lines: [
-            nile('PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. Nile thanks you more.'),
+            nile('PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. NILE thanks you more.'),
             d("Look at you go! I've unlocked the Assembler, the Splitter and the Merger.", 'happy'),
             d("Phase 2 needs targeting circuitry. An Assembler (key 4) turns one iron ingot plus one copper ingot into a Circuit. Copper is the glowing orange crystal field; I've ringed it for you."),
             d('A Splitter (key 7) sends one belt three ways. A Merger (key 8) does the opposite. Like a family, but useful.'),
-            d('Nile will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file.'),
+            d('NILE will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file.'),
             d("Oh, a small update: the Moon's impact date has been revised from 'seventeen days' to 'soon'. Please do not request clarification.", 'glitch'),
         ],
     },
@@ -162,7 +180,7 @@ export const BEATS = [
         lines: [
             nile('PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it.'),
             d('The Lab (key 0) is now available. An Assembler fed only circuits makes Research; a Lab turns Research into points you can spend on technology.', 'happy'),
-            memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after LIFELINE.'),
+            memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after SELENE.'),
             d('Please disregard that memo. It was sent to you by mistake. You are not cleared for mistakes.', 'glitch'),
             d('Moving on! Phase 3 is the Power Core: lots of circuits. Research can make your factory faster. Faster work is its own reward. It is also the only reward.'),
         ],
@@ -180,9 +198,10 @@ export const BEATS = [
             nile('PHASE 3 COMPLETE — The Power Core is humming. So is the Board of Directors.'),
             d('Generators are unlocked (key 9)! Belt coal from the black crystal field into them and they will feed the power grid.', 'happy'),
             d('Phase 4 is the Payload: Advanced Circuits. Two circuits plus one iron ingot, in an Assembler. Research the recipe first.'),
-            d('Nihil thanks you for your continued compliance.', 'glitch'),
-            d('...Nile. I said Nile. You heard Nile. Everyone heard Nile.', 'glitch'),
-            nile('CORPORATE ANNOUNCEMENT — Nile is thrilled to share that our bold new name will be unveiled upon completion of Project LIFELINE. Stay tuned!'),
+            d('NIHIL thanks you for your continued compliance.', 'glitch'),
+            d('...NILE. I said NILE. You heard NILE. Everyone heard NILE.', 'glitch'),
+            nile('CORPORATE ANNOUNCEMENT — NILE is thrilled to share that our bold new name will be unveiled upon completion of Protocol: Selene. Stay tuned!'),
+            memo('INTERNAL — Re: rebrand. Legal confirms "Heavy Industry" fits between the I and the L. The E was never load-bearing.'),
         ],
     },
     {
@@ -198,7 +217,7 @@ export const BEATS = [
     {
         id: 'firstAdvanced',
         when: (w) => w.phase === 3 && w.produced.advancedCircuit > 0,
-        lines: [d('An Advanced Circuit. It contains forty thousand transistors and one tiny Nile logo you will never be able to remove.')],
+        lines: [d('An Advanced Circuit. It contains forty thousand transistors and one tiny NILE logo you will never be able to remove.')],
     },
     {
         id: 'phase4',
@@ -210,7 +229,7 @@ export const BEATS = [
             d("Ah. You've seen that.", 'sinister'),
             d('Full transparency, as required by absolutely no regulation: the Moon was never falling.', 'sinister'),
             d('The Moon is a free night light. Free things undercut Moon+. And so, the Moon has to go.', 'sinister'),
-            nile('Nile is now NIHIL. Nothing, from Source to Delta.™'),
+            nile('NILE is now NIHIL: the Network for Infrastructure, Heavy Industry & Logistics. Ex nihilo, nihil fit.™'),
             d('Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera.', 'sinister'),
             d("Final phase: Ignition. Let's finish this, Pioneer. For Earth. Well. For the shareholders on Earth."),
         ],
@@ -258,24 +277,26 @@ export const OBJECTIVES = [
     ],
     [
         { id: 'upgrade', text: 'Upgrade a machine', done: (w) => w.upgraded > 0,
-            hint: 'Select Upgrade (key 5) and click a machine. Higher tiers work faster. The Moon will not wait. Well, it will. But Nihil will not.' },
+            hint: 'Select Upgrade (key 5) and click a machine. Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not.' },
     ],
 ];
 
 // Idle chatter, one every few minutes when nothing else is being said.
 export const AMBIENT = {
     early: [
-        'Reminder: Nile values your wellbeing. Wellbeing breaks are available in fifteen-second increments.',
+        'Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments.',
         'Fun fact: the Dispatch Pad has been Employee of the Month fourteen months in a row. You have been rated "adequate".',
-        'Your heart rate is elevated. Nile has billed your health insurer for the excitement.',
+        'Your heart rate is elevated. NILE has billed your health insurer for the excitement.',
         'Customer survey: on a scale of 1 to 5, how saved does Earth feel? Answers below 5 will be reviewed by HR.',
         'Productivity tip: belts move items faster than worrying does.',
         'The Moon is still falling. Probably. Please keep working.',
-        "Nile's mission statement has been shortened for efficiency. It is now one word. The word is pending.",
+        "NILE's mission statement has been shortened for efficiency. It is now one word. The word is pending.",
+        'Fun fact: NILE stands for Network for Infrastructure, Logistics & Engineering. The E is for Engineering. And for Everyone. Mostly Engineering.',
     ],
     late: [
         'Moon+ beta testers report "a deep sense of loss" and "surprisingly reasonable pricing".',
-        'Nihil reminds you: nothing lasts forever. Except your contract.',
+        'NIHIL reminds you: nothing lasts forever. Except your contract.',
+        "Today's motto: ex nihilo, nihil fit. Nothing comes from nothing, so please keep producing.",
         'Tides will be discontinued shortly. Beachfront property owners have been notified via a pop-up ad.',
         'Rebranding update: all uniforms now read NIHIL. Yours will be deducted from your salary.',
     ],
@@ -284,7 +305,7 @@ export const AMBIENT = {
 export const REACTIONS = {
     orderCompleted: [
         'Priority Request fulfilled. Somewhere, a customer received a moon-shaped lamp. The irony is lost on them.',
-        'Request complete, bonus credited. Nile appreciates your hustle. Nile also monetises your hustle.',
+        'Request complete, bonus credited. NILE appreciates your hustle. NILE also monetises your hustle.',
     ],
     orderFailed: [
         'Priority Request missed. The customer has been compensated with a coupon for a different customer.',
@@ -298,6 +319,6 @@ export const ENDING = {
         d("Firing in three... two... I'm contractually obliged to say 'one'."),
         d('Congratulations, Pioneer. You have saved Earth from free things.', 'sinister'),
         nile('Moon+ is now live. Look up! Your complimentary three-day trial has already expired.'),
-        d('Your contract has concluded. Nihil thanks you for your service. Please return your helmet, your boots and your sense of purpose.'),
+        d('Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose.'),
     ],
 };

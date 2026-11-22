@@ -2,6 +2,12 @@
 // story director, starts the loop, and translates input (pointer, keys,
 // wheel) into grid edits and camera moves. Owns transient UI state, order
 // policy, persistence and the campaign flow (title screen → play → ending).
+import '@fontsource-variable/archivo/wdth.css';
+import '@fontsource/big-shoulders-display/800';
+import '@fontsource/big-shoulders-display/900';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 import {
     GRID_WIDTH, GRID_HEIGHT, TICK_RATE,
@@ -29,7 +35,7 @@ let renderer;
 try {
     renderer = await createRenderer(view, {
         onProgress: (done, total) => {
-            if (loadingEl) loadingEl.textContent = `Unpacking Nile equipment… ${Math.round((done / total) * 100)}%`;
+            if (loadingEl) loadingEl.textContent = `Unpacking NILE equipment… ${Math.round((done / total) * 100)}%`;
         },
     });
 } catch (err) {
@@ -95,7 +101,7 @@ function snapshot() {
 }
 
 // --- Persistence (localStorage I/O is orchestration, not simulation) ---
-const SAVE_KEY = 'lifeline.save.v2';
+const SAVE_KEY = 'lifeline.save.v2'; // pre-rename key, kept so existing saves still load
 const hasSave = () => {
     try {
         return localStorage.getItem(SAVE_KEY) !== null;
@@ -172,9 +178,7 @@ const director = createDirector({
 
 // --- HUD ---
 const ui = createUI({
-    root: document.getElementById('toolbar'),
-    view,
-    commsRoot: document.getElementById('comms'),
+    root: document.getElementById('hud'),
     onToolChange: selectTool,
     onRotate: () => (state.dir = nextDir(state.dir)),
     onTogglePause: () => (state.paused = !state.paused),
@@ -193,6 +197,7 @@ const ui = createUI({
             hoverX: state.hovered.x,
             hoverY: state.hovered.y,
             hovered: onGrid ? grid[state.hovered.x][state.hovered.y] : null,
+            hoverScreen: onGrid && !state.drag ? renderer.projectCell(state.hovered.x, state.hovered.y) : null,
             order: { ...order, remaining: Math.max(0, order.deadlineTick - tickCount) },
             power: { ...power },
             research: { points: research.points, unlocked: { ...research.unlocked } },
@@ -265,7 +270,7 @@ ui.showTitle({
         }
         lastPhase = project.phase;
         state.paused = false;
-        if (director.ended()) ui.toast('Project LIFELINE is complete — sandbox mode');
+        if (director.ended()) ui.toast('Protocol: Selene is complete. Sandbox mode');
     },
 });
 

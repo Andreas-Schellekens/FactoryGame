@@ -48,7 +48,7 @@ const MANIFEST = {
     cannonRing: { file: 'space/pipe_ring', fit: 0.95 },
     scaffold: { file: 'space/structure_detailed', fit: 0.9 },
 
-    // Nile's compound (City Kit Industrial + Space Kit).
+    // NILE's compound (City Kit Industrial + Space Kit).
     buildingA: { file: 'city/building-a', fit: 2.6 },
     buildingC: { file: 'city/building-c', fit: 2.6 },
     buildingE: { file: 'city/building-e', fit: 2.6 },
