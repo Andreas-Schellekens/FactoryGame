@@ -1,636 +1,941 @@
-// src/renderer.js — owns everything Pixi: drawing the grid, ore nodes, machines
-// (each with a distinct sprite), the hover ghost, and the animated item sprites.
-// Knows nothing about input or the game loop.
-import * as PIXI from 'pixi.js';
-import { TILE_SIZE, GRID_WIDTH, GRID_HEIGHT, MAX_TIER, TICK_RATE, POWER_DRAW } from './config.js';
-import { grid, power, research, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE } from './grid.js';
+// src/renderer.js — the 3D view (Three.js): an isometric diorama of the
+// simulation grid. Owns the scene, the per-phase lighting mood, the
+// machine/ore/item views (with build/demolish/upgrade juice), the build
+// overlay and cursor picking, and drives the environment, cannon and effects
+// modules. It reads the grid every frame to keep machine views in sync, and
+// reacts to FactoryEvents for item meshes — it never changes simulation
+// state. Knows nothing about input or the loop.
+//
+// World mapping: grid cell (x, y) is centred on (x + 0.5, 0, y + 0.5); grid
+// "down" (+y) is world +z. Model forward is +z, so dir → yaw via YAW.
+import * as THREE from 'three';
+import {
+    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, SINK_VALUE,
+} from './config.js';
+import {
+    grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash,
+} from './grid.js';
+import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
+import { buildEnvironment } from './environment.js';
+import { buildCannon } from './cannon.js';
+import { createEffects, haloSprite } from './effects.js';
+import { createCameraRig } from './camera.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-const DIR_VEC = {
-    right: { dx: 1, dy: 0 },
-    down: { dx: 0, dy: 1 },
-    left: { dx: -1, dy: 0 },
-    up: { dx: 0, dy: -1 },
-};
-
-// Splitter outputs / merger inputs sit on these two perpendicular sides.
-const PERP = {
-    right: ['down', 'up'],
-    left: ['up', 'down'],
-    up: ['right', 'left'],
-    down: ['left', 'right'],
-};
-
+const DIR_VEC = { right: { dx: 1, dy: 0 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, up: { dx: 0, dy: -1 } };
 const OPPOSITE = { right: 'left', left: 'right', up: 'down', down: 'up' };
+const PERP = { right: ['down', 'up'], left: ['up', 'down'], up: ['right', 'left'], down: ['left', 'right'] };
+const YAW = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 };
+// Rotating a model by +90° yaw turns these grid directions into the next.
+const ROT90 = { down: 'right', right: 'up', up: 'left', left: 'down' };
 
-// Visual identity for each item type.
-const ITEM_STYLE = {
-    ironOre: { shape: 'chunk', color: 0x9aa0aa, speck: 0x5f6470 },
-    copperOre: { shape: 'chunk', color: 0xc77b3b, speck: 0x8a4f22 },
-    coalOre: { shape: 'chunk', color: 0x3b3f48, speck: 0x14161b },
-    ironIngot: { shape: 'bar', color: 0xdce1e9 },
-    copperIngot: { shape: 'bar', color: 0xe2913f },
-    circuit: { shape: 'chip', color: 0x39d353 },
-    advancedCircuit: { shape: 'chip', color: 0xf5b041, accent: 0x6e4a0a, pin: 0xfdebd0 },
-    research: { shape: 'flask', color: 0xb07cf0 },
+const BELT_TOP = 0.4;   // conveyor surface height (Factory Kit conveyor, fit 1)
+const PAD_TOP = 0.08;
+const TICK_MS = 1000 / TICK_RATE;
+
+const BRAND_BLUE = 0x38bdf8;
+const BRAND_RED = 0xff4d5e;
+
+// Lighting per phases completed: the day wears on as the story darkens
+// (sunny morning → afternoon → golden hour → dusk → red night → blood red).
+// `dir` points from the scene toward the sun/moon.
+const MOODS = [
+    { sky: 0xd6ecff, ground: 0x6c7c48, hemi: 1.2, sun: 0xfff1d8, sunI: 2.9, dir: [-0.45, 1, -0.2], rim: 0xffd6a8, rimI: 0.4, exposure: 1.0, env: 0.45 },
+    { sky: 0xd0e4ff, ground: 0x6e7846, hemi: 1.15, sun: 0xffe6c0, sunI: 2.8, dir: [-0.15, 1, -0.45], rim: 0xffc890, rimI: 0.5, exposure: 1.0, env: 0.42 },
+    { sky: 0xffc8a0, ground: 0x6a5238, hemi: 0.95, sun: 0xffa868, sunI: 2.6, dir: [0.95, 0.5, -0.35], rim: 0xff9050, rimI: 0.75, exposure: 1.05, env: 0.34 },
+    { sky: 0x9c88dc, ground: 0x3a2e42, hemi: 0.85, sun: 0xc8aaff, sunI: 1.8, dir: [-0.6, 0.85, -0.55], rim: 0xff7a5a, rimI: 0.75, exposure: 1.12, env: 0.28 },
+    { sky: 0xffa0b0, ground: 0x3a2028, hemi: 0.95, sun: 0xffd0d6, sunI: 2.2, dir: [-0.55, 1, -0.4], rim: 0xff4a3a, rimI: 1.25, exposure: 1.1, env: 0.25 },
+    { sky: 0xff7484, ground: 0x2a1014, hemi: 0.9, sun: 0xff9c8c, sunI: 2.0, dir: [-0.55, 1, -0.4], rim: 0xff2a1a, rimI: 1.45, exposure: 1.1, env: 0.22 },
+];
+
+// Conveyors are laid by the hundred: they don't pave the grass (only real
+// buildings leave concrete), they just hide the flowers under them.
+const CONVEYORS = new Set(['belt', 'splitter', 'merger']);
+
+const easeOutBack = (t) => {
+    const c1 = 1.70158;
+    const u = t - 1;
+    return 1 + (c1 + 1) * u * u * u + c1 * u * u;
 };
 
-const RESOURCE_COLOR = { ironOre: 0x6b7280, copperOre: 0xa86a39, coalOre: 0x4d525e };
+// ---- Small geometry helpers --------------------------------------------------
+
+/** A flat triangle in the XZ plane pointing +z (for direction arrows). */
+function flatTriangle(len, width) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([
+        0, 0, len / 2, width / 2, 0, -len / 2, -width / 2, 0, -len / 2,
+    ], 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+    return g;
+}
 
 /**
- * @param {import('pixi.js').Application} app
+ * A flat ribbon along a centreline in the XZ plane; v runs along the line in
+ * world units, so a repeating texture keeps the same density on curves.
  */
-export function createRenderer(app) {
-    const world = new PIXI.Container();
-    app.stage.addChild(world);
+function ribbon(points, width) {
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    let v = 0;
+    for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        const q = points[Math.min(i + 1, points.length - 1)];
+        const o = points[Math.max(i - 1, 0)];
+        const tx = q.x - o.x;
+        const tz = q.z - o.z;
+        const len = Math.hypot(tx, tz) || 1;
+        const nx = -tz / len;
+        const nz = tx / len;
+        if (i > 0) v += Math.hypot(p.x - points[i - 1].x, p.z - points[i - 1].z);
+        pos.push(p.x + nx * width / 2, 0, p.z + nz * width / 2, p.x - nx * width / 2, 0, p.z - nz * width / 2);
+        uv.push(1, v, 0, v);
+        if (i > 0) {
+            // Counter-clockwise seen from above, so the faces point +y.
+            const a = (i - 1) * 2;
+            idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+        }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+}
 
-    const background = new PIXI.Graphics(); // static: checker tiles, grid lines, vignette
-    background.eventMode = 'none';
-    world.addChild(background);
+const STRAIGHT_PATH = [new THREE.Vector3(0, 0, -0.5), new THREE.Vector3(0, 0, 0.5)];
+// Native corner: centre (-0.5, +0.5), radius 0.5, from the -x edge (travelling
+// +x) to the +z edge (travelling +z). Matches conveyor-stripe-corner.
+const CORNER_PATH = Array.from({ length: 11 }, (_, i) => {
+    const a = -Math.PI / 2 + (i / 10) * (Math.PI / 2);
+    return new THREE.Vector3(-0.5 + Math.cos(a) * 0.5, 0, 0.5 + Math.sin(a) * 0.5);
+});
 
-    const visuals = new PIXI.Graphics(); // ore nodes, machines (redrawn each frame)
-    visuals.eventMode = 'none';
-    world.addChild(visuals);
+/** Canvas texture: a soft chevron pointing toward +v, tiling along v. */
+function chevronTexture() {
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    const g = c.getContext('2d');
+    g.strokeStyle = 'rgba(255,255,255,1)';
+    g.lineWidth = 9;
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (const y of [12, 44]) {
+        g.beginPath();
+        g.moveTo(12, y + 14);
+        g.lineTo(32, y);
+        g.lineTo(52, y + 14);
+        g.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+}
 
-    const itemLayer = new PIXI.Container(); // moving items
-    itemLayer.eventMode = 'none';
-    world.addChild(itemLayer);
+function dotTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.beginPath();
+    g.arc(16, 16, 13, 0, Math.PI * 2);
+    g.fill();
+    return new THREE.CanvasTexture(c);
+}
 
-    const overlay = new PIXI.Graphics(); // hover ghost + placement pulse
-    overlay.eventMode = 'none';
-    world.addChild(overlay);
+function beamTexture() {
+    const c = document.createElement('canvas');
+    c.width = 4;
+    c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, 128);
+    grad.addColorStop(0, 'rgba(255,255,255,0)');
+    grad.addColorStop(1, 'rgba(255,255,255,1)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 4, 128);
+    return new THREE.CanvasTexture(c);
+}
 
-    /** @type {Map<number, { gfx: PIXI.Graphics, anim: null | { from: {x:number,y:number}, to: {x:number,y:number}, t:number, dur:number } }>} */
-    const itemSprites = new Map();
+// -----------------------------------------------------------------------------
 
-    function cellCenterPx(x, y) {
-        return { x: x * TILE_SIZE + TILE_SIZE / 2, y: y * TILE_SIZE + TILE_SIZE / 2 };
+/**
+ * @param {HTMLElement} container
+ * @param {{ onProgress?: (done: number, total: number) => void }} [opts]
+ */
+export async function createRenderer(container, { onProgress } = {}) {
+    const assets = await loadAssets(onProgress);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    // A soft studio environment gives PBR materials some reflections.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.28;
+    const rig = createCameraRig({ width: W, height: H });
+    rig.focusOn(PAD_POS.x - 3, PAD_POS.y + 0.5);
+    rig.zoomBy(1.35);
+
+    // ---- Lights: sun (later the moon) with soft shadows, a warm rim fill.
+    // Colours, intensities and the sun's direction follow MOODS per phase.
+    const centre = new THREE.Vector3(W / 2, 0, H / 2);
+    const hemi = new THREE.HemisphereLight(MOODS[0].sky, MOODS[0].ground, MOODS[0].hemi);
+    scene.add(hemi);
+    const sun = new THREE.DirectionalLight(MOODS[0].sun, MOODS[0].sunI);
+    sun.target.position.copy(centre);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    const sh = Math.max(W, H) / 2 + 10;
+    Object.assign(sun.shadow.camera, { left: -sh, right: sh, top: sh, bottom: -sh, near: 1, far: 110 });
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.03;
+    sun.shadow.radius = 3;
+    scene.add(sun, sun.target);
+    const sunDir = new THREE.Vector3(...MOODS[0].dir).normalize();
+    const rimLight = new THREE.DirectionalLight(MOODS[0].rim, MOODS[0].rimI);
+    rimLight.position.set(W / 2 + 20, 12, H / 2 + 16);
+    rimLight.target.position.copy(centre);
+    scene.add(rimLight, rimLight.target);
+
+    const effects = createEffects(scene);
+    const env = buildEnvironment(scene, assets, effects);
+    const cannon = buildCannon(scene, assets, effects, CANNON_AREA);
+
+    const oreLayer = new THREE.Group();
+    const machineLayer = new THREE.Group();
+    const itemLayer = new THREE.Group();
+    const overlay = new THREE.Group();
+    scene.add(oreLayer, machineLayer, itemLayer, overlay);
+
+    // ---- Shared materials -----------------------------------------------------
+    const chevronMat = new THREE.MeshBasicMaterial({
+        map: chevronTexture(), color: 0x2c3168, transparent: true, opacity: 0.6, depthWrite: false,
+    });
+    const arrowMats = {
+        out: new THREE.MeshBasicMaterial({ color: 0xffc35a, transparent: true, opacity: 0.85, depthWrite: false }),
+        split: new THREE.MeshBasicMaterial({ color: 0x4fe3c1, transparent: true, opacity: 0.9, depthWrite: false }),
+        merge: new THREE.MeshBasicMaterial({ color: 0xff9a3d, transparent: true, opacity: 0.9, depthWrite: false }),
+        dim: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }),
+    };
+    const dotTex = dotTexture();
+    const tierMat = new THREE.SpriteMaterial({ map: dotTex, color: 0xffd54a, depthTest: false });
+    const barBgMat = new THREE.SpriteMaterial({ color: 0x000000, opacity: 0.55, transparent: true, depthTest: false });
+    const barFillMat = new THREE.SpriteMaterial({ color: 0x6ee7b7, depthTest: false });
+    const straightGeo = ribbon(STRAIGHT_PATH, 0.5);
+    const cornerGeo = ribbon(CORNER_PATH, 0.5);
+    const cornerRevGeo = ribbon([...CORNER_PATH].reverse(), 0.5);
+    const arrowGeo = flatTriangle(0.2, 0.22);
+    const glowMat = new THREE.MeshStandardMaterial({ color: 0x1a0800, emissive: 0xff7a18, emissiveIntensity: 1 });
+
+    // ---- Ore nodes (static terrain) -------------------------------------------------
+    const oreTemplates = {};
+    for (const [type, t] of Object.entries(ORE_TINT)) {
+        oreTemplates[type] = ['crystalsA', 'crystalsB', 'crystalsC'].map((key) => tintTemplate(
+            assets.get(key), { rock: t.rock, rockTrack: t.rockTrack, crystal: t.crystal }, { crystal: t.glow },
+        ));
+    }
+    const stainGeo = new THREE.CircleGeometry(0.48, 20);
+    const stainMats = Object.fromEntries(Object.keys(ORE_TINT).map((type) => [type,
+        new THREE.MeshBasicMaterial({ color: ORE_TINT[type].crystal, transparent: true, opacity: 0.12, depthWrite: false })]));
+    const oreViews = new Map();
+    for (let x = 0; x < W; x++) {
+        for (let y = 0; y < H; y++) {
+            const res = grid[x][y].resource;
+            if (!res) continue;
+            const g = new THREE.Group();
+            g.position.set(x + 0.5, 0, y + 0.5);
+            const variants = oreTemplates[res];
+            const rock = variants[Math.floor(cellHash(x, y) * variants.length)].clone();
+            rock.rotation.y = cellHash(y, x) * Math.PI * 2;
+            g.add(rock);
+            const stain = new THREE.Mesh(stainGeo, stainMats[res]);
+            stain.rotation.x = -Math.PI / 2;
+            stain.position.y = 0.004;
+            g.add(stain);
+            g.userData.rock = rock;
+            oreLayer.add(g);
+            oreViews.set(`${x},${y}`, g);
+        }
     }
 
-    // Animation clock: advanced per frame in draw(), scaled by sim speed and
-    // frozen while paused, so belt scroll / glow pulses track the simulation
-    // pace instead of wall time.
-    const tickMs = 1000 / TICK_RATE;
+    // ---- Machine views ------------------------------------------------------------------
+    /** @type {Map<string, { sig: string, machine: object, obj: THREE.Group, parts: object }>} */
+    const views = new Map();
+
+    // Which neighbour feeds this belt? A single feeder from a side turns it into a corner.
+    function incomingDir(x, y) {
+        let found = null;
+        for (const [dir, v] of Object.entries(DIR_VEC)) {
+            const nx = x - v.dx;
+            const ny = y - v.dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            const nm = grid[nx][ny].machine;
+            if (!nm || nm.type === 'sink') continue;
+            const outs = nm.type === 'splitter' ? [nm.dir, ...PERP[nm.dir]] : [nm.dir];
+            if (!outs.includes(dir)) continue; // neighbour's output doesn't point at us
+            if (found) return null; // several feeders → keep it straight
+            found = dir;
+        }
+        return found;
+    }
+
+    function beltShape(x, y, m) {
+        const inDir = incomingDir(x, y);
+        if (!inDir || inDir === m.dir || inDir === OPPOSITE[m.dir]) return 'straight';
+        return `corner:${inDir}`;
+    }
+
+    // Rotation + flow sense for a corner from the native {left, down} model.
+    function cornerFit(inDir, outDir) {
+        const entry = OPPOSITE[inDir];
+        let a = 'left';
+        let b = 'down';
+        for (let k = 0; k < 4; k++) {
+            if (a === entry && b === outDir) return { yaw: k * (Math.PI / 2), reversed: false };
+            if (a === outDir && b === entry) return { yaw: k * (Math.PI / 2), reversed: true };
+            a = ROT90[a];
+            b = ROT90[b];
+        }
+        return { yaw: 0, reversed: false };
+    }
+
+    function addArrow(group, dir, mat, inward = false, y = BELT_TOP + 0.01, reach = 0.36) {
+        const a = new THREE.Mesh(arrowGeo, mat);
+        const v = DIR_VEC[dir];
+        a.position.set(v.dx * reach, y, v.dy * reach);
+        a.rotation.y = YAW[dir] + (inward ? Math.PI : 0);
+        a.renderOrder = 2;
+        group.add(a);
+        return a;
+    }
+
+    /** Build the 3D view for a machine (or a build ghost when `ghost`). */
+    function buildView(m, x, y, shape, ghost = false) {
+        const obj = new THREE.Group();
+        const parts = {};
+        const facing = new THREE.Group(); // rotated to the machine's dir
+        facing.rotation.y = YAW[m.dir] ?? 0;
+        obj.add(facing);
+
+        switch (m.type) {
+            case 'belt': {
+                if (shape.startsWith('corner:')) {
+                    const fit = cornerFit(shape.slice(7), m.dir);
+                    const turn = new THREE.Group();
+                    turn.rotation.y = fit.yaw;
+                    turn.add(assets.get('beltCorner'));
+                    const strip = new THREE.Mesh(fit.reversed ? cornerRevGeo : cornerGeo, chevronMat);
+                    strip.position.y = BELT_TOP + 0.006;
+                    strip.renderOrder = 1;
+                    turn.add(strip);
+                    obj.add(turn);
+                } else {
+                    facing.add(assets.get('belt'));
+                    const strip = new THREE.Mesh(straightGeo, chevronMat);
+                    strip.position.y = BELT_TOP + 0.006;
+                    strip.renderOrder = 1;
+                    facing.add(strip);
+                }
+                break;
+            }
+            case 'splitter':
+            case 'merger': {
+                obj.add(assets.get('router'));
+                const isSplit = m.type === 'splitter';
+                const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.04, 20),
+                    new THREE.MeshStandardMaterial({ color: isSplit ? 0x2bb89a : 0xd9792a, roughness: 0.4 }));
+                cap.position.y = BELT_TOP + 0.02;
+                obj.add(cap);
+                if (isSplit) {
+                    addArrow(obj, OPPOSITE[m.dir], arrowMats.dim, true);
+                    for (const d of [m.dir, ...PERP[m.dir]]) addArrow(obj, d, arrowMats.split);
+                } else {
+                    for (const d of [OPPOSITE[m.dir], ...PERP[m.dir]]) addArrow(obj, d, arrowMats.dim, true);
+                    addArrow(obj, m.dir, arrowMats.merge);
+                }
+                break;
+            }
+            case 'extractor': {
+                const frame = assets.get('extractorFrame');
+                facing.add(frame);
+                const piston = assets.get('extractorPiston');
+                piston.userData.baseY = frame.userData.height - piston.userData.height - 0.02;
+                piston.position.y = piston.userData.baseY;
+                facing.add(piston);
+                parts.piston = piston;
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.4);
+                break;
+            }
+            case 'smelter': {
+                const body = assets.get('smelter');
+                facing.add(body);
+                const chimney = assets.get('chimney');
+                chimney.position.set(-0.24, body.userData.height - 0.05, -0.2);
+                facing.add(chimney);
+                const mouth = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.16), ghost ? glowMat : glowMat.clone());
+                mouth.position.set(0, 0.24, body.userData.depth / 2 + 0.006);
+                facing.add(mouth);
+                parts.mouth = mouth;
+                if (!ghost) {
+                    const halo = haloSprite(0xff8a30, 0.7);
+                    halo.position.set(0, 0.26, body.userData.depth / 2 + 0.12);
+                    halo.material.opacity = 0;
+                    facing.add(halo);
+                    parts.halo = halo;
+                    const top = new THREE.Object3D();
+                    top.position.set(-0.24, body.userData.height - 0.05 + chimney.userData.height, -0.2);
+                    facing.add(top);
+                    parts.smokeFrom = top;
+                }
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
+                break;
+            }
+            case 'assembler': {
+                const body = assets.get('assembler');
+                facing.add(body);
+                const cog = assets.get('cog');
+                cog.position.set(0, body.userData.height - 0.02, -0.05);
+                facing.add(cog);
+                parts.cog = cog;
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
+                break;
+            }
+            case 'lab': {
+                const body = assets.get('lab');
+                facing.add(body);
+                const dish = assets.get('dish');
+                dish.position.set(0.05, body.userData.height - 0.04, -0.08);
+                facing.add(dish);
+                parts.dish = dish;
+                break;
+            }
+            case 'generator': {
+                const tower = assets.get('generator');
+                facing.add(tower);
+                const glow = new THREE.Mesh(new THREE.CircleGeometry(0.2, 20),
+                    new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0, depthWrite: false }));
+                glow.rotation.x = -Math.PI / 2;
+                glow.position.y = tower.userData.height - 0.02;
+                facing.add(glow);
+                parts.glow = glow;
+                if (!ghost) {
+                    const halo = haloSprite(0xffa040, 0.9);
+                    halo.position.y = tower.userData.height + 0.05;
+                    halo.material.opacity = 0;
+                    facing.add(halo);
+                    parts.halo = halo;
+                    const top = new THREE.Object3D();
+                    top.position.y = tower.userData.height;
+                    facing.add(top);
+                    parts.steamFrom = top;
+                }
+                break;
+            }
+            case 'sink': {
+                obj.add(assets.get('pad'));
+                const beamMat = new THREE.MeshBasicMaterial({
+                    color: BRAND_BLUE, alphaMap: beamTexture(), transparent: true, opacity: 0.5,
+                    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+                });
+                const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.3, 7, 20, 1, true), beamMat);
+                beam.position.y = 3.5;
+                obj.add(beam);
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: BRAND_BLUE, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
+                });
+                const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.36, 32), ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = PAD_TOP + 0.01;
+                obj.add(ring);
+                parts.beam = beam;
+                parts.ring = ring;
+                break;
+            }
+            default:
+                break;
+        }
+
+        // Status cluster above processors: progress bar, tier dots, power pip.
+        if (!ghost && (UPGRADABLE.has(m.type) || m.type === 'generator')) {
+            const top = 1.05;
+            const bg = new THREE.Sprite(barBgMat);
+            bg.scale.set(0.5, 0.06, 1);
+            bg.position.set(0, top, 0);
+            const fill = new THREE.Sprite(barFillMat);
+            fill.center.set(0, 0.5);
+            fill.scale.set(0.001, 0.06, 1);
+            fill.position.set(-0.25, top, 0);
+            const pip = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex, color: 0xe74c3c, depthTest: false }));
+            pip.scale.set(0.14, 0.14, 1);
+            pip.position.set(0.34, top, 0);
+            for (const s of [bg, fill, pip]) {
+                s.renderOrder = 10;
+                s.visible = false;
+                obj.add(s);
+            }
+            parts.bar = { bg, fill };
+            parts.pip = pip;
+            parts.tier = [];
+            for (let i = 0; i < MAX_TIER; i++) {
+                const d = new THREE.Sprite(tierMat);
+                d.scale.set(0.08, 0.08, 1);
+                d.position.set(-0.15 + i * 0.1, top + 0.1, 0);
+                d.renderOrder = 10;
+                d.visible = false;
+                obj.add(d);
+                parts.tier.push(d);
+            }
+        }
+
+        obj.position.set(x + 0.5, 0, y + 0.5);
+        return { obj, parts };
+    }
+
+    // Demolished views shrink and sink before they go.
+    const dying = [];
+    // Set on the first sync and after a load: build views without juice.
+    let quiet = true;
+
+    function removeView(key, animate) {
+        const v = views.get(key);
+        if (!v) return;
+        views.delete(key);
+        const [cx, cy] = key.split(',').map(Number);
+        if (CONVEYORS.has(v.machine.type) && !grid[cx][cy].machine) env.coverCell(cx, cy, false);
+        if (!animate) {
+            machineLayer.remove(v.obj);
+            return;
+        }
+        dying.push({ obj: v.obj, t: 0 });
+        const small = v.machine.type === 'belt';
+        effects.puff(v.obj.position, { count: small ? 5 : 10, size: small ? 0.2 : 0.32, spread: small ? 0.3 : 0.5 });
+    }
+
+    function syncMachines() {
+        for (let x = 0; x < W; x++) {
+            for (let y = 0; y < H; y++) {
+                const key = `${x},${y}`;
+                const m = grid[x][y].machine;
+                if (!m) {
+                    if (views.has(key)) removeView(key, !quiet);
+                    continue;
+                }
+                const shape = m.type === 'belt' ? beltShape(x, y, m) : '';
+                const sig = `${m.type}|${m.dir}|${shape}`;
+                const v = views.get(key);
+                if (v && v.sig === sig && v.machine === m) {
+                    if (m.tier > v.tier) { // upgraded: sparkle + bounce
+                        v.tier = m.tier;
+                        v.pop = 0;
+                        effects.sparkle(new THREE.Vector3(x + 0.5, 0.9, y + 0.5), { count: 18 });
+                    }
+                    continue;
+                }
+                const isNew = !v || v.machine !== m;
+                if (v) removeView(key, false); // reshaped (corner) or replaced: swap silently
+                const built = buildView(m, x, y, shape);
+                machineLayer.add(built.obj);
+                const view = { sig, machine: m, tier: m.tier, pop: null, smoke: 0, ...built };
+                views.set(key, view);
+                if (CONVEYORS.has(m.type)) {
+                    env.coverCell(x, y, true);
+                } else if (m.type !== 'sink') {
+                    env.paveCell(x, y);
+                    if (m.type === 'smelter' || m.type === 'generator') env.scorch(x, y);
+                }
+                if (isNew && !quiet && m.type !== 'sink') {
+                    view.pop = 0;
+                    built.obj.scale.setScalar(0.01);
+                    const small = m.type === 'belt';
+                    effects.puff(built.obj.position, { count: small ? 4 : 10, size: small ? 0.18 : 0.32, spread: small ? 0.25 : 0.5 });
+                }
+                // An extractor sits over its ore: shrink the rock under the frame.
+                const ore = oreViews.get(key);
+                if (ore) ore.userData.rock.scale.setScalar(m.type === 'extractor' ? 0.75 : 1);
+            }
+        }
+        // Restore ore rocks whose machine was removed.
+        for (const [key, ore] of oreViews) {
+            if (!views.has(key)) ore.userData.rock.scale.setScalar(1);
+        }
+        quiet = false;
+    }
+
+    // ---- Per-frame machine animation -----------------------------------------
     let animMs = 0;
-    let lastDrawNow = performance.now();
 
-    // Static depth pass, drawn once: alternating tile tints so the field
-    // doesn't read as a flat slab, the cell grid lines, and a soft edge
-    // vignette. Everything dynamic stays in `visuals`.
-    function drawBackground() {
-        background.clear();
-        const W = GRID_WIDTH * TILE_SIZE;
-        const H = GRID_HEIGHT * TILE_SIZE;
-        background.rect(0, 0, W, H);
-        background.fill(0x20232b);
-        for (let x = 0; x < GRID_WIDTH; x++) {
-            for (let y = 0; y < GRID_HEIGHT; y++) {
-                if ((x + y) % 2 === 0) continue;
-                background.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                background.fill({ color: 0x262a34, alpha: 0.8 });
+    function animateMachines(dtSim, dt) {
+        const th = power.throttle;
+        for (let i = dying.length - 1; i >= 0; i--) {
+            const d = dying[i];
+            d.t = Math.min(1, d.t + dt / 220);
+            d.obj.scale.setScalar(1 - d.t);
+            d.obj.position.y = -0.15 * d.t;
+            if (d.t >= 1) {
+                machineLayer.remove(d.obj);
+                dying.splice(i, 1);
             }
         }
-        for (let x = 0; x <= GRID_WIDTH; x++) {
-            background.moveTo(x * TILE_SIZE, 0).lineTo(x * TILE_SIZE, H);
-        }
-        for (let y = 0; y <= GRID_HEIGHT; y++) {
-            background.moveTo(0, y * TILE_SIZE).lineTo(W, y * TILE_SIZE);
-        }
-        background.stroke({ width: 1, color: 0x333333 });
-        // vignette: stacked translucent strokes darkening toward the border
-        for (let i = 0; i < 18; i++) {
-            background.rect(i, i, W - i * 2, H - i * 2);
-            background.stroke({ width: 1, color: 0x000000, alpha: 0.022 * (1 - i / 18) });
-        }
-    }
-    drawBackground();
-
-    // ---- Item sprites -------------------------------------------------------
-    function createItemGfx(type) {
-        const g = new PIXI.Graphics();
-        g.eventMode = 'none';
-        const style = ITEM_STYLE[type] ?? { shape: 'chunk', color: 0xffffff };
-        const r = TILE_SIZE / 4;
-
-        if (style.shape === 'chunk') {
-            g.circle(0, 0, r);
-            g.fill(style.color);
-            g.stroke({ width: 2, color: 0x000000, alpha: 0.25 });
-            for (const [sx, sy] of [[-r / 3, -r / 4], [r / 3, r / 6], [0, r / 2.2]]) {
-                g.circle(sx, sy, r / 4);
-                g.fill({ color: style.speck ?? 0x000000, alpha: 0.6 });
+        for (const v of views.values()) {
+            const m = v.machine;
+            const p = v.parts;
+            const frac = machineProgressFraction(m);
+            const working = m.pendingOutput !== null || m.progress > 0;
+            if (v.pop != null) {
+                v.pop = Math.min(1, v.pop + dt / 280);
+                v.obj.scale.setScalar(Math.max(0.01, easeOutBack(v.pop)));
+                if (v.pop >= 1) {
+                    v.obj.scale.setScalar(1);
+                    v.pop = null;
+                }
             }
-        } else if (style.shape === 'bar') {
-            const w = TILE_SIZE * 0.5;
-            const h = TILE_SIZE * 0.28;
-            g.roundRect(-w / 2, -h / 2, w, h, 4);
-            g.fill(style.color);
-            g.roundRect(-w / 2, -h / 2, w, h, 4);
-            g.stroke({ width: 2, color: 0x000000, alpha: 0.25 });
-            g.rect(-w / 2 + 3, -h / 2 + 3, w - 6, 3);
-            g.fill({ color: 0xffffff, alpha: 0.35 });
-        } else if (style.shape === 'flask') {
-            // research flask: round body, short neck, liquid line
-            const r2 = TILE_SIZE * 0.18;
-            g.circle(0, r2 * 0.35, r2);
-            g.fill(style.color);
-            g.rect(-r2 * 0.35, -r2 * 1.3, r2 * 0.7, r2);
-            g.fill(style.color);
-            g.circle(0, r2 * 0.35, r2);
-            g.stroke({ width: 2, color: 0x000000, alpha: 0.3 });
-            g.circle(-r2 * 0.3, 0, r2 * 0.25);
-            g.fill({ color: 0xffffff, alpha: 0.5 });
-        } else {
-            // chip / product
-            const accent = style.accent ?? 0x0c3a16;
-            const pin = style.pin ?? 0xcde8d2;
-            const s = TILE_SIZE * 0.44;
-            g.roundRect(-s / 2, -s / 2, s, s, 4);
-            g.fill(style.color);
-            g.roundRect(-s / 2, -s / 2, s, s, 4);
-            g.stroke({ width: 2, color: accent });
-            g.rect(-s / 4, -s / 4, s / 2, s / 2);
-            g.stroke({ width: 1.5, color: accent, alpha: 0.7 });
-            for (const off of [-s / 6, s / 6]) {
-                g.rect(off - 1, -s / 2 - 3, 2, 3);
-                g.rect(off - 1, s / 2, 2, 3);
-                g.fill(pin);
+            if (p.smokeFrom && working && dtSim > 0) {
+                v.smoke += dtSim;
+                if (v.smoke > 380) {
+                    v.smoke = 0;
+                    effects.smoke(p.smokeFrom.getWorldPosition(new THREE.Vector3()), { color: 0x7d7a80, size: 0.14 });
+                }
+            }
+            if (p.steamFrom && m.fuelTicks > 0 && dtSim > 0) {
+                v.smoke += dtSim;
+                if (v.smoke > 520) {
+                    v.smoke = 0;
+                    effects.smoke(p.steamFrom.getWorldPosition(new THREE.Vector3()), { color: 0xe8e6e2, size: 0.3, rise: 0.7, opacity: 0.45 });
+                }
+            }
+            if (p.piston) p.piston.position.y = p.piston.userData.baseY - Math.sin(frac * Math.PI) * 0.09;
+            if (p.cog && working) p.cog.rotation.y += dtSim * 0.004 * (POWER_DRAW[m.type] ? th : 1);
+            if (p.dish && working) p.dish.rotation.y += dtSim * 0.0012 * th;
+            if (p.mouth) {
+                const flicker = working ? 0.25 * Math.sin(animMs / 60 + v.obj.position.x) : 0;
+                p.mouth.material.emissiveIntensity = working ? 0.6 + 2.2 * frac * th + flicker : 0.12;
+                if (p.halo) p.halo.material.opacity = working ? 0.35 + 0.5 * frac * th + flicker * 0.4 : 0;
+            }
+            if (p.glow) {
+                const lit = m.fuelTicks > 0;
+                p.glow.material.opacity = lit ? 0.55 + 0.25 * Math.sin(animMs / 120 + v.obj.position.z) : 0;
+                if (p.halo) p.halo.material.opacity = lit ? 0.45 + 0.2 * Math.sin(animMs / 150) : 0;
+            }
+            if (p.beam) {
+                const pulse = (animMs % 1800) / 1800;
+                p.beam.material.opacity = (0.22 + 0.12 * Math.sin(animMs / 400)) * (project.phase >= 3 ? 1 : 0.4); // subtle by day
+                p.ring.scale.setScalar(1 + pulse * 1.4);
+                p.ring.material.opacity = 0.9 * (1 - pulse);
+            }
+            if (p.bar) {
+                const show = frac > 0 && m.type !== 'generator';
+                p.bar.bg.visible = p.bar.fill.visible = show;
+                if (show) p.bar.fill.scale.x = 0.5 * frac;
+                p.tier.forEach((d, i) => (d.visible = m.tier > 1 && i < m.tier));
+                // Power pip: red when starved (or an empty generator), amber in a brownout.
+                const starved = m.type === 'generator' ? m.fuelTicks <= 0 : POWER_DRAW[m.type] && working && th <= 0.02;
+                const brown = POWER_DRAW[m.type] && working && th < 1 && th > 0.02;
+                p.pip.visible = !!(starved || brown);
+                if (p.pip.visible) {
+                    p.pip.material.color.setHex(starved ? 0xe74c3c : 0xf0b64a);
+                    p.pip.material.opacity = starved ? 0.55 + 0.45 * Math.sin(animMs / 160) : 1;
+                }
             }
         }
-        return g;
+        // Belt surfaces scroll one cell per tick (two with Express Belts).
+        const cellsPerTick = research.unlocked.fastBelts ? 2 : 1;
+        chevronMat.map.offset.y = -((animMs / TICK_MS) * cellsPerTick) % 1;
     }
 
-    function ensureItemSprite(item, x, y) {
-        const existing = itemSprites.get(item.id);
-        if (existing) return existing;
-        const gfx = createItemGfx(item.type);
-        const p = cellCenterPx(x, y);
-        gfx.x = p.x;
-        gfx.y = p.y;
-        itemLayer.addChild(gfx);
-        const entry = { gfx, anim: null };
-        itemSprites.set(item.id, entry);
-        return entry;
+    // The lighting eases toward the current phase's mood; the pad beacon
+    // switches to Nihil red at the reveal.
+    const tmpC = new THREE.Color();
+    const tmpV = new THREE.Vector3();
+    let evilShown = null;
+    function applyMood(dt, instant) {
+        const m = MOODS[Math.min(project.phase, MOODS.length - 1)];
+        const k = instant ? 1 : 1 - Math.exp(-dt / 2200);
+        hemi.color.lerp(tmpC.setHex(m.sky), k);
+        hemi.groundColor.lerp(tmpC.setHex(m.ground), k);
+        hemi.intensity += (m.hemi - hemi.intensity) * k;
+        sun.color.lerp(tmpC.setHex(m.sun), k);
+        sun.intensity += (m.sunI - sun.intensity) * k;
+        sunDir.lerp(tmpV.set(...m.dir).normalize(), k).normalize();
+        sun.position.copy(centre).addScaledVector(sunDir, 40);
+        rimLight.color.lerp(tmpC.setHex(m.rim), k);
+        rimLight.intensity += (m.rimI - rimLight.intensity) * k;
+        renderer.toneMappingExposure += (m.exposure - renderer.toneMappingExposure) * k;
+        scene.environmentIntensity += (m.env - scene.environmentIntensity) * k;
+
+        const evil = project.phase >= 4;
+        if (evil === evilShown) return;
+        evilShown = evil;
+        for (const v of views.values()) {
+            if (v.parts.beam) {
+                v.parts.beam.material.color.setHex(evil ? BRAND_RED : BRAND_BLUE);
+                v.parts.ring.material.color.setHex(evil ? BRAND_RED : BRAND_BLUE);
+            }
+        }
     }
 
-    function removeItemSprite(itemId) {
-        const entry = itemSprites.get(itemId);
-        if (!entry) return;
-        entry.gfx.destroy();
-        itemSprites.delete(itemId);
+    // ---- Items -------------------------------------------------------------------------
+    /** @type {Map<number, { obj: THREE.Object3D, anim: null | { from: THREE.Vector3, to: THREE.Vector3, t: number, dur: number } }>} */
+    const items = new Map();
+
+    function surfaceY(x, y) {
+        const m = grid[x]?.[y]?.machine;
+        if (!m) return 0.02;
+        if (m.type === 'sink') return PAD_TOP;
+        if (m.type === 'belt' || m.type === 'splitter' || m.type === 'merger') return BELT_TOP;
+        return 0.3; // entering a machine: disappears inside its body
     }
 
-    // Drop every item sprite — used on load, before re-spawning the restored
-    // in-transit items, so no orphaned graphics or stale ids survive.
-    function reset() {
-        for (const entry of itemSprites.values()) entry.gfx.destroy();
-        itemSprites.clear();
+    const posOf = (cell) => new THREE.Vector3(cell.x + 0.5, surfaceY(cell.x, cell.y), cell.y + 0.5);
+
+    function ensureItem(item, cell) {
+        let e = items.get(item.id);
+        if (e) return e;
+        const obj = createItemMesh(item.type);
+        obj.position.copy(posOf(cell));
+        itemLayer.add(obj);
+        e = { obj, anim: null };
+        items.set(item.id, e);
+        return e;
     }
+
+    function removeItem(id) {
+        const e = items.get(id);
+        if (!e) return;
+        itemLayer.remove(e.obj);
+        items.delete(id);
+    }
+
+    // Credits earned at the pad, shown as one floating "+N" every half second.
+    let padCredits = 0;
+    let lastFloat = 0;
 
     function applyEvents(events, tickDurationMs) {
         for (const ev of events) {
             if (ev.kind === 'spawn') {
-                ensureItemSprite(ev.item, ev.at.x, ev.at.y);
+                ensureItem(ev.item, ev.at);
             } else if (ev.kind === 'move') {
-                const sprite = ensureItemSprite(ev.item, ev.to.x, ev.to.y);
-                const from = cellCenterPx(ev.from.x, ev.from.y);
-                const to = cellCenterPx(ev.to.x, ev.to.y);
-                if (sprite.anim && sprite.anim.t === 0) {
-                    // Second hop in the same tick (fastBelts): extend the tween
-                    // to the final cell instead of snapping to the midpoint.
-                    sprite.anim.to = to;
+                const e = ensureItem(ev.item, ev.to);
+                const to = posOf(ev.to);
+                if (e.anim && e.anim.t === 0) {
+                    e.anim.to = to; // second hop in one tick (Express Belts): extend
                 } else {
-                    sprite.anim = { from, to, t: 0, dur: tickDurationMs };
-                    sprite.gfx.x = from.x;
-                    sprite.gfx.y = from.y;
+                    e.anim = { from: posOf(ev.from), to, t: 0, dur: Math.max(1, tickDurationMs) };
+                    e.obj.position.copy(e.anim.from);
                 }
+                const dx = ev.to.x - ev.from.x;
+                const dy = ev.to.y - ev.from.y;
+                e.obj.rotation.y = Math.atan2(dx, dy);
             } else if (ev.kind === 'consume') {
-                removeItemSprite(ev.item.id);
+                removeItem(ev.item.id);
+                // Consumed on the pad = delivered (the pad can't be demolished).
+                if (ev.at.x === PAD_POS.x && ev.at.y === PAD_POS.y) padCredits += SINK_VALUE[ev.item.type] ?? 0;
             }
         }
     }
 
     function tweenItems(dt) {
-        for (const entry of itemSprites.values()) {
-            if (!entry.anim) continue;
-            entry.anim.t += dt;
-            const a = Math.min(1, entry.anim.t / entry.anim.dur);
-            entry.gfx.x = entry.anim.from.x + (entry.anim.to.x - entry.anim.from.x) * a;
-            entry.gfx.y = entry.anim.from.y + (entry.anim.to.y - entry.anim.from.y) * a;
-            if (a >= 1) entry.anim = null;
+        for (const e of items.values()) {
+            if (!e.anim) continue;
+            e.anim.t += dt;
+            const a = Math.min(1, e.anim.t / e.anim.dur);
+            e.obj.position.lerpVectors(e.anim.from, e.anim.to, a);
+            if (a >= 1) e.anim = null;
         }
     }
 
-    // ---- Machine / tile drawing --------------------------------------------
-    function drawArrow(g, px, py, dir, color, alpha) {
-        const cx = px + TILE_SIZE / 2;
-        const cy = py + TILE_SIZE / 2;
-        const d = DIR_VEC[dir] ?? DIR_VEC.right;
-        const tipX = cx + d.dx * (TILE_SIZE / 2 - 5);
-        const tipY = cy + d.dy * (TILE_SIZE / 2 - 5);
-        // perpendicular for the arrow base
-        const perpX = -d.dy;
-        const perpY = d.dx;
-        const back = 9;
-        const half = 6;
-        const bx = tipX - d.dx * back;
-        const by = tipY - d.dy * back;
-        g.poly([
-            tipX, tipY,
-            bx + perpX * half, by + perpY * half,
-            bx - perpX * half, by - perpY * half,
-        ]);
-        g.fill({ color, alpha });
+    function reset() {
+        for (const id of [...items.keys()]) removeItem(id);
+        quiet = true; // the next sync rebuilds a loaded factory: no juice
+        shownPhase = -1;
     }
 
-    // Which direction is an item travelling as it enters this belt? We look for a
-    // single neighbour whose output dir points back into (x,y). Returns null when
-    // there's no feeder or several (a merge), so those fall back to a straight belt.
-    function incomingFlowDir(x, y, machine) {
-        let found = null;
-        for (const v of Object.values(DIR_VEC)) {
-            const nx = x + v.dx;
-            const ny = y + v.dy;
-            if (nx < 0 || ny < 0 || nx >= GRID_WIDTH || ny >= GRID_HEIGHT) continue;
-            const nm = grid[nx][ny].machine;
-            if (!nm) continue;
-            const nd = DIR_VEC[nm.dir];
-            // neighbour feeds us when its output points opposite to v (i.e. at us)
-            if (nd && nd.dx === -v.dx && nd.dy === -v.dy) {
-                if (found) return null; // multiple feeders → keep it straight
-                found = nm.dir;
-            }
+    // ---- Build overlay: cursor, ghost, focus markers ---------------------------------------
+    const cursor = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-0.48, 0, -0.48), new THREE.Vector3(0.48, 0, -0.48),
+            new THREE.Vector3(0.48, 0, 0.48), new THREE.Vector3(-0.48, 0, 0.48),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 }),
+    );
+    cursor.position.y = 0.03;
+    overlay.add(cursor);
+    const tintBox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.96, 0.7, 0.96),
+        new THREE.MeshBasicMaterial({ color: 0xe74c3c, transparent: true, opacity: 0.22, depthWrite: false }),
+    );
+    tintBox.position.y = 0.35;
+    overlay.add(tintBox);
+    const ghostMat = new THREE.MeshBasicMaterial({ color: 0x2ecc71, transparent: true, opacity: 0.45, depthWrite: false });
+    const ghosts = new Map();
+    let ghostShown = null;
+
+    function ghostFor(tool, dir) {
+        const key = `${tool}|${dir}`;
+        if (!ghosts.has(key)) {
+            const { obj } = buildView({ type: tool, dir, tier: 1, progress: 0, pendingOutput: null }, 0, 0, 'straight', true);
+            obj.traverse((o) => {
+                if (o.isMesh) {
+                    o.material = ghostMat;
+                    o.castShadow = false;
+                    o.renderOrder = 5;
+                }
+            });
+            obj.position.set(0, 0, 0);
+            ghosts.set(key, obj);
         }
-        return found;
+        return ghosts.get(key);
     }
 
-    // How far (in px) the belt surface has scrolled, modulo `period`. Belts
-    // cover one tile per tick (two with fastBelts), and the clock already
-    // carries sim speed/pause, so the chevrons track item motion exactly.
-    function beltScroll(period) {
-        const cellsPerTick = research.unlocked.fastBelts ? 2 : 1;
-        return ((animMs / tickMs) * TILE_SIZE * cellsPerTick) % period;
-    }
+    const focusGroup = new THREE.Group();
+    overlay.add(focusGroup);
+    const focusMat = new THREE.MeshBasicMaterial({
+        color: 0x7dd3fc, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const focusGeo = new THREE.RingGeometry(0.44, 0.5, 40);
+    let focusShown = null;
 
-    // A small "V" with its tip at (cx,cy), pointing along the unit vector (dx,dy).
-    function drawChevron(g, cx, cy, dx, dy, color, alpha) {
-        const s = 6;
-        const perpX = -dy;
-        const perpY = dx;
-        g.moveTo(cx - dx * s + perpX * s, cy - dy * s + perpY * s);
-        g.lineTo(cx, cy);
-        g.lineTo(cx - dx * s - perpX * s, cy - dy * s - perpY * s);
-        g.stroke({ width: 3, color, alpha, cap: 'round', join: 'round' });
-    }
-
-    // Scrolling chevrons along a straight belt — the moving surface.
-    function drawStraightChevrons(g, px, py, dir, alpha) {
-        const cx = px + TILE_SIZE / 2;
-        const cy = py + TILE_SIZE / 2;
-        const d = DIR_VEC[dir];
-        const spacing = TILE_SIZE / 3;
-        const offset = beltScroll(TILE_SIZE);
-        for (let k = 0; k < 3; k++) {
-            const t = ((k * spacing + offset) % TILE_SIZE) - TILE_SIZE / 2;
-            if (Math.abs(t) > TILE_SIZE / 2 - 10) continue; // keep inside the body
-            drawChevron(g, cx + d.dx * t, cy + d.dy * t, d.dx, d.dy, 0xffffff, 0.8 * alpha);
-        }
-    }
-
-    // A smooth 90° elbow: a thick rounded stroke from the entry edge through the
-    // tile centre to the exit edge, with chevrons scrolling along the curve.
-    function drawBeltCorner(g, px, py, inDir, outDir, alpha) {
-        const cx = px + TILE_SIZE / 2;
-        const cy = py + TILE_SIZE / 2;
-        const din = DIR_VEC[inDir];
-        const dout = DIR_VEC[outDir];
-        const reach = TILE_SIZE / 2 - 4;
-        // item enters from the side opposite to its travel direction
-        const ex = cx - din.dx * reach;
-        const ey = cy - din.dy * reach;
-        const sx = cx + dout.dx * reach;
-        const sy = cy + dout.dy * reach;
-        g.moveTo(ex, ey);
-        g.quadraticCurveTo(cx, cy, sx, sy);
-        g.stroke({ width: 13, color: 0xffffff, alpha: 0.85 * alpha, cap: 'round', join: 'round' });
-        // chevrons ride the quadratic from entry (u=0) to exit (u=1)
-        const phase = beltScroll(TILE_SIZE) / TILE_SIZE;
-        for (let k = 0; k < 3; k++) {
-            const u = (k / 3 + phase / 3) % 1;
-            const iu = 1 - u;
-            const qx = iu * iu * ex + 2 * iu * u * cx + u * u * sx;
-            const qy = iu * iu * ey + 2 * iu * u * cy + u * u * sy;
-            let tx = 2 * iu * (cx - ex) + 2 * u * (sx - cx);
-            let ty = 2 * iu * (cy - ey) + 2 * u * (sy - cy);
-            const len = Math.hypot(tx, ty) || 1;
-            tx /= len;
-            ty /= len;
-            drawChevron(g, qx, qy, tx, ty, 0x1b4d85, 0.9 * alpha);
-        }
-    }
-
-    // An arrow sitting on the `side` edge pointing inward (toward the centre) —
-    // marks an input on splitters/mergers, the mirror of drawArrow.
-    function drawInArrow(g, px, py, side, color, alpha) {
-        const cx = px + TILE_SIZE / 2;
-        const cy = py + TILE_SIZE / 2;
-        const d = DIR_VEC[side] ?? DIR_VEC.right;
-        const baseX = cx + d.dx * (TILE_SIZE / 2 - 4);
-        const baseY = cy + d.dy * (TILE_SIZE / 2 - 4);
-        const tipX = baseX - d.dx * 10;
-        const tipY = baseY - d.dy * 10;
-        const perpX = -d.dy;
-        const perpY = d.dx;
-        const half = 6;
-        g.poly([
-            tipX, tipY,
-            baseX + perpX * half, baseY + perpY * half,
-            baseX - perpX * half, baseY - perpY * half,
-        ]);
-        g.fill({ color, alpha });
-    }
-
-    function drawResource(g, type, px, py) {
-        const color = RESOURCE_COLOR[type] ?? 0x666666;
-        // ambient glow, tinted by the ore color, gently out of phase per tile
-        const pulse = 0.5 + 0.5 * Math.sin(animMs / 700 + (px + py) * 0.05);
-        g.roundRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2, 9);
-        g.stroke({ width: 3, color, alpha: 0.2 + 0.3 * pulse });
-        g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-        g.fill({ color, alpha: 0.45 });
-        // a few speckles to read as ore
-        const dots = [[0.3, 0.35], [0.62, 0.4], [0.45, 0.66], [0.7, 0.7], [0.32, 0.62]];
-        for (const [fx, fy] of dots) {
-            g.circle(px + TILE_SIZE * fx, py + TILE_SIZE * fy, 3);
-            g.fill({ color: 0x000000, alpha: 0.28 });
-        }
-    }
-
-    function drawMachineBody(g, machine, px, py, alpha = 1, coords = null) {
-        const cx = px + TILE_SIZE / 2;
-        const cy = py + TILE_SIZE / 2;
-        // Drives the subtle "working" body animations; 0 for build ghosts
-        // (no progress field) and idle machines.
-        const frac = machine.progress != null ? machineProgressFraction(machine) : 0;
-
-        if (machine.type === 'belt') {
-            g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
-            g.fill({ color: 0x2f7bd1, alpha });
-
-            // Bend the belt when its feeder arrives from a perpendicular side.
-            // coords is omitted for the build ghost, which stays a straight belt.
-            const inDir = coords ? incomingFlowDir(coords.x, coords.y, machine) : null;
-            const out = DIR_VEC[machine.dir];
-            const isCorner = inDir && inDir !== machine.dir
-                && !(DIR_VEC[inDir].dx === -out.dx && DIR_VEC[inDir].dy === -out.dy);
-
-            if (isCorner) {
-                drawBeltCorner(g, px, py, inDir, machine.dir, alpha);
-            } else {
-                drawStraightChevrons(g, px, py, machine.dir, alpha);
-            }
-            return;
-        }
-
-        if (machine.type === 'splitter') {
-            g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
-            g.fill({ color: 0x16a085, alpha });
-            // one input from the back, three bright outputs on the other sides
-            drawInArrow(g, px, py, OPPOSITE[machine.dir], 0xffffff, 0.4 * alpha);
-            for (const od of [machine.dir, ...PERP[machine.dir]]) drawArrow(g, px, py, od, 0xffffff, 0.85 * alpha);
-            g.circle(cx, cy, 2.5);
-            g.fill({ color: 0xffffff, alpha });
-            return;
-        }
-
-        if (machine.type === 'merger') {
-            g.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
-            g.fill({ color: 0xca6f1e, alpha });
-            // three inputs on the other sides, one bright output along dir
-            for (const sd of [OPPOSITE[machine.dir], ...PERP[machine.dir]]) drawInArrow(g, px, py, sd, 0xffffff, 0.4 * alpha);
-            drawArrow(g, px, py, machine.dir, 0xffffff, 0.9 * alpha);
-            g.circle(cx, cy, 2.5);
-            g.fill({ color: 0xffffff, alpha });
-            return;
-        }
-
-        if (machine.type === 'extractor') {
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.fill({ color: 0x3c4452, alpha });
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.stroke({ width: 2, color: 0x222831, alpha });
-            // drill chevrons — they march downward as the extractor works
-            for (let i = 0; i < 3; i++) {
-                const yy = cy - 10 + ((i * 8 + frac * 8) % 24);
-                g.poly([cx - 9, yy, cx, yy + 6, cx + 9, yy]);
-                g.stroke({ width: 3, color: 0xf1c40f, alpha });
-            }
-            drawArrow(g, px, py, machine.dir, 0xf1c40f, 0.9 * alpha);
-            return;
-        }
-
-        if (machine.type === 'smelter') {
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.fill({ color: 0x6e3b2a, alpha });
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.stroke({ width: 2, color: 0x3d2017, alpha });
-            // glowing furnace mouth — heat builds with progress and flickers
-            const flicker = frac > 0 ? 0.12 * Math.sin(animMs / 70 + px) : 0;
-            const heat = 0.45 + 0.55 * frac + flicker;
-            g.roundRect(cx - 12, cy - 4, 24, 14, 3);
-            g.fill({ color: 0xff7a18, alpha: alpha * Math.min(1, heat) });
-            g.roundRect(cx - 12, cy - 4, 24, 5, 2);
-            g.fill({ color: 0xffd166, alpha: 0.9 * alpha * Math.min(1, heat) });
-            drawArrow(g, px, py, machine.dir, 0xffd166, 0.9 * alpha);
-            return;
-        }
-
-        if (machine.type === 'assembler') {
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.fill({ color: 0x5b3a78, alpha });
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.stroke({ width: 2, color: 0x35224a, alpha });
-            // gear — rotates one tooth per completed operation
-            const rot = frac * (Math.PI / 4);
-            g.circle(cx, cy - 2, 11);
-            g.fill({ color: 0xcdb4f0, alpha });
-            for (let i = 0; i < 8; i++) {
-                const a = (i / 8) * Math.PI * 2 + rot;
-                g.rect(cx + Math.cos(a) * 10 - 2, cy - 2 + Math.sin(a) * 10 - 2, 4, 4);
-                g.fill({ color: 0xcdb4f0, alpha });
-            }
-            g.circle(cx, cy - 2, 4);
-            g.fill({ color: 0x5b3a78, alpha });
-            drawArrow(g, px, py, machine.dir, 0xcdb4f0, 0.9 * alpha);
-            return;
-        }
-
-        if (machine.type === 'lab') {
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.fill({ color: 0x2c3e6b, alpha });
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.stroke({ width: 2, color: 0x1a2540, alpha });
-            // flask glyph — a bubble rises through it while analysing
-            g.circle(cx, cy + 4, 9);
-            g.fill({ color: 0xb07cf0, alpha });
-            g.rect(cx - 3, cy - 12, 6, 8);
-            g.fill({ color: 0xb07cf0, alpha });
-            g.circle(cx - 3, cy + 2, 2.5);
-            g.fill({ color: 0xffffff, alpha: 0.6 * alpha });
-            if (frac > 0) {
-                g.circle(cx + 3, cy + 9 - frac * 14, 2);
-                g.fill({ color: 0xffffff, alpha: 0.8 * alpha });
-            }
-            return;
-        }
-
-        if (machine.type === 'generator') {
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.fill({ color: 0x274156, alpha });
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.stroke({ width: 2, color: 0x16242f, alpha });
-            // lightning bolt
-            g.poly([cx + 5, cy - 14, cx - 7, cy + 3, cx - 1, cy + 3, cx - 5, cy + 14, cx + 7, cy - 3, cx + 1, cy - 3]);
-            g.fill({ color: 0xf7e463, alpha });
-            return;
-        }
-
-        if (machine.type === 'sink') {
-            g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-            g.fill({ color: 0xe74c3c, alpha });
-            g.circle(cx, cy, 12);
-            g.fill({ color: 0x7a1f15, alpha });
-            for (const dir of ['right', 'down', 'left', 'up']) {
-                drawArrow(g, px, py, dir, 0xffffff, 0.25 * alpha);
-            }
-            return;
-        }
-    }
-
-    function drawTierPips(g, machine, px, py) {
-        if (!UPGRADABLE.has(machine.type)) return;
-        for (let i = 0; i < MAX_TIER; i++) {
-            const cx = px + 9 + i * 8;
-            const cy = py + 9;
-            g.circle(cx, cy, 3);
-            if (i < machine.tier) g.fill(0xffd54a);
-            else g.stroke({ width: 1, color: 0xffd54a, alpha: 0.5 });
-        }
-    }
-
-    function drawProgress(g, machine, px, py) {
-        if (machine.type === 'belt' || machine.type === 'sink'
-            || machine.type === 'splitter' || machine.type === 'merger') return;
-        const frac = machineProgressFraction(machine);
-        if (frac <= 0) return;
-        const w = TILE_SIZE - 16;
-        const y = py + TILE_SIZE - 9;
-        g.rect(px + 8, y, w, 3);
-        g.fill({ color: 0x000000, alpha: 0.35 });
-        g.rect(px + 8, y, w * frac, 3);
-        g.fill(0x6ee7b7);
-    }
-
-    // Power feedback on top of the body: fueled generators show a flickering
-    // flame; working powered machines get a pulsing glow whose speed and
-    // brightness scale with the network throttle; a starved machine (or an
-    // unfueled generator) goes dark with a red "no power" pip.
-    function drawNoPower(g, px, py) {
-        g.roundRect(px + 3, py + 3, TILE_SIZE - 6, TILE_SIZE - 6, 8);
-        g.fill({ color: 0x000000, alpha: 0.45 });
-        const blink = 0.6 + 0.4 * Math.sin(animMs / 250);
-        g.circle(px + TILE_SIZE - 11, py + 11, 4);
-        g.fill({ color: 0xe74c3c, alpha: blink });
-    }
-
-    function drawPowerStatus(g, m, px, py) {
-        if (m.type === 'generator') {
-            if (m.fuelTicks > 0) {
-                const cx = px + TILE_SIZE / 2;
-                const f = 0.7 + 0.3 * Math.sin(animMs / 90 + px);
-                g.poly([cx - 6, py + 18, cx, py + 18 - 10 * f, cx + 6, py + 18]);
-                g.fill({ color: 0xff7a18, alpha: 0.95 });
-                g.poly([cx - 3, py + 18, cx, py + 18 - 5 * f, cx + 3, py + 18]);
-                g.fill({ color: 0xffd166, alpha: 0.95 });
-            } else {
-                drawNoPower(g, px, py);
-            }
-            return;
-        }
-        if (!POWER_DRAW[m.type]) return;
-        const working = m.pendingOutput !== null || m.progress > 0;
-        if (!working) return;
-        const th = power.throttle;
-        if (th <= 0.02) {
-            drawNoPower(g, px, py);
-            return;
-        }
-        const freq = 0.002 + 0.006 * th; // brownout → slower pulse
-        const pulse = 0.5 + 0.5 * Math.sin(animMs * freq + px + py);
-        const a = (0.12 + 0.4 * th) * (0.4 + 0.6 * pulse); // brownout → dimmer
-        g.roundRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4, 9);
-        g.stroke({ width: 3, color: 0x7fdfff, alpha: a });
-    }
-
-    // ---- Per-frame draw -----------------------------------------------------
-    function draw(state) {
-        const now = performance.now();
-        const frameDt = Math.min(100, now - lastDrawNow);
-        lastDrawNow = now;
-        if (!state.paused) animMs += frameDt * state.speed;
-
-        visuals.clear();
-
-        for (let x = 0; x < GRID_WIDTH; x++) {
-            for (let y = 0; y < GRID_HEIGHT; y++) {
-                const cell = grid[x][y];
-                const px = x * TILE_SIZE;
-                const py = y * TILE_SIZE;
-
-                if (cell.resource) drawResource(visuals, cell.resource, px, py);
-                if (cell.machine) {
-                    drawMachineBody(visuals, cell.machine, px, py, 1, { x, y });
-                    drawPowerStatus(visuals, cell.machine, px, py);
-                    drawTierPips(visuals, cell.machine, px, py);
-                    drawProgress(visuals, cell.machine, px, py);
+    function updateFocus(focus) {
+        if (focus !== focusShown) {
+            focusShown = focus;
+            focusGroup.clear();
+            if (focus) {
+                // Ring only the field nearest the pad: the tutorial's starter area.
+                const cells = [];
+                for (let x = 0; x < W; x++) {
+                    for (let y = 0; y < H; y++) {
+                        const c = grid[x][y];
+                        const hit = focus === 'sink' ? c.machine?.type === 'sink' : c.resource === focus && !c.machine;
+                        if (hit) cells.push({ x, y, d: Math.hypot(x - PAD_POS.x, y - PAD_POS.y) });
+                    }
+                }
+                const nearest = Math.min(...cells.map((c) => c.d));
+                for (const { x, y, d } of cells) {
+                    if (d > nearest + 3) continue;
+                    const ring = new THREE.Mesh(focusGeo, focusMat);
+                    ring.rotation.x = -Math.PI / 2;
+                    ring.position.set(x + 0.5, 0.05, y + 0.5);
+                    focusGroup.add(ring);
                 }
             }
         }
-
-        drawOverlay(state);
+        const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+        focusMat.opacity = 0.35 + 0.55 * pulse;
+        focusGroup.children.forEach((r) => r.scale.setScalar(1 + 0.08 * pulse));
     }
 
-    function drawOverlay(state) {
-        overlay.clear();
+    function updateOverlay(state) {
         const { hovered, tool, dir } = state;
-        if (hovered.x < 0) return;
-
-        const px = hovered.x * TILE_SIZE;
-        const py = hovered.y * TILE_SIZE;
-
-        overlay.roundRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2, 8);
-        overlay.stroke({ width: 2, color: 0xffffff, alpha: 0.2 });
+        const on = hovered.x >= 0;
+        cursor.visible = on;
+        tintBox.visible = false;
+        if (ghostShown) ghostShown.visible = false;
+        if (!on) return;
+        const cx = hovered.x + 0.5;
+        const cz = hovered.y + 0.5;
+        cursor.position.set(cx, 0.03, cz);
+        const pulse = state.lastBuildPulseMs > 0 ? 1 + 0.15 * (state.lastBuildPulseMs / 120) : 1;
+        cursor.scale.setScalar(pulse);
 
         if (tool === 'erase') {
-            overlay.roundRect(px + 6, py + 6, TILE_SIZE - 12, TILE_SIZE - 12, 10);
-            overlay.fill({ color: 0xe74c3c, alpha: 0.2 });
+            tintBox.visible = !!grid[hovered.x][hovered.y].machine;
+            tintBox.material.color.setHex(0xe74c3c);
+            tintBox.position.set(cx, 0.35, cz);
         } else if (tool === 'upgrade') {
-            const ok = canUpgrade(hovered.x, hovered.y);
-            overlay.roundRect(px + 6, py + 6, TILE_SIZE - 12, TILE_SIZE - 12, 10);
-            overlay.fill({ color: ok ? 0xffd54a : 0x888888, alpha: 0.22 });
+            tintBox.visible = !!grid[hovered.x][hovered.y].machine;
+            tintBox.material.color.setHex(canUpgrade(hovered.x, hovered.y) ? 0xffd54a : 0x888888);
+            tintBox.position.set(cx, 0.35, cz);
         } else {
-            // build ghost
-            const ok = canBuildMachine(hovered.x, hovered.y, tool);
-            drawMachineBody(overlay, { type: tool, dir }, px, py, 0.5);
-            overlay.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 10);
-            overlay.fill({ color: ok ? 0x2ecc71 : 0xe74c3c, alpha: 0.18 });
-        }
-
-        if (state.lastBuildPulseMs > 0) {
-            const a = state.lastBuildPulseMs / 120;
-            overlay.roundRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8, 12);
-            overlay.stroke({ width: 3, color: 0xffffff, alpha: 0.3 * a });
+            const ghost = ghostFor(tool, dir);
+            if (!ghost.parent) overlay.add(ghost);
+            ghost.visible = !grid[hovered.x][hovered.y].machine || tool === 'belt';
+            ghost.position.set(cx, 0.002, cz);
+            ghostMat.color.setHex(canBuildMachine(hovered.x, hovered.y, tool) ? 0x2ecc71 : 0xe74c3c);
+            ghostShown = ghost;
         }
     }
 
-    return { world, applyEvents, tweenItems, draw, reset };
+    // ---- Picking + sizing --------------------------------------------------------------
+    const raycaster = new THREE.Raycaster();
+    const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const ndc = new THREE.Vector2();
+    const hit = new THREE.Vector3();
+
+    /** Grid cell under a client (page) coordinate, or null when off the grid. */
+    function pickCell(clientX, clientY) {
+        const r = renderer.domElement.getBoundingClientRect();
+        ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+        raycaster.setFromCamera(ndc, rig.camera);
+        if (!raycaster.ray.intersectPlane(ground, hit)) return null;
+        const x = Math.floor(hit.x);
+        const y = Math.floor(hit.z);
+        return x >= 0 && x < W && y >= 0 && y < H ? { x, y } : null;
+    }
+
+    function resize() {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        renderer.setSize(w, h);
+        rig.resize(w, h);
+    }
+    new ResizeObserver(resize).observe(container);
+    resize();
+
+    // ---- Frame ---------------------------------------------------------------------------
+    let shownPhase = -1;
+    function draw(state, dt) {
+        const dtSim = state.paused ? 0 : dt * state.speed;
+        animMs += dtSim;
+        rig.update(dt);
+        // Phase changes: one step forward animates; anything else (first
+        // frame, loading a save) snaps.
+        const phase = project.phase;
+        const instant = shownPhase < 0 || phase !== shownPhase + 1;
+        if (phase !== shownPhase) {
+            env.setPhase(phase, instant);
+            cannon.setPhase(phase, instant);
+        }
+        applyMood(dt, phase !== shownPhase && instant);
+        shownPhase = phase;
+        syncMachines();
+        animateMachines(dtSim, dt);
+        env.update(dt);
+        cannon.update(dt, performance.now());
+        effects.update(dt, rig.target, phase, { width: W, height: H });
+        const now = performance.now();
+        if (padCredits > 0 && now - lastFloat > 450) {
+            lastFloat = now;
+            effects.floatText(new THREE.Vector3(PAD_POS.x + 0.5, 1.1, PAD_POS.y + 0.5), `+${padCredits}`);
+            padCredits = 0;
+        }
+        updateOverlay(state);
+        updateFocus(state.focus ?? null);
+        renderer.render(scene, rig.camera);
+    }
+
+    /** Client (page) coordinates of a cell's centre — for tests and tooltips. */
+    function projectCell(x, y) {
+        const v = new THREE.Vector3(x + 0.5, 0, y + 0.5).project(rig.camera);
+        const r = renderer.domElement.getBoundingClientRect();
+        return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    }
+
+    return {
+        canvas: renderer.domElement, rig, applyEvents, tweenItems, draw, reset, pickCell, projectCell,
+        /** Render cost of the last frame (draw calls, triangles) — for profiling. */
+        stats: () => ({ ...renderer.info.render }),
+        /** Visual state worth keeping in a save: the concrete scars. */
+        saveVisual: () => ({ paved: env.savePaved() }),
+        loadVisual: (data) => env.loadPaved(data?.paved),
+    };
 }

@@ -1,38 +1,45 @@
-// src/main.js — wires everything together: creates the Pixi app, builds the
-// renderer/UI, starts the loop, and translates input into grid edits.
-import * as PIXI from 'pixi.js';
+// src/main.js — wires everything together: builds the 3D renderer, UI and
+// story director, starts the loop, and translates input (pointer, keys,
+// wheel) into grid edits and camera moves. Owns transient UI state, order
+// policy, persistence and the campaign flow (title screen → play → ending).
 import './style.css';
 import {
-    TILE_SIZE, GRID_WIDTH, GRID_HEIGHT,
+    GRID_WIDTH, GRID_HEIGHT, TICK_RATE,
     ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS,
 } from './config.js';
 import {
-    grid, score, tickCount, order, power, research, unlockTech, startOrder,
+    grid, score, tickCount, order, power, research, project, stats, unlockTech, startOrder,
     initGrid, buildMachine, removeMachine, upgradeMachine, placeBelt, dirBetween,
-    serialize, loadState,
+    serialize, loadState, isBuildingUnlocked,
 } from './grid.js';
+import { unlockPhaseOf } from './campaign.js';
+import { BUILDING_NAMES } from './story.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
+import { createDirector } from './director.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-// --- Pixi app (canvas shows only the playfield) ---
-const app = new PIXI.Application();
-await app.init({
-    width: GRID_WIDTH * TILE_SIZE,
-    height: GRID_HEIGHT * TILE_SIZE,
-    backgroundColor: 0x222222,
-    antialias: true,
-});
-document.getElementById('stage').appendChild(app.canvas);
-app.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
+// --- 3D view (loads the Kenney models first; the loader shows progress) ---
 initGrid();
-const renderer = createRenderer(app);
-
-app.stage.eventMode = 'static';
-app.stage.hitArea = new PIXI.Rectangle(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+const view = document.getElementById('view');
+const loadingEl = document.getElementById('loading');
+let renderer;
+try {
+    renderer = await createRenderer(view, {
+        onProgress: (done, total) => {
+            if (loadingEl) loadingEl.textContent = `Unpacking Nile equipment… ${Math.round((done / total) * 100)}%`;
+        },
+    });
+} catch (err) {
+    // Don't leave the player staring at a frozen loading line.
+    if (loadingEl) loadingEl.textContent = 'Could not load the 3D assets. Check your connection and reload the page.';
+    throw err;
+}
+loadingEl?.remove();
+const canvas = renderer.canvas;
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // --- Shared UI/input state (kept out of the simulation) ---
 const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'generator', 'lab']);
@@ -42,19 +49,65 @@ const nextDir = (dir) => rotations[(rotations.indexOf(dir) + 1) % rotations.leng
 const state = {
     tool: 'belt',
     dir: 'right',
-    paused: false,
+    paused: true,   // until the title screen is dismissed
+    started: false, // a campaign is running (gates autosave + the director)
     speed: 1,
     hovered: { x: -1, y: -1 },
     lastBuildPulseMs: 0,
     drag: null, // { last: Pos|null, mode: 'lay'|'erase' } while a drag is active
+    focus: null, // what the active objective points at ('ironOre', 'sink'…), ringed in 3D
 };
 
+// --- World snapshot for the story director (and objectives) ---
+function snapshot() {
+    const built = Object.fromEntries([...buildableTools].map((t) => [t, 0]));
+    const extractorOn = { ironOre: 0, copperOre: 0, coalOre: 0 };
+    let fueledGenerators = 0;
+    let upgraded = 0;
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            const { machine: m, resource } = grid[x][y];
+            if (!m || m.type === 'sink') continue;
+            built[m.type] = (built[m.type] || 0) + 1;
+            if (m.type === 'extractor' && resource) extractorOn[resource]++;
+            if (m.type === 'generator' && m.fuelTicks > 0) fueledGenerators++;
+            if (m.tier > 1) upgraded++;
+        }
+    }
+    return {
+        tick: tickCount,
+        phase: project.phase,
+        complete: project.complete,
+        money: score,
+        throttle: power.throttle,
+        delivered: project.delivered,
+        produced: stats.produced,
+        deliveredTotal: stats.delivered,
+        researchEarned: stats.researchEarned,
+        tech: { ...research.unlocked },
+        techCount: Object.values(research.unlocked).filter(Boolean).length,
+        built,
+        extractorOn,
+        fueledGenerators,
+        upgraded,
+        order: { status: order.status, startTick: order.startTick },
+    };
+}
+
 // --- Persistence (localStorage I/O is orchestration, not simulation) ---
-const SAVE_KEY = 'factory.save.v1';
+const SAVE_KEY = 'lifeline.save.v2';
+const hasSave = () => {
+    try {
+        return localStorage.getItem(SAVE_KEY) !== null;
+    } catch {
+        return false;
+    }
+};
 
 function saveGame() {
+    if (!state.started) return false;
     try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(serialize()));
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ ...serialize(), story: director.save(), visual: renderer.saveVisual() }));
         return true;
     } catch {
         return false;
@@ -71,17 +124,58 @@ function loadGame() {
     const events = loadState(data);
     if (!events) return false; // missing / wrong version
     renderer.reset();
+    renderer.loadVisual(data.visual); // concrete scars from earlier builds
     renderer.applyEvents(events, 0); // recreate in-transit sprites at rest
     state.drag = null;
     state.hovered = { x: -1, y: -1 };
     nextOrderTick = null; // let the restored order resume cleanly
+    director.load(data.story, tickCount);
+    state.started = true;
     return true;
 }
+
+// --- Tools (locked buildings can't be selected) ---
+function selectTool(tool) {
+    if (buildableTools.has(tool) && !isBuildingUnlocked(tool)) {
+        ui.toast(`${BUILDING_NAMES[tool]} unlocks after Phase ${unlockPhaseOf(tool) + 1}`);
+        return;
+    }
+    state.tool = tool;
+}
+
+// --- Story director ---
+const director = createDirector({
+    // Late-bound: the UI is created below.
+    say: (line) => ui.say(line),
+    banner: (i) => ui.showBanner(i),
+    isBusy: () => ui.isBusy(),
+    ending: () => {
+        saveGame();
+        let machines = 0;
+        for (const col of grid) for (const c of col) if (c.machine && c.machine.type !== 'sink') machines++;
+        ui.showEnding({
+            stats: {
+                seconds: tickCount / TICK_RATE,
+                delivered: Object.values(stats.delivered).reduce((a, b) => a + b, 0),
+                machines,
+            },
+            onContinue: () => {},
+            onNewGame: () => {
+                try {
+                    localStorage.removeItem(SAVE_KEY);
+                } catch { /* ignore */ }
+                location.reload();
+            },
+        });
+    },
+});
 
 // --- HUD ---
 const ui = createUI({
     root: document.getElementById('toolbar'),
-    onToolChange: (tool) => (state.tool = tool),
+    view,
+    commsRoot: document.getElementById('comms'),
+    onToolChange: selectTool,
     onRotate: () => (state.dir = nextDir(state.dir)),
     onTogglePause: () => (state.paused = !state.paused),
     onSpeedChange: (delta) => (state.speed = clamp(state.speed + delta * 0.25, 0.25, 4)),
@@ -102,17 +196,23 @@ const ui = createUI({
             order: { ...order, remaining: Math.max(0, order.deadlineTick - tickCount) },
             power: { ...power },
             research: { points: research.points, unlocked: { ...research.unlocked } },
+            project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
+            unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
+            objectives: director.objectives(),
         };
     },
 });
 
 // --- Orders (generation/cadence is policy, so it lives here) ---
+// Priority Requests start once the Assembler is unlocked (phase 1 done).
 const randInt = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
 const issueOrder = () =>
     startOrder({ target: randInt(ORDER_TARGET), ticks: randInt(ORDER_TICKS), reward: randInt(ORDER_REWARD) });
 
 let nextOrderTick = null; // tickCount at which to issue the next order, or null
 function tickOrders() {
+    if (project.phase < 1) return;
+    if (order.status === 'none' && nextOrderTick === null) nextOrderTick = tickCount + ORDER_GRACE_TICKS * 4;
     if (!order.active && order.status !== 'none' && nextOrderTick === null) {
         nextOrderTick = tickCount + ORDER_GRACE_TICKS; // grace pause after a result
     }
@@ -121,15 +221,55 @@ function tickOrders() {
         issueOrder();
     }
 }
-issueOrder(); // first demand
 
-app.ticker.add(() => {
-    tickOrders();
+// --- Campaign flow: director polling + autosave ---
+const DIRECTOR_EVERY_MS = 200;
+const AUTOSAVE_EVERY_MS = 60_000;
+let directorClock = 0;
+let autosaveClock = 0;
+let lastPhase = project.phase;
+
+function onFrame(dt) {
+    if (state.started) {
+        tickOrders();
+        directorClock += dt;
+        if (directorClock >= DIRECTOR_EVERY_MS) {
+            directorClock = 0;
+            director.update(snapshot());
+            state.focus = director.objectives().find((o) => !o.done)?.focus ?? null;
+        }
+        autosaveClock += dt;
+        if (autosaveClock >= AUTOSAVE_EVERY_MS || project.phase !== lastPhase) {
+            autosaveClock = 0;
+            lastPhase = project.phase;
+            saveGame();
+        }
+    }
+    panWithKeys(dt);
     ui.update();
-});
-startGameLoop(app, renderer, state);
+}
+startGameLoop(renderer, state, onFrame);
+window.addEventListener('beforeunload', saveGame);
 
-// --- Input ---
+ui.showTitle({
+    hasSave: hasSave(),
+    onNew: () => {
+        state.started = true;
+        state.paused = false;
+        lastPhase = project.phase;
+    },
+    onResume: () => {
+        if (!loadGame()) {
+            ui.toast('Saved contract could not be read; starting fresh');
+            state.started = true;
+        }
+        lastPhase = project.phase;
+        state.paused = false;
+        if (director.ended()) ui.toast('Project LIFELINE is complete — sandbox mode');
+    },
+});
+
+// --- Input: build tools ---
 function actAt(gx, gy, button) {
     if (gx < 0 || gx >= GRID_WIDTH || gy < 0 || gy >= GRID_HEIGHT) return;
 
@@ -146,10 +286,27 @@ function actAt(gx, gy, button) {
     }
 }
 
+// --- Input: keyboard (tools, rotation, sim speed, camera) ---
 const keyTools = { 1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'assembler', 5: 'upgrade', 6: 'erase', 7: 'splitter', 8: 'merger', 9: 'generator', 0: 'lab' };
+const PAN_KEYS = {
+    w: [0, 1], arrowup: [0, 1], s: [0, -1], arrowdown: [0, -1],
+    a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0],
+};
+const held = new Set();
+const PAN_SPEED = 0.014; // world units per ms at zoom 1
+
 window.addEventListener('keydown', (e) => {
-    if (e.key in keyTools) state.tool = keyTools[e.key];
-    if (e.key === 'r' || e.key === 'R') state.dir = nextDir(state.dir);
+    if (!state.started || e.target.closest?.('input, textarea')) return;
+    const k = e.key.toLowerCase();
+    if (k in PAN_KEYS) {
+        held.add(k);
+        e.preventDefault();
+        return;
+    }
+    if (e.key in keyTools) selectTool(keyTools[e.key]);
+    if (k === 'r') state.dir = nextDir(state.dir);
+    if (k === 'q') renderer.rig.rotate(-1);
+    if (k === 'e') renderer.rig.rotate(1);
     if (e.key === ' ') {
         e.preventDefault();
         state.paused = !state.paused;
@@ -157,14 +314,22 @@ window.addEventListener('keydown', (e) => {
     if (e.key === '+' || e.key === '=') state.speed = clamp(state.speed + 0.25, 0.25, 4);
     if (e.key === '-' || e.key === '_') state.speed = clamp(state.speed - 0.25, 0.25, 4);
 });
+window.addEventListener('keyup', (e) => held.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => held.clear());
 
-const cellFromEvent = (event) => ({
-    gx: Math.floor(event.global.x / TILE_SIZE),
-    gy: Math.floor(event.global.y / TILE_SIZE),
-});
+function panWithKeys(dt) {
+    if (!held.size) return;
+    let rx = 0;
+    let uy = 0;
+    for (const k of held) {
+        rx += PAN_KEYS[k][0];
+        uy += PAN_KEYS[k][1];
+    }
+    const step = (PAN_SPEED * dt) / renderer.rig.zoom;
+    renderer.rig.panBy(rx * step, uy * step);
+}
 
-const onGrid = (x, y) => x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
-
+// --- Input: pointer (build/erase drags, middle-drag pan, wheel zoom) ---
 // Orthogonal unit cells from `last` (exclusive) to `curr` (inclusive). Colinear
 // runs fill every intermediate cell; diagonal / off-axis jumps yield nothing.
 function stepsBetween(last, curr) {
@@ -203,37 +368,73 @@ function dragTo(curr) {
         dragStep(curr); // first cell of the drag
         return;
     }
+    // In the isometric view a fast diagonal mouse move can skip a corner;
+    // walk it as an L (x first, then y) so belts stay connected.
+    if (curr.x !== drag.last.x && curr.y !== drag.last.y) {
+        const elbow = { x: curr.x, y: drag.last.y };
+        for (const cell of stepsBetween(drag.last, elbow)) dragStep(cell);
+    }
     for (const cell of stepsBetween(drag.last, curr)) dragStep(cell);
 }
 
-app.stage.on('pointermove', (event) => {
-    const { gx, gy } = cellFromEvent(event);
-    state.hovered = onGrid(gx, gy) ? { x: gx, y: gy } : { x: -1, y: -1 };
-    if (state.drag && onGrid(gx, gy)) dragTo({ x: gx, y: gy });
+let panDrag = null; // { x, y } last pointer position while middle-dragging
+
+canvas.addEventListener('pointermove', (e) => {
+    if (panDrag) {
+        renderer.rig.panPixels(e.clientX - panDrag.x, e.clientY - panDrag.y, canvas.clientHeight);
+        panDrag = { x: e.clientX, y: e.clientY };
+    }
+    const cell = renderer.pickCell(e.clientX, e.clientY);
+    state.hovered = cell ?? { x: -1, y: -1 };
+    if (state.drag && cell) dragTo(cell);
 });
 
-app.stage.on('pointerdown', (event) => {
-    const { gx, gy } = cellFromEvent(event);
-    if (!onGrid(gx, gy)) return;
+canvas.addEventListener('pointerleave', () => (state.hovered = { x: -1, y: -1 }));
 
-    if (event.button === 2 || state.tool === 'erase') {
-        state.drag = { last: null, mode: 'erase' };
-        dragTo({ x: gx, y: gy });
+canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    if (e.button === 1) {
+        e.preventDefault();
+        panDrag = { x: e.clientX, y: e.clientY };
         return;
     }
-    if (event.button !== 0) return;
+    if (!state.started) return;
+    const cell = renderer.pickCell(e.clientX, e.clientY);
+    if (!cell) return;
+
+    if (e.button === 2 || state.tool === 'erase') {
+        state.drag = { last: null, mode: 'erase' };
+        dragTo(cell);
+        return;
+    }
+    if (e.button !== 0) return;
     if (state.tool === 'belt') {
         state.drag = { last: null, mode: 'lay' };
-        dragTo({ x: gx, y: gy });
+        dragTo(cell);
         return;
     }
-    actAt(gx, gy, event.button);
+    actAt(cell.x, cell.y, e.button);
 });
 
-const endDrag = () => (state.drag = null);
-app.stage.on('pointerup', endDrag);
-app.stage.on('pointerupoutside', endDrag);
+const endDrag = (e) => {
+    state.drag = null;
+    panDrag = null;
+    if (e?.pointerId != null && canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
 
-// Dev-only debug hook so tests/tools can observe belt directions through
-// corners (and the rest of the grid). Stripped from production builds.
-if (import.meta.env.DEV) window.__grid = grid;
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    renderer.rig.zoomBy(Math.exp(-e.deltaY * 0.0012));
+}, { passive: false });
+
+// Dev-only debug hooks so tests/tools can observe and drive the live
+// simulation (the same module instances the game uses). Stripped from
+// production builds.
+if (import.meta.env.DEV) {
+    window.__grid = grid;
+    window.__sim = await import('./grid.js');
+    window.__campaign = await import('./campaign.js');
+    window.__renderer = renderer;
+}

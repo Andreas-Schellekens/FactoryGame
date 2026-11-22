@@ -1,15 +1,39 @@
 // src/config.js — central tunables for the game.
-export const TILE_SIZE = 64;   // Each cell is 64x64 pixels
-export const GRID_WIDTH = 12;  // cells wide
-export const GRID_HEIGHT = 10; // cells tall
+// The world is a GRID_WIDTH × GRID_HEIGHT grid; in the 3D view one cell is
+// one world unit (cell (x, y) is centred on world (x + 0.5, 0, y + 0.5)).
+export const GRID_WIDTH = 32;  // cells wide
+export const GRID_HEIGHT = 24; // cells tall
 export const TICK_RATE = 4;    // simulation steps per second
+
+// Map layout: the Dispatch Pad, and the ore fields as blobs (centre + radius).
+// The three small fields next to the pad are the tutorial's starter area; the
+// rest reward expanding. Terrain is recreated from this on load.
+export const PAD_POS = { x: 19, y: 12 };
+// The LIFELINE construction site: reserved cells beside the pad where the
+// cannon rises phase by phase. Nothing can be built here.
+export const CANNON_AREA = { x: 20, y: 11, w: 3, h: 3 };
+export const ORE_FIELDS = [
+    { type: 'ironOre', x: 13, y: 11, r: 1.4 },
+    { type: 'copperOre', x: 15, y: 17, r: 1.2 },
+    { type: 'coalOre', x: 16, y: 6, r: 1.1 },
+    { type: 'ironOre', x: 5, y: 5, r: 2.2 },
+    { type: 'ironOre', x: 26, y: 19, r: 2.0 },
+    { type: 'copperOre', x: 6, y: 18, r: 2.1 },
+    { type: 'copperOre', x: 27, y: 4, r: 2.0 },
+    { type: 'coalOre', x: 4, y: 12, r: 1.8 },
+    { type: 'coalOre', x: 28, y: 12, r: 1.6 },
+];
 
 // Economy
 export const STARTING_MONEY = 200; // enough to bootstrap one full production chain
 export const PRODUCT_REWARD = 12;  // money earned per circuit consumed by the sink
-// Payout per item type the sink accepts. The advanced circuit (2 circuits +
-// 1 ironIngot, research-gated) is worth more than the sum of its parts.
+// Payout per item type the sink (the Dispatch Pad) accepts. Ingots pay a
+// little so the first phase already earns credits; the advanced circuit
+// (2 circuits + 1 ironIngot, research-gated) is worth more than its parts.
+// The pad also accepts whatever the active campaign phase requires.
 export const SINK_VALUE = {
+    ironIngot: 2,
+    copperIngot: 2,
     circuit: PRODUCT_REWARD,
     advancedCircuit: 40,
 };
@@ -43,10 +67,10 @@ export const POWER_DRAW = {
 
 // Research: labs convert `research` items (assembled from circuits) into
 // points; points buy permanent tech-tree unlocks. Costs are keyed by the
-// node ids in grid.js's `research.unlocked`.
+// node ids in grid.js's `research.unlocked`. (Buildings — generator, lab… —
+// are unlocked by campaign phases instead; see campaign.js.)
 export const RESEARCH_PER_ITEM = 5;
 export const TECH_COST = {
-    power: 20,           // unlocks building generators
     fastBelts: 40,       // belts (and routers) move twice per tick
     advancedProduct: 60, // unlocks the advancedCircuit recipe
     tier4: 80,           // raises the machine upgrade cap to tier 4

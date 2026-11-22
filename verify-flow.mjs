@@ -1,15 +1,30 @@
+// End-to-end check: start a campaign, build an iron + copper → circuit chain
+// next to the Dispatch Pad with real mouse input in the 3D view, and assert
+// that drag-laid belts turn their corners correctly and that money flows.
+// Run with the dev server on :5173:  node verify-flow.mjs
 import { chromium } from 'playwright';
 
-const TILE = 64;
 const URL = 'http://localhost:5173/';
 
-const browser = await chromium.launch();
-const page = await browser.newPage();
+// SwiftShader: headless Chromium otherwise renders WebGL canvases blank.
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1600, height: 960 } });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(URL, { waitUntil: 'networkidle' });
-await page.waitForSelector('#stage canvas');
+// Let the first load finish before reloading, or its in-flight model fetches
+// get aborted and surface as "Failed to fetch" page errors.
+await page.waitForSelector('text=Begin Onboarding', { timeout: 60000 });
+await page.evaluate(() => localStorage.clear()); // start from a fresh contract
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForSelector('text=Begin Onboarding', { timeout: 60000 }); // models loaded
+await page.click('text=Begin Onboarding'); // dismiss the title screen
+// Skip the campaign gate so the Assembler is buildable (dev-only hook).
+await page.evaluate(() => { window.__sim.project.phase = 1; });
+await page.waitForTimeout(800); // let the camera settle
 
-const canvasBox = await page.locator('#stage canvas').boundingBox();
-const center = (gx, gy) => ({ x: canvasBox.x + gx * TILE + TILE / 2, y: canvasBox.y + gy * TILE + TILE / 2 });
+// Cell centres in page coordinates come from the renderer's own projection.
+const center = (gx, gy) => page.evaluate(([x, y]) => window.__renderer.projectCell(x, y), [gx, gy]);
 
 const readMoney = async () =>
     page.locator('.stat.money').evaluate((el) => parseInt(el.textContent.replace(/[^0-9-]/g, ''), 10));
@@ -19,19 +34,19 @@ async function selectTool(key) {
 }
 
 async function clickCell(gx, gy) {
-    const p = center(gx, gy);
+    const p = await center(gx, gy);
     await page.mouse.move(p.x, p.y);
     await page.mouse.down();
     await page.mouse.up();
 }
 
-// Drag through EVERY cell center along the path (pointerdown → moves → pointerup).
+// Drag through EVERY cell centre along the path (pointerdown → moves → pointerup).
 async function dragBelt(cells) {
-    const first = center(cells[0][0], cells[0][1]);
+    const first = await center(cells[0][0], cells[0][1]);
     await page.mouse.move(first.x, first.y);
     await page.mouse.down();
     for (let i = 1; i < cells.length; i++) {
-        const p = center(cells[i][0], cells[i][1]);
+        const p = await center(cells[i][0], cells[i][1]);
         await page.mouse.move(p.x, p.y, { steps: 4 });
     }
     await page.mouse.up();
@@ -41,25 +56,26 @@ const dirsAlong = (cells) =>
     page.evaluate((cs) => cs.map(([x, y]) => window.__grid[x][y].machine?.dir ?? null), cells);
 
 // ---- Build the factory (machines via clicks, all default dir 'right') ------
+// Starter fields: iron around (13,11), copper around (15,17); pad at (19,12).
 await selectTool('2'); // extractor (on ore nodes)
-await clickCell(1, 1); // iron
-await clickCell(1, 7); // copper
+await clickCell(14, 11); // iron
+await clickCell(15, 16); // copper
 
 await selectTool('3'); // smelter
-await clickCell(3, 1); // iron smelter
-await clickCell(3, 7); // copper smelter
+await clickCell(16, 11); // iron smelter
+await clickCell(17, 16); // copper smelter
 
 await selectTool('4'); // assembler (combines ironIngot + copperIngot → circuit)
-await clickCell(6, 4);
+await clickCell(17, 13);
 
 // ---- Lay every belt by dragging --------------------------------------------
 await selectTool('1'); // belt
-await clickCell(2, 1); // extractor → iron smelter feed
-await clickCell(2, 7); // extractor → copper smelter feed
+await clickCell(15, 11); // extractor → iron smelter feed
+await clickCell(16, 16); // extractor → copper smelter feed
 
-const ironRoute = [[4, 1], [5, 1], [5, 2], [5, 3], [5, 4], [6, 4]]; // smelter out → down → into assembler (W)
-const copperRoute = [[4, 7], [5, 7], [6, 7], [6, 6], [6, 5], [6, 4]]; // smelter out → up → into assembler (S)
-const outRoute = [[7, 4], [8, 4], [9, 4], [10, 4]]; // assembler → sink
+const ironRoute = [[17, 11], [17, 12], [17, 13]]; // smelter out → down → into assembler (N)
+const copperRoute = [[18, 16], [18, 15], [18, 14], [17, 14], [17, 13]]; // smelter out → up → left → into assembler (S)
+const outRoute = [[18, 13], [19, 13], [19, 12]]; // assembler → right → up into the pad
 await dragBelt(ironRoute);
 await dragBelt(copperRoute);
 await dragBelt(outRoute);
@@ -71,11 +87,11 @@ const outDirs = await dirsAlong(outRoute);
 
 const baseline = await readMoney();
 
-// ---- Let it run; poll money for ~12s real time -----------------------------
+// ---- Let it run; poll money for ~14s real time -----------------------------
 let peak = baseline;
 let firstPayAt = null;
 const t0 = Date.now();
-while (Date.now() - t0 < 12000) {
+while (Date.now() - t0 < 14000) {
     await page.waitForTimeout(400);
     const m = await readMoney();
     if (m > peak) {
@@ -83,6 +99,7 @@ while (Date.now() - t0 < 12000) {
         if (firstPayAt === null) firstPayAt = ((Date.now() - t0) / 1000).toFixed(1);
     }
 }
+const circuits = await page.evaluate(() => window.__sim.stats.delivered.circuit ?? 0);
 
 await browser.close();
 
@@ -95,16 +112,19 @@ console.log('');
 console.log(`Money after build (baseline): ${baseline}`);
 console.log(`Money peak after running    : ${peak}`);
 console.log(`First payout at             : ${firstPayAt ? firstPayAt + 's' : 'never'}`);
+console.log(`Circuits delivered          : ${circuits}`);
+if (errors.length) console.log('Page errors:', errors);
 console.log('');
 
 // Corner expectations from the drag logic (the cell being left re-points).
 const checks = [
-    ['iron corner (5,1) turns down', ironDirs[1] === 'down'],
-    ['iron corner (5,4) turns right into assembler', ironDirs[4] === 'right'],
-    ['copper corner (6,7) turns up', copperDirs[2] === 'up'],
-    ['copper corner (6,5) points up into assembler', copperDirs[4] === 'up'],
-    ['out belt (9,4) points right into sink', outDirs[2] === 'right'],
-    ['money increased while running (items flow through corners)', peak > baseline],
+    ['iron corner (17,11) turns down', ironDirs[0] === 'down'],
+    ['iron belt (17,12) points down into assembler', ironDirs[1] === 'down'],
+    ['copper corner (18,14) turns left', copperDirs[2] === 'left'],
+    ['copper belt (17,14) points up into assembler', copperDirs[3] === 'up'],
+    ['out belt (19,13) points up into the pad', outDirs[1] === 'up'],
+    ['circuits reach the pad and money increases', circuits > 0 && peak > baseline],
+    ['no page errors', errors.length === 0],
 ];
 let failed = 0;
 for (const [name, ok] of checks) {

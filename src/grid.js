@@ -14,7 +14,11 @@ import {
     POWER_DRAW,
     RESEARCH_PER_ITEM,
     TECH_COST,
+    PAD_POS,
+    ORE_FIELDS,
+    CANNON_AREA,
 } from './config.js';
+import { PHASES, STARTING_BUILDINGS } from './campaign.js';
 
 export const grid = [];
 export let score = STARTING_MONEY;
@@ -22,7 +26,8 @@ export let score = STARTING_MONEY;
 /**
  * @typedef {{ id: number, type: string }} Item
  * @typedef {{ type: string, dir: 'right'|'down'|'left'|'up', tier: number, buffer: Record<string, number>, pendingOutput: string|null, progress: number, produces?: string }} Machine
- * @typedef {{ machine: Machine | null, item: Item | null, resource: string | null }} Cell
+ * @typedef {{ machine: Machine | null, item: Item | null, resource: string | null, blocked?: boolean }} Cell
+ *   (`blocked` = the reserved LIFELINE construction site; terrain, never saved)
  * @typedef {{ x: number, y: number }} Pos
  * @typedef {{ kind: 'move', item: Item, from: Pos, to: Pos } | { kind: 'spawn', item: Item, at: Pos } | { kind: 'consume', item: Item, at: Pos }} FactoryEvent
  */
@@ -46,7 +51,7 @@ export const order = {
     delivered: 0,          // products sunk since this order started
 };
 
-// The only item type the sink will pay for.
+// The basic product: what orders ask for, and the first assembler recipe.
 export const PRODUCT_TYPE = 'circuit';
 
 // Global power network (mutated in place, like `order` — a stable reference
@@ -67,12 +72,63 @@ export const power = {
 export const research = {
     points: 0,
     unlocked: {
-        power: false,
         fastBelts: false,
         advancedProduct: false,
         tier4: false,
     },
 };
+
+// Campaign progress (mutated in place, like `order`). `phase` indexes the
+// active entry of campaign.js PHASES (== PHASES.length once the cannon is
+// done); `delivered` counts the active phase's required items sunk so far.
+// Buildings unlocked so far are derived from `phase`, never stored. Persisted.
+export const project = {
+    phase: 0,
+    delivered: {},
+    complete: false,
+};
+
+// Lifetime counters the story director reads to trigger tutorial steps and
+// story beats ("first ingot", "first circuit"…). Persisted.
+export const stats = {
+    produced: {},        // items ejected by machines, per type
+    delivered: {},       // items sunk at the Dispatch Pad, per type
+    researchEarned: 0,   // research points ever banked by labs
+};
+
+const bump = (counter, key, n = 1) => (counter[key] = (counter[key] || 0) + n);
+
+/** Is this building type available to build in the current campaign phase? */
+export function isBuildingUnlocked(type) {
+    if (STARTING_BUILDINGS.includes(type)) return true;
+    for (let i = 0; i < project.phase && i < PHASES.length; i++) {
+        if (PHASES[i].unlocks.includes(type)) return true;
+    }
+    return false;
+}
+
+/** The active phase definition, or null once the campaign is complete. */
+export function currentPhase() {
+    return PHASES[project.phase] ?? null;
+}
+
+// Advance the campaign once every requirement of the active phase is met.
+// The `phase` bump is the only completion signal — the director polls it.
+function checkPhaseComplete() {
+    const phase = currentPhase();
+    if (!phase) return;
+    for (const [type, n] of Object.entries(phase.requires)) {
+        if ((project.delivered[type] || 0) < n) return;
+    }
+    project.phase++;
+    project.delivered = {};
+    if (project.phase >= PHASES.length) project.complete = true;
+}
+
+// The Dispatch Pad buys sellable goods and takes anything the phase needs.
+function sinkAccepts(itemType) {
+    return itemType in SINK_VALUE || itemType in (currentPhase()?.requires ?? {});
+}
 
 /** Spend research points on a tech node. @returns {boolean} success */
 export function unlockTech(id) {
@@ -194,15 +250,37 @@ export function initGrid() {
     }
 
     // Ore deposits (terrain) — extractors must be placed on top of these.
-    grid[1][1].resource = 'ironOre';
-    grid[1][2].resource = 'ironOre';
-    grid[1][4].resource = 'coalOre';
-    grid[1][5].resource = 'coalOre';
-    grid[1][7].resource = 'copperOre';
-    grid[1][8].resource = 'copperOre';
+    // Each field is a blob with a deterministic ragged edge, so the same map
+    // comes back on every load.
+    for (const f of ORE_FIELDS) {
+        const r = Math.ceil(f.r + 1);
+        for (let x = f.x - r; x <= f.x + r; x++) {
+            for (let y = f.y - r; y <= f.y + r; y++) {
+                if (!inBounds(x, y)) continue;
+                const jitter = (cellHash(x, y) - 0.5) * 0.9;
+                if (Math.hypot(x - f.x, y - f.y) <= f.r + jitter) grid[x][y].resource = f.type;
+            }
+        }
+    }
+    grid[PAD_POS.x][PAD_POS.y].resource = null;
+
+    // The cannon's construction site: reserved, nothing can be built there.
+    for (let x = CANNON_AREA.x; x < CANNON_AREA.x + CANNON_AREA.w; x++) {
+        for (let y = CANNON_AREA.y; y < CANNON_AREA.y + CANNON_AREA.h; y++) {
+            grid[x][y].resource = null;
+            grid[x][y].blocked = true;
+        }
+    }
 
     // The single, pre-placed sink (protected: cannot be built or removed).
-    grid[10][4].machine = makeMachine('sink');
+    grid[PAD_POS.x][PAD_POS.y].machine = makeMachine('sink');
+}
+
+/** Deterministic pseudo-random value in [0, 1) for a cell (map + decor layout). */
+export function cellHash(x, y) {
+    let h = (x * 374761393 + y * 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
 export function machineCost(type) {
@@ -210,7 +288,8 @@ export function machineCost(type) {
 }
 
 // ---- Save / load --------------------------------------------------------
-const SAVE_VERSION = 1;
+// v2: campaign (project/stats) added; v1 sandbox saves are not loaded.
+const SAVE_VERSION = 2;
 
 /**
  * Snapshot the simulation as a plain, JSON-serializable object. Terrain
@@ -236,6 +315,8 @@ export function serialize() {
         tickCount,
         order: { ...order },
         research: { points: research.points, unlocked: { ...research.unlocked } },
+        project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
+        stats: structuredClone(stats),
         cells,
     };
 }
@@ -259,6 +340,7 @@ export function loadState(data) {
         const { x, y } = entry;
         if (!inBounds(x, y)) continue;
         const cell = grid[x][y];
+        if (cell.blocked) continue; // reserved site (a save from before it existed)
         if (entry.machine) {
             // Overlay saved fields onto fresh defaults so a save missing a newer
             // field (e.g. toggle) still loads cleanly.
@@ -279,6 +361,13 @@ export function loadState(data) {
     research.points = data.research?.points ?? 0;
     for (const k in research.unlocked) research.unlocked[k] = data.research?.unlocked?.[k] ?? false;
 
+    project.phase = data.project?.phase ?? 0;
+    project.delivered = { ...(data.project?.delivered ?? {}) };
+    project.complete = data.project?.complete ?? false;
+    stats.produced = { ...(data.stats?.produced ?? {}) };
+    stats.delivered = { ...(data.stats?.delivered ?? {}) };
+    stats.researchEarned = data.stats?.researchEarned ?? 0;
+
     return events;
 }
 
@@ -286,9 +375,9 @@ export function canBuildMachine(x, y, type) {
     if (!inBounds(x, y)) return false;
     if (!(type in MACHINE_COST)) return false;
     const cell = grid[x][y];
-    if (cell.machine !== null) return false;
+    if (cell.machine !== null || cell.blocked) return false;
     if (type === 'extractor' && cell.resource === null) return false; // needs an ore node
-    if (type === 'generator' && !research.unlocked.power) return false; // research-gated
+    if (!isBuildingUnlocked(type)) return false; // campaign-gated
     return score >= MACHINE_COST[type];
 }
 
@@ -333,13 +422,17 @@ export function placeBelt(x, y, dir) {
         cell.machine.dir = dir; // re-orient in place (free) to follow the drag
         return 'oriented';
     }
-    if (cell.machine) return 'blocked'; // non-belt machine — leave it alone
+    if (cell.machine || cell.blocked) return 'blocked'; // non-belt machine / reserved site
     if (score < MACHINE_COST.belt) return 'unaffordable';
     buildMachine(x, y, 'belt', dir); // builds + charges (already known affordable/empty)
     return 'built';
 }
 
-/** @returns {FactoryEvent[]} events for any item destroyed with the machine */
+/**
+ * Remove a machine and refund its placement cost (upgrades are not refunded),
+ * so a bad layout can always be sold back — the economy can't soft-lock.
+ * @returns {FactoryEvent[]} events for any item destroyed with the machine
+ */
 export function removeMachine(x, y) {
     const events = [];
     if (!inBounds(x, y)) return events;
@@ -349,6 +442,7 @@ export function removeMachine(x, y) {
         events.push({ kind: 'consume', item: cell.item, at: { x, y } });
         cell.item = null;
     }
+    score += MACHINE_COST[cell.machine.type] ?? 0;
     cell.machine = null;
     return events;
 }
@@ -385,7 +479,7 @@ function cellAccepts(cell, itemType) {
         case 'merger':
             return false; // pull-only: items enter via the merger's own pull
         case 'sink':
-            return itemType in SINK_VALUE;
+            return sinkAccepts(itemType);
         case 'smelter':
             return itemType in SMELT && (m.buffer[itemType] || 0) < BUFFER_CAP;
         case 'assembler':
@@ -444,18 +538,24 @@ export function updateFactoryLogic() {
 
     tickCount++;
 
-    // 1) Sinks consume products and pay out (and credit the active order).
+    // 1) Sinks (Dispatch Pads) consume deliveries, pay out, and credit the
+    // active order and the active campaign phase. cellAccepts already limited
+    // what could arrive here, so anything sitting on a pad is consumed.
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const cell = grid[x][y];
-            if (cell.machine?.type === 'sink' && cell.item && SINK_VALUE[cell.item.type]) {
+            if (cell.machine?.type === 'sink' && cell.item) {
+                const type = cell.item.type;
                 events.push({ kind: 'consume', item: cell.item, at: { x, y } });
-                if (order.active && cell.item.type === order.productType) order.delivered++;
-                score += SINK_VALUE[cell.item.type];
+                if (order.active && type === order.productType) order.delivered++;
+                if (currentPhase()?.requires[type]) bump(project.delivered, type);
+                bump(stats.delivered, type);
+                score += SINK_VALUE[type] ?? 0;
                 cell.item = null;
             }
         }
     }
+    checkPhaseComplete();
 
     // Resolve the order the same tick its final product is sunk: complete (and
     // pay the bonus) on reaching the target, else fail when the deadline passes.
@@ -634,7 +734,10 @@ export function updateFactoryLogic() {
                 if (recipe.output === null) {
                     // Lab: the "product" is research points, not an item.
                     research.points += RESEARCH_PER_ITEM;
+                    stats.researchEarned += RESEARCH_PER_ITEM;
                 } else {
+                    // Counted when crafted, even if the output is still blocked.
+                    bump(stats.produced, recipe.output);
                     m.pendingOutput = recipe.output;
                     if (tryEject(m, x, y, m.pendingOutput, events)) m.pendingOutput = null;
                 }
@@ -650,8 +753,12 @@ export function updateFactoryLogic() {
             if (m?.type !== 'extractor' || !m.produces) continue;
             m.progress++;
             if (m.progress >= processInterval(m)) {
-                if (tryEject(m, x, y, m.produces, events)) m.progress = 0;
-                else m.progress = processInterval(m); // output blocked; hold at full
+                if (tryEject(m, x, y, m.produces, events)) {
+                    m.progress = 0;
+                    bump(stats.produced, m.produces);
+                } else {
+                    m.progress = processInterval(m); // output blocked; hold at full
+                }
             }
         }
     }
