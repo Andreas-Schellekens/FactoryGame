@@ -14,19 +14,22 @@ export const GAME_TITLE = 'Protocol: Selene';
 export const AI = { name: 'DELTA', title: 'Dispatch & Engineering Logistics Task Assistant' };
 
 // The organisation behind the protocol. NIHIL is NILE with "Heavy Industry"
-// slotted in: the reveal is literally two extra letters.
+// slotted in: the reveal is literally two extra letters. `player` is what the
+// organisation calls you: a noble Steward, until you are an Asset.
 export const BRAND = {
     nile: {
         name: 'NILE',
         full: 'Network for Infrastructure, Logistics & Engineering',
         motto: 'Ad astra, ad infinitum',
         byline: 'An Initiative by NILE',
+        player: 'Steward',
     },
     nihil: {
         name: 'NIHIL',
         full: 'Network for Infrastructure, Heavy Industry & Logistics',
         motto: 'Ex nihilo, nihil fit',
         byline: 'A Project of NIHIL',
+        player: 'Asset',
     },
 };
 
@@ -90,7 +93,8 @@ const d = (text, mood) => ({ who: 'delta', text, mood });
 const nile = (text) => ({ who: 'nile', text });
 const memo = (text) => ({ who: 'memo', text });
 
-export const WELCOME_BACK = d('Welcome back, Pioneer. Your absence has been logged, timestamped and gently judged.');
+export const welcomeBack = (phase) =>
+    d(`Welcome back, ${brandFor(phase).player}. Your absence has been logged, timestamped and gently judged.`, phase >= 4 ? 'sinister' : undefined);
 
 // Story beats fire once each. The director plays the first beat whose `when`
 // holds at a moment DELTA is free, so list order is play order, and a beat
@@ -103,7 +107,7 @@ export const BEATS = [
         when: () => true,
         lines: [
             nile('INCOMING TRANSMISSION — NILE, Network for Infrastructure, Logistics & Engineering. Office of Planetary Continuity.'),
-            d("Hello, Pioneer! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional.", 'happy'),
+            d("Hello, Steward! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional.", 'happy'),
             d("I won't sugarcoat it: the Moon is falling. Our astronomers give Earth seventeen days."),
             d("NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it.", 'happy'),
             d('Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision.'),
@@ -231,7 +235,8 @@ export const BEATS = [
             d('The Moon is a free night light. Free things undercut Moon+. And so, the Moon has to go.', 'sinister'),
             nile('NILE is now NIHIL: the Network for Infrastructure, Heavy Industry & Logistics. Ex nihilo, nihil fit.™'),
             d('Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera.', 'sinister'),
-            d("Final phase: Ignition. Let's finish this, Pioneer. For Earth. Well. For the shareholders on Earth."),
+            d('Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion.', 'sinister'),
+            d("Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."),
         ],
     },
 ];
@@ -317,7 +322,7 @@ export const REACTIONS = {
 export const ENDING = {
     lines: [
         d("Firing in three... two... I'm contractually obliged to say 'one'."),
-        d('Congratulations, Pioneer. You have saved Earth from free things.', 'sinister'),
+        d('Congratulations, Asset. You have saved Earth from free things.', 'sinister'),
         nile('Moon+ is now live. Look up! Your complimentary three-day trial has already expired.'),
         d('Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose.'),
     ],

@@ -3,7 +3,7 @@
 // objectives, nudges for a stuck player, order reactions, ambient chatter and
 // the ending trigger. No DOM, no Pixi — it talks to the UI through callbacks.
 // All text comes from story.js.
-import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, WELCOME_BACK } from './story.js';
+import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack } from './story.js';
 
 // Timings are in simulation ticks (4/s at 1× speed), so pausing the game
 // also pauses DELTA's nagging.
@@ -114,14 +114,14 @@ export function createDirector({ say, banner, ending, isBusy }) {
 
         save: () => ({ flags: [...flags] }),
 
-        /** Restore after loading a game; `tick` is the restored sim clock. */
-        load(data, tick) {
+        /** Restore after loading a game; `tick` is the restored sim clock, `phase` the campaign phase. */
+        load(data, tick, phase = 0) {
             flags = new Set(data?.flags ?? []);
             lastAmbient = tick;
             stuck = { key: null, since: tick };
             lastHintAt.clear();
             lastOrderKey = null;
-            if (flags.size) say(WELCOME_BACK);
+            if (flags.size) say(welcomeBack(phase));
         },
     };
 }

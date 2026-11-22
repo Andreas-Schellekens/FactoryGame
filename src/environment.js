@@ -1,6 +1,6 @@
 // src/environment.js — the valley the factory is built in, and how it decays.
 // Phase 0 is a cosy meadow: green grass, forest, flowers, a farm, a pond, the
-// Pioneer's camp. Every completed phase darkens it (docs/DESIGN.md "Visual
+// Steward's camp. Every completed phase darkens it (docs/DESIGN.md "Visual
 // arc"): grass dries, trees turn autumn → dark → get felled one by one,
 // flowers vanish, NILE's compound spreads in from the east. Separately, the
 // factory leaves its own scars: grass turns to concrete under everything the
@@ -268,7 +268,7 @@ export function buildEnvironment(scene, assets, effects) {
         return t;
     }
 
-    // Pioneer's camp (west): where the hero sleeps. The fire goes out after the reveal.
+    // The Steward's camp (west): where the hero sleeps. The fire goes out after the reveal.
     addProp('tent', -3.2, 10.6, 0, 5, { rot: Math.PI / 2 });
     addProp('tentSmall', -4.2, 13.4, 0, 5, { rot: Math.PI * 0.6 });
     const campfire = place('campfire', -2.2, 12.5);

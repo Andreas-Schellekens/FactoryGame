@@ -252,7 +252,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const b = brandFor(brandPhase);
         const evil = brandPhase >= 4;
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
-        if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: 'not for Pioneer eyes', svg: memoSVG() };
+        if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: `not for ${b.player} eyes`, svg: memoSVG() };
         return { name: `${AI.name} ▸ CAPCOM`, role: `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
     }
 
@@ -398,7 +398,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             el('p', 'title-byline', BRAND.nile.byline),
             el('p', 'title-pitch', 'The Moon is falling. NILE has a plan. You are the plan.'),
             actions,
-            el('p', 'fine-print', 'By clicking Begin you accept the NILE Pioneer Agreement (4,812 pages), including Clause 88.'),
+            el('p', 'fine-print', `By clicking Begin you accept the ${BRAND.nile.name} ${BRAND.nile.player} Agreement (4,812 pages), including Clause 88.`),
         );
         overlay.append(lockup, card);
         document.body.appendChild(overlay);

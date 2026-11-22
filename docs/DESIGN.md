@@ -1,6 +1,6 @@
 # Protocol: Selene — design & roadmap
 
-A 2.5D factory game with a story and an ending. You are a "Pioneer"
+A 2.5D factory game with a story and an ending. You are a "Steward"
 contracted by **NILE** to build a giant cannon that will save Earth from the
 falling Moon. Over the campaign it becomes clear that NILE is really
 **NIHIL**, and that the Moon was never falling.
@@ -21,6 +21,10 @@ NILE**. Mark: a delta (Δv, three branches) in a square frame, signal orange.
 for Infrastructure, Heavy Industry & Logistics*. Motto: *"Ex nihilo, nihil
 fit."* After the reveal it is **Protocol: Selene — A Project of NIHIL**; the
 delta collapses to a flat line and the HUD turns alarm red.
+
+**The player** is a **Steward** (NILE's word: noble, planetary, corporate
+euphemism; deliberately not a frontier "pioneer"). At the reveal HR updates
+the title: NIHIL calls you an **Asset** from then on (`BRAND.*.player`).
 
 | Phase done | Brand | What the player notices |
 |---|---|---|
@@ -56,7 +60,7 @@ the **Dispatch Pad**:
 5. **Ignition** — circuits + advanced circuits → the ending
 
 **Ending (current):** the cannon fires, the Moon shatters, *Moon+* (an
-ad-supported orbital billboard) goes live. "Congratulations, Pioneer. You have
+ad-supported orbital billboard) goes live. "Congratulations, Asset. You have
 saved Earth from free things."
 *Planned:* an ending choice (fire at the Moon, or retarget NIHIL HQ).
 

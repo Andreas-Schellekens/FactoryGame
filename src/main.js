@@ -135,7 +135,7 @@ function loadGame() {
     state.drag = null;
     state.hovered = { x: -1, y: -1 };
     nextOrderTick = null; // let the restored order resume cleanly
-    director.load(data.story, tickCount);
+    director.load(data.story, tickCount, project.phase);
     state.started = true;
     return true;
 }
