@@ -37,6 +37,9 @@ const ICON = {
     generator: 'M13 2L4 14h7l-1 8 9-12h-7z',
     lab: 'M9 3h6M10 3v6L5 19a1 1 0 0 0 1 2h12a1 1 0 0 0 1-2l-5-10V3',
     fabricator: 'M4 20h16M7 20V12l5-3 5 3v8M12 9V4',
+    press: 'M5 4h14M12 4v9M7 13h10M4 20h16',
+    foundry: 'M5 20V9l7-5 7 5v11zM9 20v-5h6v5',
+    mixer: 'M8 3h8M9 3v6l-4 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-4-9V3',
     lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
     upgrade: 'M6 13l6-6 6 6M6 19l6-6 6 6',
     erase: 'M3 21l9-9M14.5 3.5l6 6-4 4-6-6z',
@@ -49,8 +52,9 @@ const ICON = {
 
 // Build palette order + hotkeys (keys are handled in main.js).
 const BUILD_DEFS = [
-    ['belt', '1'], ['extractor', '2'], ['smelter', '3'], ['assembler', '4'],
-    ['splitter', '7'], ['merger', '8'], ['generator', '9'], ['fabricator', 'F'], ['lab', '0'],
+    ['belt', '1'], ['splitter', 'T'], ['merger', 'Y'],
+    ['extractor', '2'], ['smelter', '3'], ['press', '4'], ['foundry', '5'], ['assembler', '6'],
+    ['fabricator', '7'], ['lab', '8'], ['mixer', '9'], ['generator', '0'],
 ];
 
 const SEGMENTS = 15;
@@ -198,7 +202,8 @@ export function createUI({
     const help = el('div', 'help hidden');
     help.innerHTML = [
         ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
-        ['R', 'rotate before placing'], ['1–4 7–0 F', 'buildings'], ['5 / 6', 'upgrade / demolish tool'], ['Esc', 'close panel'],
+        ['R', 'rotate before placing'], ['1–0', 'buildings, in chain order'], ['T / Y', 'splitter / merger'],
+        ['U / X', 'upgrade / demolish tool'], ['Esc', 'close panel'],
         ['WASD', 'move view'], ['Wheel', 'zoom'],
         ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'], ['M', 'sound on / off'],
     ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('')
@@ -359,10 +364,11 @@ export function createUI({
             onClick: () => onToolChange(tool),
         });
         keys.appendChild(toolButtons[tool]);
+        if (tool === 'merger') keys.appendChild(el('span', 'keys-divider')); // logistics | production
     }
     keys.appendChild(el('span', 'keys-divider'));
-    toolButtons.upgrade = hwKey({ k: '5', label: 'Upgrade, key 5', iconPath: ICON.upgrade, img: icons.upgrade ?? null, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
-    toolButtons.erase = hwKey({ k: '6', label: 'Demolish, key 6', iconPath: ICON.erase, img: icons.erase ?? null, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
+    toolButtons.upgrade = hwKey({ k: 'U', label: 'Upgrade, key U', iconPath: ICON.upgrade, img: icons.upgrade ?? null, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
+    toolButtons.erase = hwKey({ k: 'X', label: 'Demolish, key X', iconPath: ICON.erase, img: icons.erase ?? null, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
     const rotateKey = hwKey({ k: 'R', label: 'Rotate, R', iconPath: ICON.rotate, img: icons.rotate ?? null, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
     keys.append(toolButtons.upgrade, toolButtons.erase, rotateKey);
     root.appendChild(keys);

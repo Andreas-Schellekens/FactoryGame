@@ -7,7 +7,9 @@ export const TICK_RATE = 4;    // simulation steps per second
 
 // Map layout: the Dispatch Pad, and the ore fields as blobs (centre + radius).
 // The three small fields next to the pad are the tutorial's starter area; the
-// rest reward expanding. Terrain is recreated from this on load.
+// rest reward expanding. Terrain is recreated from this on load. A field with
+// `fromPhase` only appears once that many phases are complete (the sulfur under
+// the drained pond, at the reveal).
 export const PAD_POS = { x: 19, y: 12 };
 // The Selene construction site: reserved cells beside the pad where the
 // cannon rises phase by phase. Nothing can be built here.
@@ -22,6 +24,7 @@ export const ORE_FIELDS = [
     { type: 'copperOre', x: 27, y: 4, r: 2.0 },
     { type: 'coalOre', x: 4, y: 12, r: 1.8 },
     { type: 'coalOre', x: 28, y: 12, r: 1.6 },
+    { type: 'sulfurOre', x: 2, y: 21, r: 1.7, fromPhase: 4 },
 ];
 
 // Economy
@@ -34,8 +37,14 @@ export const PRODUCT_REWARD = 12;  // money earned per circuit consumed by the s
 export const SINK_VALUE = {
     ironIngot: 2,
     copperIngot: 2,
+    ironPlate: 3,
+    copperWire: 2,
+    steel: 8,
     circuit: PRODUCT_REWARD,
+    capacitor: 22,
+    motor: 35,
     advancedCircuit: 40,
+    explosive: 10,
 };
 
 // Placement cost per machine type (belts are cheap, processors are not).
@@ -49,21 +58,27 @@ export const MACHINE_COST = {
     generator: 30,
     lab: 25,
     fabricator: 30,
+    press: 20,
+    foundry: 40,
+    mixer: 40,
 };
 
 // Power network: a global (wireless) grid, not items on belts. Each tick
 // supply vs demand yields a throttle in [0,1] that scales every powered
 // machine's progress — a brownout slows the whole factory instead of
 // stalling it.
-export const BASE_POWER_SUPPLY = 30;    // free "starter grid"; covers a small factory
+export const BASE_POWER_SUPPLY = 40;    // free "starter grid"; covers a small factory
 export const POWER_PER_GENERATOR = 10;  // supply added per fueled generator, per tick
 export const GENERATOR_FUEL_TICKS = 20; // ticks one coalOre keeps a generator burning
 // Per-tick draw of machines that need power to make progress. Extractors are
 // deliberately unpowered so the bootstrap chain can never brown out itself.
 export const POWER_DRAW = {
     smelter: 4,
+    press: 2,
+    foundry: 8,
     assembler: 6,
     fabricator: 5,
+    mixer: 6,
     lab: 3,
 };
 // Overload: a brownout (demand above supply) only slows the factory, but
@@ -98,6 +113,9 @@ export const PROCESS_TICKS = {
     assembler: [6, 4, 3, 2],
     lab: [6, 4, 3, 2],
     fabricator: [8, 6, 4, 3],
+    press: [3, 2, 2, 1],
+    foundry: [8, 6, 4, 3],
+    mixer: [8, 6, 4, 3],
 };
 
 // The Dispatch Pad's market: every sale pushes that item's price down, and
@@ -118,3 +136,13 @@ export const ORDER_TARGET = [3, 8];      // [min, max] products demanded
 export const ORDER_TICKS = [120, 240];   // [min, max] ticks to fulfil it
 export const ORDER_REWARD = [40, 120];   // [min, max] bonus paid on completion
 export const ORDER_GRACE_TICKS = 12;     // pause between one order ending and the next
+// What Priority Requests ask for, per phases completed (orders start after phase 1).
+// The target range is for a circuit; cheaper goods ask for more, dearer ones for fewer.
+export const ORDER_POOL = [
+    [],
+    ['circuit', 'ironPlate'],
+    ['circuit', 'steel', 'ironPlate'],
+    ['capacitor', 'steel', 'circuit'],
+    ['motor', 'advancedCircuit', 'capacitor'],
+    ['capacitor', 'motor', 'advancedCircuit'],
+];

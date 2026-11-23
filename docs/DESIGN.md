@@ -63,11 +63,41 @@ more in the ending ("you, Asset, are now a cost").
 **Protocol: Selene** — the cannon. Built in five phases by delivering goods to
 the **Dispatch Pad**:
 
-1. **Groundbreaking** — iron ingots → unlocks Assembler, Splitter, Merger
-2. **Targeting Circuitry** — copper ingots + circuits → unlocks Lab
-3. **Power Core** — circuits → unlocks Generator
-4. **Payload** — advanced circuits → the reveal
-5. **Ignition** — circuits + advanced circuits → the ending
+1. **Groundbreaking** (foundation) — 40 iron ingots, 20 copper ingots →
+   unlocks Press, Assembler, Splitter, Merger
+2. **Targeting Circuitry** (dish) — 60 iron plates, 40 circuits → unlocks
+   Foundry, Generator
+3. **Power Core** (capacitor bank) — 60 steel, 50 capacitors → unlocks
+   Fabricator, Lab
+4. **Payload** (turret) — 40 motors, 30 advanced circuits → the reveal;
+   unlocks the Mixer, and the drained pond exposes sulfur
+5. **Ignition** (rings, the shot) — 15 Selene Shells, 75 capacitors → the
+   ending
+
+Each phase needs the chain the one before it unlocked, so the whole factory
+gets built; selling one product in bulk doesn't skip ahead (the pad's market
+saturates, see 4a).
+
+**Production tree** (machine · recipe, at tier 1 per minute):
+
+| Product | Machine | Recipe | /min |
+|---|---|---|---|
+| Iron / Copper Ingot | Smelter | 1 ore | 60 |
+| Iron Plate | Press | 1 iron ingot | 80 |
+| Copper Wire | Press | 1 copper ingot | 80 |
+| Steel | Foundry | 1 iron ingot + 1 coal | 30 |
+| Circuit | Assembler | 1 iron plate + 1 copper wire | 40 |
+| Capacitor | Assembler | 1 steel + 2 copper wire | 27 |
+| Motor | Assembler | 1 steel + 1 iron plate + 1 copper wire | 20 |
+| Advanced Circuit | Assembler | 2 circuits + 1 steel (research) | 27 |
+| Selene Shell | Assembler | 1 steel + 1 explosive + 1 advanced circuit | 10 |
+| Data Cartridge | Fabricator | 1 circuit + 1 copper wire | 30 |
+| Explosive | Mixer | 1 sulfur + 1 coal | 30 |
+| Research points | Lab | 1 data cartridge → 5 points | 200 |
+
+Coal feeds three things (generators, foundries, mixers), so splitting a coal
+line is the mid-game puzzle; motors and shells take three inputs, one per
+side of an assembler.
 
 **Ending (current):** played in the valley itself: the cannon swivels to the
 Moon and fires, the Moon shatters, *Moon+* (an ad-supported orbital billboard)
@@ -203,11 +233,19 @@ Each iteration should be playable on its own before the next one starts.
               off) and a production overview (made / used / sold per
               minute, machines by status).
         - [ ] Record DELTA's new and changed tutorial lines.
-      - [ ] **4b — content.** Press (plates, wire), Foundry (steel), Mixer
-            (explosives), new products (plates, wire, steel, capacitors,
-            motors, explosives, the Selene Shell) and the five phases
-            rebalanced so every chain is needed; balanced with a headless
-            reference-factory simulation.
+      - [ ] **4b — content.**
+        - [x] Press (plates, wire), Foundry (steel), Mixer (explosives); new
+              products (plates, wire, steel, capacitors, motors, explosives,
+              the Selene Shell); research cartridges from circuit + wire.
+        - [x] The five phases rebalanced so every chain is needed (see the
+              table above); Priority Requests ask for the goods of the
+              current phase.
+        - [x] Sulfur appears at the reveal where NIHIL drained the pond.
+        - [x] Keys in chain order: 1 belt, 2 extractor, 3 smelter, 4 press,
+              5 foundry, 6 assembler, 7 fabricator, 8 lab, 9 mixer,
+              0 generator; T/Y splitter/merger, U/X upgrade/demolish.
+        - [ ] Record DELTA's new tutorial lines; playtest the pacing
+              (target 45–90 minutes).
       - [ ] **4c — world & tidiness.** A small fenced plot that grows every
             phase (NILE "acquires" the neighbouring land); the pond becomes
             a river that NIHIL dams at the reveal, exposing sulfur; select /

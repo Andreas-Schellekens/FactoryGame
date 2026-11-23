@@ -37,7 +37,7 @@ const readMoney = async () =>
     page.locator('.tb-value.credits').evaluate((el) => parseInt(el.textContent.replace(/[^0-9-]/g, ''), 10));
 
 async function selectTool(key) {
-    await page.keyboard.press(key); // 1 belt, 2 extractor, 3 smelter, 4 assembler
+    await page.keyboard.press(key); // 1 belt, 2 extractor, 3 smelter, 4 press, 6 assembler
 }
 
 async function clickCell(gx, gy) {
@@ -83,7 +83,24 @@ const panelClosed = await page
     .waitForFunction(() => document.querySelector('.mpanel')?.classList.contains('hidden'), null, { timeout: 4000 })
     .then(() => true, () => false);
 
-await selectTool('4'); // assembler (combines ironIngot + copperIngot → circuit)
+// Presses right after the smelters: the iron one faces down (R once), the copper one up (R twice more).
+await selectTool('4'); // press
+await page.keyboard.press('r');
+await clickCell(17, 11); // iron press → plates, facing down toward the assembler
+await page.keyboard.press('r');
+await page.keyboard.press('r');
+await clickCell(18, 16); // copper press, facing up
+await page.keyboard.press('r'); // back to 'right'
+// A new press starts on Iron Plate: switch the copper one to Copper Wire in its panel.
+await clickCell(18, 16);
+await page.waitForSelector('.mpanel:not(.hidden)', { timeout: 5000 });
+await page.click('.mp-recipe:has-text("Copper Wire")');
+const wireRecipe = await page.evaluate(() => window.__grid[18][16].machine?.recipe);
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => document.querySelector('.mpanel')?.classList.contains('hidden'), null, { timeout: 4000 }).catch(() => {});
+const pressDirs = await page.evaluate(() => [window.__grid[17][11].machine?.dir, window.__grid[18][16].machine?.dir]);
+
+await selectTool('6'); // assembler: one iron plate + one copper wire → circuit
 await clickCell(17, 13);
 
 // ---- Lay every belt by dragging --------------------------------------------
@@ -91,8 +108,8 @@ await selectTool('1'); // belt
 await clickCell(15, 11); // extractor → iron smelter feed
 await clickCell(16, 16); // extractor → copper smelter feed
 
-const ironRoute = [[17, 11], [17, 12], [17, 13]]; // smelter out → down → into assembler (N)
-const copperRoute = [[18, 16], [18, 15], [18, 14], [17, 14], [17, 13]]; // smelter out → up → left → into assembler (S)
+const ironRoute = [[17, 12], [17, 13]]; // iron press out → down into the assembler (N)
+const copperRoute = [[18, 15], [18, 14], [17, 14], [17, 13]]; // copper press out → up → left → into the assembler (S)
 const outRoute = [[18, 13], [19, 13], [19, 12]]; // assembler → right → up into the pad
 await dragBelt(ironRoute);
 await dragBelt(copperRoute);
@@ -136,10 +153,11 @@ console.log('');
 
 // Corner expectations from the drag logic (the cell being left re-points).
 const checks = [
-    ['iron corner (17,11) turns down', ironDirs[0] === 'down'],
-    ['iron belt (17,12) points down into assembler', ironDirs[1] === 'down'],
-    ['copper corner (18,14) turns left', copperDirs[2] === 'left'],
-    ['copper belt (17,14) points up into assembler', copperDirs[3] === 'up'],
+    ['presses face down (iron) and up (copper) after R', pressDirs[0] === 'down' && pressDirs[1] === 'up'],
+    ['iron belt (17,12) points down into assembler', ironDirs[0] === 'down'],
+    ['copper corner (18,14) turns left', copperDirs[1] === 'left'],
+    ['copper belt (17,14) points up into assembler', copperDirs[2] === 'up'],
+    ['copper press switched to Copper Wire in its panel', wireRecipe === 'copperWire'],
     ['out belt (19,13) points up into the pad', outDirs[1] === 'up'],
     ['copper smelter switched to Copper Ingot in its panel', copperRecipe === 'copperIngot'],
     ['Escape closes the panel', panelClosed === true],

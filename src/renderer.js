@@ -10,11 +10,11 @@
 // "down" (+y) is world +z. Model forward is +z, so dir → yaw via YAW.
 import * as THREE from 'three';
 import {
-    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA,
+    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, PROCESS_TICKS,
 } from './config.js';
 import {
     grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
-    machineStatus,
+    machineStatus, machineRecipe, oreRevision,
 } from './grid.js';
 import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
 import { buildEnvironment } from './environment.js';
@@ -22,6 +22,7 @@ import { buildCannon } from './cannon.js';
 import { createEffects, haloSprite } from './effects.js';
 import { createCameraRig } from './camera.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const DIR_VEC = { right: { dx: 1, dy: 0 }, down: { dx: 0, dy: 1 }, left: { dx: -1, dy: 0 }, up: { dx: 0, dy: -1 } };
 const OPPOSITE = { right: 'left', left: 'right', up: 'down', down: 'up' };
@@ -57,6 +58,13 @@ const easeOutBack = (t) => {
     const c1 = 1.70158;
     const u = t - 1;
     return 1 + (c1 + 1) * u * u * u + c1 * u * u;
+};
+const smooth = (t) => t * t * (3 - 2 * t);
+
+// Chimney smoke per machine: how often (sim ms) and what it looks like.
+const SMOKE = {
+    smelter: { every: 380, color: 0x7d7a80, size: 0.14 },
+    foundry: { every: 300, color: 0x4a474e, size: 0.22, rise: 0.62, opacity: 0.62 },
 };
 
 // ---- Small geometry helpers --------------------------------------------------
@@ -351,6 +359,92 @@ export async function createRenderer(container, { onProgress } = {}) {
         base.rotation.y = -0.6;
         return { root, base, shoulder, elbow };
     }
+    // The Press, Foundry and Mixer's own parts: shared geometry in the arm's
+    // materials; glowing surfaces get a material per machine (they pulse with its work).
+    const chromeMat = new THREE.MeshStandardMaterial({ color: 0xd5dbe3, roughness: 0.25, metalness: 0.8 });
+    const moltenMat = new THREE.MeshStandardMaterial({ color: 0x2a0c00, emissive: 0xff8a20, emissiveIntensity: 1.4 });
+    const toxicMat = new THREE.MeshStandardMaterial({ color: 0x223308, emissive: 0x8ee01a, emissiveIntensity: 0.8, roughness: 0.3 });
+    const partGeo = {
+        housing: new THREE.CylinderGeometry(0.075, 0.085, 0.2, 12),
+        rod: new THREE.CylinderGeometry(0.028, 0.028, 0.3, 8),
+        mouth: new THREE.PlaneGeometry(0.4, 0.2),
+        melt: new THREE.CircleGeometry(0.2, 8, Math.PI / 8),
+        liquid: new THREE.CircleGeometry(0.34, 8, Math.PI / 8),
+        bridge: new THREE.BoxGeometry(0.86, 0.05, 0.09),
+        motor: new THREE.CylinderGeometry(0.085, 0.085, 0.15, 10),
+        motorCap: new THREE.CylinderGeometry(0.06, 0.07, 0.04, 10),
+        pipe: new THREE.CylinderGeometry(0.034, 0.034, 1, 8), // unit length, scaled
+        valve: new THREE.TorusGeometry(0.06, 0.016, 6, 12),
+        shaft: new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6),
+        blade: new THREE.BoxGeometry(0.44, 0.022, 0.06),
+    };
+    /** A part's geometry placed in its machine: scaled (y), turned (x, y, z), moved. */
+    const placed = (geo, x, y, z, { sy = 1, rx = 0, ry = 0, rz = 0 } = {}) => {
+        let g = geo.clone();
+        if (sy !== 1) g.scale(1, sy, 1);
+        if (rx) g.rotateX(rx);
+        if (ry) g.rotateY(ry);
+        if (rz) g.rotateZ(rz);
+        g.translate(x, y, z);
+        if (g.index) g = g.toNonIndexed();
+        return g;
+    };
+    /**
+     * Static model parts baked into one mesh per material, once per `key`, and shared by every
+     * machine of that kind (the press's frame is a dozen Kenney meshes otherwise). `build`
+     * returns the parts posed in the machine's frame; materials are matched by name and
+     * colour, so the parts must come from one kit (the Factory Kit shares one colour atlas).
+     */
+    const bakedParts = new Map();
+    function baked(key, build) {
+        if (!bakedParts.has(key)) {
+            const holder = new THREE.Group();
+            for (const o of build()) holder.add(o);
+            holder.updateMatrixWorld(true);
+            const groups = new Map();
+            holder.traverse((m) => {
+                if (!m.isMesh || Array.isArray(m.material)) return;
+                let g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+                if (g.index) g = g.toNonIndexed();
+                const mat = m.material;
+                const k = `${mat.name || mat.uuid}|${mat.color?.getHexString()}|${Object.keys(g.attributes).sort().join(',')}`;
+                if (!groups.has(k)) groups.set(k, { mat, geos: [] });
+                groups.get(k).geos.push(g);
+            });
+            bakedParts.set(key, [...groups.values()].map(({ mat, geos }) => ({ mat, geo: mergeGeometries(geos) })));
+        }
+        const group = new THREE.Group();
+        for (const { geo, mat } of bakedParts.get(key)) {
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+        }
+        return group;
+    }
+    // The Mixer's static parts, merged per material once (they depend on the vat's height).
+    let mixerParts = null;
+    function mixerFixed(rim) {
+        if (mixerParts) return mixerParts;
+        const px = -0.445; // the feed pipe, just outside the vat's left wall
+        mixerParts = {
+            dark: mergeGeometries([placed(partGeo.bridge, 0, rim + 0.03, 0), placed(partGeo.motorCap, 0, rim + 0.225, 0)]),
+            yellow: mergeGeometries([placed(partGeo.motor, 0, rim + 0.13, 0), placed(partGeo.valve, px - 0.04, rim * 0.5, 0, { ry: Math.PI / 2 })]),
+            steel: mergeGeometries([
+                placed(partGeo.pipe, px, (rim + 0.1) / 2, 0, { sy: rim + 0.1 }),
+                placed(partGeo.pipe, px + 0.11, rim + 0.08, 0, { sy: 0.25, rz: Math.PI / 2 }),
+            ]),
+            blades: mergeGeometries([placed(partGeo.blade, 0, 0, 0), placed(partGeo.blade, 0, 0, 0, { ry: Math.PI / 2 })]),
+        };
+        return mixerParts;
+    }
+    const partMesh = (geo, m, parent, x, y, z) => {
+        const o = new THREE.Mesh(geo, m);
+        o.position.set(x, y, z);
+        o.castShadow = true;
+        parent.add(o);
+        return o;
+    };
     const STATUS_TEX = statusTextures();
     let statusShown = true; // off during the ending
     const tierMat = new THREE.SpriteMaterial({ map: dotTex, color: 0xffd54a, depthTest: false });
@@ -362,7 +456,11 @@ export async function createRenderer(container, { onProgress } = {}) {
     const arrowGeo = flatTriangle(0.2, 0.22);
     const glowMat = new THREE.MeshStandardMaterial({ color: 0x1a0800, emissive: 0xff7a18, emissiveIntensity: 1 });
 
-    // ---- Ore nodes (static terrain) -------------------------------------------------
+    // ---- Ore nodes (terrain) --------------------------------------------------------
+    // Built from the grid's resources, and rebuilt where they change: grid.js bumps
+    // `oreRevision` whenever a field is laid (the sulfur under the drained pond appears
+    // at the reveal). A field that appears during play pushes up out of the ground in
+    // a ripple of dust and sparks; on load it is simply there.
     const oreTemplates = {};
     for (const [type, t] of Object.entries(ORE_TINT)) {
         oreTemplates[type] = ['crystalsA', 'crystalsB', 'crystalsC'].map((key) => tintTemplate(
@@ -373,25 +471,79 @@ export async function createRenderer(container, { onProgress } = {}) {
     const stainMats = Object.fromEntries(Object.keys(ORE_TINT).map((type) => [type,
         new THREE.MeshBasicMaterial({ color: ORE_TINT[type].crystal, transparent: true, opacity: 0.12, depthWrite: false })]));
     const oreViews = new Map();
-    for (let x = 0; x < W; x++) {
-        for (let y = 0; y < H; y++) {
-            const res = grid[x][y].resource;
-            if (!res) continue;
-            const g = new THREE.Group();
-            g.position.set(x + 0.5, 0, y + 0.5);
-            const variants = oreTemplates[res];
-            const rock = variants[Math.floor(cellHash(x, y) * variants.length)].clone();
-            rock.rotation.y = cellHash(y, x) * Math.PI * 2;
-            g.add(rock);
-            const stain = new THREE.Mesh(stainGeo, stainMats[res]);
-            stain.rotation.x = -Math.PI / 2;
-            stain.position.y = 0.004;
-            g.add(stain);
-            g.userData.rock = rock;
-            oreLayer.add(g);
-            oreViews.set(`${x},${y}`, g);
+    const orePops = []; // { g, x, y, wait, t } — fresh ore rising out of the ground
+    let oreShown = -1;
+
+    function buildOreView(x, y, res) {
+        const g = new THREE.Group();
+        g.position.set(x + 0.5, 0, y + 0.5);
+        const variants = oreTemplates[res] ?? oreTemplates.ironOre;
+        const rock = variants[Math.floor(cellHash(x, y) * variants.length)].clone();
+        rock.rotation.y = cellHash(y, x) * Math.PI * 2;
+        g.add(rock);
+        const stain = new THREE.Mesh(stainGeo, stainMats[res] ?? stainMats.ironOre);
+        stain.rotation.x = -Math.PI / 2;
+        stain.position.y = 0.004;
+        g.add(stain);
+        g.userData.rock = rock;
+        g.userData.type = res;
+        oreLayer.add(g);
+        return g;
+    }
+
+    /** Match the ore views to the grid's resources (only when oreRevision moved). */
+    function syncOre(animate) {
+        if (oreRevision === oreShown) return;
+        oreShown = oreRevision;
+        const fresh = [];
+        for (let x = 0; x < W; x++) {
+            for (let y = 0; y < H; y++) {
+                const key = `${x},${y}`;
+                const res = grid[x][y].resource;
+                const old = oreViews.get(key);
+                if (old && old.userData.type === res) continue;
+                if (old) {
+                    oreLayer.remove(old);
+                    oreViews.delete(key);
+                }
+                if (!res) continue;
+                const g = buildOreView(x, y, res);
+                oreViews.set(key, g);
+                env.markOre(x, y);
+                fresh.push({ g, x, y });
+            }
+        }
+        if (!animate || !fresh.length) return;
+        // Rise from the middle of the new field outward, after the land has had a moment.
+        const cx = fresh.reduce((s, f) => s + f.x, 0) / fresh.length;
+        const cy = fresh.reduce((s, f) => s + f.y, 0) / fresh.length;
+        for (const f of fresh) {
+            f.g.scale.setScalar(0.001);
+            orePops.push({ g: f.g, wait: 1400 + Math.hypot(f.x - cx, f.y - cy) * 260 + Math.random() * 200, t: 0 });
         }
     }
+
+    function animateOre(dt) {
+        for (let i = orePops.length - 1; i >= 0; i--) {
+            const p = orePops[i];
+            if (p.wait > 0) {
+                p.wait -= dt;
+                if (p.wait <= 0) {
+                    const at = p.g.position;
+                    effects.puff(at, { color: 0xcdb46a, count: 6, size: 0.3, spread: 0.35 });
+                    effects.sparkle(new THREE.Vector3(at.x, 0.3, at.z), { color: 0xffe45a, count: 5, power: 1.1, size: 0.09 });
+                }
+                continue;
+            }
+            p.t = Math.min(1, p.t + dt / 420);
+            p.g.scale.setScalar(Math.max(0.001, easeOutBack(p.t)));
+            if (p.t >= 1) {
+                p.g.scale.setScalar(1);
+                orePops.splice(i, 1);
+            }
+        }
+    }
+    syncOre(false);
 
     // ---- Machine views ------------------------------------------------------------------
     /** @type {Map<string, { sig: string, machine: object, obj: THREE.Group, parts: object }>} */
@@ -550,6 +702,118 @@ export async function createRenderer(container, { onProgress } = {}) {
                 addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
                 break;
             }
+            case 'press': {
+                // A hydraulic press: a heavy bed with a yellow die, two columns, a crown with
+                // the cylinder on top, and the ram on a chrome rod between the columns.
+                // Built from squashed Factory Kit pistons (three meshes each), so the frame and
+                // the ram are baked into one mesh per material, shared by every press.
+                const block = (sx, sy, sz, y, flip = false) => {
+                    const o = assets.get('pressBlock');
+                    o.scale.set(sx, sy, sz);
+                    if (flip) o.rotation.x = Math.PI; // cap down
+                    o.position.y = flip ? y + sy : y;
+                    return o;
+                };
+                const BED = 0.28;
+                const COL = 0.5;
+                const crownY = BED + COL - 0.02;
+                const dieTop = BED + assets.templates.pressDie.userData.height;
+                facing.add(baked('pressFrame', () => {
+                    const die = assets.get('pressDie');
+                    die.position.y = BED;
+                    const cols = [-0.33, 0.33].map((sx) => {
+                        const col = assets.get('pressColumn');
+                        col.scale.set(0.15, COL, 0.15);
+                        col.position.set(sx, BED, 0);
+                        return col;
+                    });
+                    return [block(0.86, BED, 0.8, 0), die, ...cols, block(0.9, 0.2, 0.34, crownY)];
+                }));
+                partMesh(partGeo.housing, armMats.dark, facing, 0, crownY + 0.28, 0);
+                const ram = new THREE.Group();
+                ram.add(baked('pressRam', () => [block(0.42, 0.2, 0.3, 0, true)]));
+                partMesh(partGeo.rod, chromeMat, ram, 0, 0.2 + 0.15, 0);
+                const up = crownY - 0.02 - 0.2;
+                ram.userData = { up, down: dieTop + 0.004 };
+                ram.position.y = up;
+                facing.add(ram);
+                parts.ram = ram;
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
+                break;
+            }
+            case 'foundry': {
+                // Heavy industry: a soot-black furnace with molten steel in its roof, a glowing
+                // mouth, and a tall stack that smokes while it pours.
+                const body = assets.get('foundry');
+                facing.add(body);
+                const stack = assets.get('foundryStack');
+                stack.position.set(-0.26, 0, -0.3);
+                facing.add(stack);
+                const melt = new THREE.Mesh(partGeo.melt, ghost ? moltenMat : moltenMat.clone());
+                melt.rotation.x = -Math.PI / 2;
+                melt.position.y = body.userData.height - 0.05;
+                facing.add(melt);
+                parts.melt = melt;
+                const mouth = new THREE.Mesh(partGeo.mouth, ghost ? glowMat : glowMat.clone());
+                mouth.position.set(0, 0.3, body.userData.depth / 2 + 0.006);
+                facing.add(mouth);
+                parts.mouth = mouth;
+                if (!ghost) {
+                    const halo = haloSprite(0xff8a30, 0.8);
+                    halo.position.set(0, 0.32, body.userData.depth / 2 + 0.12);
+                    halo.material.opacity = 0;
+                    facing.add(halo);
+                    parts.halo = halo;
+                    const meltHalo = haloSprite(0xff9a3a, 0.75);
+                    meltHalo.position.y = body.userData.height + 0.08;
+                    facing.add(meltHalo);
+                    parts.meltHalo = meltHalo;
+                    const smokeTop = new THREE.Object3D();
+                    smokeTop.position.set(-0.26, stack.userData.height + 0.02, -0.3);
+                    facing.add(smokeTop);
+                    parts.smokeFrom = smokeTop;
+                }
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
+                break;
+            }
+            case 'mixer': {
+                // NIHIL's chemistry: an open gunmetal vat with an alarm-red rim, full of something
+                // sickly green that glows and bubbles while a paddle stirs it.
+                const vat = assets.get('mixerVat');
+                vat.scale.y *= 1.5; // a deep vat, not a tub
+                facing.add(vat);
+                const rim = vat.userData.height * 1.5;
+                const liquid = new THREE.Mesh(partGeo.liquid, ghost ? toxicMat : toxicMat.clone());
+                liquid.rotation.x = -Math.PI / 2;
+                liquid.position.y = rim - 0.08;
+                facing.add(liquid);
+                parts.liquid = liquid;
+                // The bridge with its yellow motor, a feed pipe up the side and over the rim
+                // with a valve wheel: merged per material, one draw call each.
+                const fixed = mixerFixed(rim);
+                partMesh(fixed.dark, armMats.dark, facing, 0, 0, 0);
+                partMesh(fixed.yellow, armMats.yellow, facing, 0, 0, 0);
+                partMesh(fixed.steel, armMats.steel, facing, 0, 0, 0);
+                const paddle = new THREE.Group();
+                paddle.position.y = rim - 0.045;
+                partMesh(partGeo.shaft, chromeMat, paddle, 0, 0.06, 0);
+                partMesh(fixed.blades, armMats.steel, paddle, 0, 0, 0);
+                facing.add(paddle);
+                parts.paddle = paddle;
+                if (!ghost) {
+                    const halo = haloSprite(0x9be040, 0.9);
+                    halo.position.y = rim + 0.05;
+                    halo.material.opacity = 0;
+                    facing.add(halo);
+                    parts.toxicHalo = halo;
+                    const surface = new THREE.Object3D();
+                    surface.position.y = rim - 0.06;
+                    facing.add(surface);
+                    parts.vatTop = surface;
+                }
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
+                break;
+            }
             case 'lab': {
                 const body = assets.get('lab');
                 facing.add(body);
@@ -703,7 +967,8 @@ export async function createRenderer(container, { onProgress } = {}) {
                     env.coverCell(x, y, true);
                 } else if (m.type !== 'sink') {
                     env.paveCell(x, y);
-                    if (m.type === 'smelter' || m.type === 'generator') env.scorch(x, y);
+                    if (m.type === 'smelter' || m.type === 'foundry' || m.type === 'generator') env.scorch(x, y);
+                    else if (m.type === 'mixer') env.scorch(x, y, 'toxic');
                 }
                 if (isNew && !quiet && m.type !== 'sink') {
                     view.pop = 0;
@@ -726,6 +991,13 @@ export async function createRenderer(container, { onProgress } = {}) {
 
     // ---- Per-frame machine animation -----------------------------------------
     let animMs = 0;
+
+    /** Sim milliseconds one operation takes at full power (the machine's tier and recipe). */
+    function opMs(m) {
+        const ticks = PROCESS_TICKS[m.type];
+        if (!ticks) return TICK_MS;
+        return ticks[Math.min(m.tier - 1, ticks.length - 1)] * (machineRecipe(m)?.time ?? 1) * TICK_MS;
+    }
 
     function animateMachines(dtSim, dt) {
         const th = power.throttle;
@@ -752,11 +1024,64 @@ export async function createRenderer(container, { onProgress } = {}) {
                     v.pop = null;
                 }
             }
+            // What the machine is doing right now (drives the status bubble and the press).
+            const status = p.bar ? machineStatus(v.x, v.y).code : null;
+            const running = status === 'working' || status === 'slow';
+            const thr = POWER_DRAW[m.type] ? th : 1;
             if (p.smokeFrom && working && dtSim > 0) {
+                const style = SMOKE[m.type] ?? SMOKE.smelter;
                 v.smoke += dtSim;
-                if (v.smoke > 380) {
+                if (v.smoke > style.every) {
                     v.smoke = 0;
-                    effects.smoke(p.smokeFrom.getWorldPosition(new THREE.Vector3()), { color: 0x7d7a80, size: 0.14 });
+                    effects.smoke(p.smokeFrom.getWorldPosition(new THREE.Vector3()), style);
+                }
+            }
+            if (p.ram) {
+                // Its own clock, one stroke per operation (progress only moves per tick): drop
+                // fast onto the die, then lift slowly. Idle, it eases back up.
+                const u = p.ram.userData;
+                if (running) {
+                    v.cycle = ((v.cycle ?? 0) + (dtSim * thr) / opMs(m)) % 1;
+                    const c = v.cycle;
+                    const d = c < 0.28 ? (c / 0.28) ** 2 : 1 - smooth((c - 0.28) / 0.72);
+                    p.ram.position.y = u.up - (u.up - u.down) * d;
+                } else {
+                    v.cycle = 0;
+                    p.ram.position.y += (u.up - p.ram.position.y) * Math.min(1, dt / 160);
+                }
+            }
+            if (p.melt) {
+                // Molten steel stays warm between pours and flares while it works.
+                const flick = Math.sin(animMs / 90 + v.x * 3) * 0.12 + Math.sin(animMs / 37 + v.y) * 0.06;
+                const heat = working ? 1.1 + 1.5 * thr * (0.5 + 0.5 * frac) : 0.45;
+                p.melt.material.emissiveIntensity = heat + flick;
+                if (p.meltHalo) p.meltHalo.material.opacity = working ? 0.4 + 0.35 * thr + flick : 0.12;
+                if (working && thr > 0 && dtSim > 0) {
+                    v.spark = (v.spark ?? 0) + dtSim * thr;
+                    if (v.spark > 1500) {
+                        v.spark = Math.random() * 500;
+                        const at = p.melt.getWorldPosition(new THREE.Vector3());
+                        effects.sparkle(at, { color: 0xffa040, count: 3, power: 0.75, size: 0.07 });
+                    }
+                }
+            }
+            if (p.liquid) {
+                const wave = Math.sin(animMs / 230 + v.x * 2) * 0.2 + Math.sin(animMs / 97 + v.y) * 0.08;
+                p.liquid.material.emissiveIntensity = working ? 0.6 + 0.35 * thr + wave : 0.3 + wave * 0.3;
+                p.toxicHalo.material.opacity = working ? 0.2 + 0.12 * thr + wave * 0.2 : 0.06;
+                if (working) p.paddle.rotation.y += dtSim * 0.005 * thr;
+                if (working && dtSim > 0 && thr > 0) {
+                    v.bubble = (v.bubble ?? 0) + dtSim * thr;
+                    v.smoke += dtSim;
+                    const top = p.vatTop.getWorldPosition(new THREE.Vector3());
+                    if (v.bubble > 280) {
+                        v.bubble = Math.random() * 120;
+                        effects.bubble(top, { count: 1, spread: 0.24, color: 0xa8f03a });
+                    }
+                    if (v.smoke > 720) {
+                        v.smoke = Math.random() * 200;
+                        effects.smoke(top, { color: 0xa6b84a, size: 0.16, rise: 0.32, opacity: 0.32 });
+                    }
                 }
             }
             if (p.steamFrom && m.fuelTicks > 0 && dtSim > 0) {
@@ -799,7 +1124,7 @@ export async function createRenderer(container, { onProgress } = {}) {
                 if (show) p.bar.fill.scale.x = 0.5 * frac;
                 p.tier.forEach((d, i) => (d.visible = m.tier > 1 && i < m.tier));
                 // Status bubble: nothing while it works; otherwise what's wrong.
-                const code = statusShown ? machineStatus(v.x, v.y).code : 'working';
+                const code = statusShown ? status : 'working';
                 const tex = STATUS_TEX[code];
                 p.badge.visible = !!tex;
                 if (tex) {
@@ -924,6 +1249,8 @@ export async function createRenderer(container, { onProgress } = {}) {
         for (const id of [...items.keys()]) removeItem(id);
         quiet = true; // the next sync rebuilds a loaded factory: no juice
         shownPhase = -1;
+        for (const p of orePops) p.g.scale.setScalar(1);
+        orePops.length = 0;
     }
 
     // ---- Build overlay: cursor, ghost, focus markers ---------------------------------------
@@ -989,10 +1316,12 @@ export async function createRenderer(container, { onProgress } = {}) {
     });
     const focusGeo = new THREE.RingGeometry(0.44, 0.5, 40);
     let focusShown = null;
+    let focusOre = -1; // the ore revision the rings were laid for (new ore can be a focus)
 
     function updateFocus(focus) {
-        if (focus !== focusShown) {
+        if (focus !== focusShown || focusOre !== oreShown) {
             focusShown = focus;
+            focusOre = oreShown;
             focusGroup.clear();
             if (focus) {
                 // Ring only the field nearest the pad: the tutorial's starter area.
@@ -1080,7 +1409,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     // arrow is bright when something is hooked up to it and dim when not; an output and
     // the input next to it line up into a little chain across the shared edge.
     const PORT_MAX = 1200;
-    const PORT_TOOLS = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'fabricator', 'generator', 'lab']);
+    const PORT_TOOLS = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'press', 'foundry', 'assembler', 'fabricator', 'mixer', 'generator', 'lab']);
     const SIDE = { right: [1, 0], down: [0, 1], left: [-1, 0], up: [0, -1] };
     const INWARD = { right: 'left', left: 'right', up: 'down', down: 'up' };
     const portArrowGeo = (() => {
@@ -1439,7 +1768,10 @@ export async function createRenderer(container, { onProgress } = {}) {
         }
         return out;
     }
-    const icons = renderIcons(['belt', 'extractor', 'smelter', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'fabricator', 'upgrade', 'erase', 'rotate']);
+    const icons = renderIcons([
+        'belt', 'extractor', 'smelter', 'press', 'foundry', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'fabricator', 'mixer',
+        'upgrade', 'erase', 'rotate',
+    ]);
 
     // ---- Frame ---------------------------------------------------------------------------
     let shownPhase = -1;
@@ -1462,6 +1794,8 @@ export async function createRenderer(container, { onProgress } = {}) {
         }
         applyMood(dt, phase !== shownPhase && instant);
         shownPhase = phase;
+        syncOre(!quiet);
+        animateOre(dt);
         syncMachines();
         animateMachines(dtSim, dt);
         env.update(dt);

@@ -52,6 +52,14 @@ export const ITEM_NAMES = {
     circuit: 'Circuit',
     advancedCircuit: 'Advanced Circuit',
     dataCartridge: 'Data Cartridge',
+    ironPlate: 'Iron Plate',
+    copperWire: 'Copper Wire',
+    steel: 'Steel',
+    capacitor: 'Capacitor',
+    motor: 'Motor',
+    sulfurOre: 'Sulfur',
+    explosive: 'Explosive',
+    seleneShell: 'Selene Shell',
 };
 
 export const BUILDING_NAMES = {
@@ -64,6 +72,9 @@ export const BUILDING_NAMES = {
     generator: 'Generator',
     lab: 'Lab',
     fabricator: 'Fabricator',
+    press: 'Press',
+    foundry: 'Foundry',
+    mixer: 'Mixer',
     sink: 'Dispatch Pad',
 };
 
@@ -73,10 +84,13 @@ export const BUILDING_DESC = {
     merger: 'Three inputs, one output straight ahead.',
     extractor: 'Mines the ore node it stands on.',
     smelter: 'Ore → ingot. Pick which in its panel.',
-    assembler: 'Ingots → Circuit, or circuits + iron → Advanced Circuit. Pick the recipe in its panel.',
+    press: 'Ingot → Iron Plate or Copper Wire. Pick which in its panel.',
+    foundry: 'Iron ingot + coal → Steel. Hungry for power.',
+    assembler: 'Puts parts together: Circuits, Capacitors, Motors, Advanced Circuits, Selene Shells. Pick the recipe in its panel.',
+    mixer: 'Sulfur + coal → Explosive.',
     generator: 'Burns coal to power the grid.',
     lab: 'Reads Data Cartridges into research points.',
-    fabricator: 'Circuits → Data Cartridge, for the Lab.',
+    fabricator: 'Circuit + copper wire → Data Cartridge, for the Lab.',
 };
 
 /** What a recipe is called in a machine's panel (its output, or what the lab makes). */
@@ -84,7 +98,7 @@ export const RECIPE_NAMES = { research: 'Research points' };
 
 export const TECH_TEXT = {
     fastBelts: { label: 'Express Belts', desc: 'Belts and routers move twice per tick' },
-    advancedProduct: { label: 'Adv. Circuits', desc: 'Assembler recipe: 2 circuits + 1 iron ingot → Advanced Circuit' },
+    advancedProduct: { label: 'Adv. Circuits', desc: 'Assembler recipe: 2 circuits + 1 steel → Advanced Circuit' },
     tier4: { label: 'Tier 4', desc: 'Raise the machine upgrade cap to tier 4' },
 };
 
@@ -156,7 +170,8 @@ export const BEATS = [
         when: (w) => w.phase === 0 && w.deliveredTotal.ironIngot > 0,
         lines: [
             d('Delivery confirmed! Credits added to your account, minus processing fees, minus the fee for calculating processing fees.'),
-            d("Phase 1 needs 20 iron ingots. Spend your credits on more Extractors and Smelters if you like. The Moon won't un-fall itself."),
+            d("Phase 1 needs 40 iron ingots and 20 copper ingots. Copper is the glowing orange crystal field; I've ringed it. The Moon won't un-fall itself."),
+            d('Click any machine to open its panel: its recipe, how fast it works and its upgrades. Every machine makes one thing. A new Smelter starts on iron, so set your copper Smelter to Copper Ingot.'),
         ],
     },
     {
@@ -170,10 +185,10 @@ export const BEATS = [
         banner: 0,
         lines: [
             nile('PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. NILE thanks you more.'),
-            d("Look at you go! I've unlocked the Assembler, the Splitter and the Merger.", 'happy'),
-            d("Phase 2 needs targeting circuitry. An Assembler (key 4) turns one iron ingot plus one copper ingot into a Circuit. Copper is the glowing orange crystal field; I've ringed it for you."),
-            d('Click any machine to open its panel: its recipe, how fast it works and its upgrades. Every machine makes one thing. A new Smelter starts on iron, so set your copper Smelter to Copper Ingot.'),
-            d('A Splitter (key 7) sends one belt three ways. A Merger (key 8) does the opposite. Like a family, but useful.'),
+            d("Look at you go! I've unlocked the Press, the Assembler, the Splitter and the Merger.", 'happy'),
+            d('Phase 2 needs targeting circuitry: Iron Plates and Circuits. The Press (key 4) stamps iron ingots into plates, or draws copper ingots into wire. Pick which in its panel.'),
+            d('An Assembler (key 6) makes a Circuit from one iron plate and one copper wire. Two presses, one assembler, a great many belts.'),
+            d('A Splitter (key T) sends one belt three ways. A Merger (key Y) does the opposite. Like a family, but useful.'),
             d('NILE will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file.'),
             d("Oh, a small update: the Moon's impact date has been revised from 'seventeen days' to 'soon'. Please do not request clarification.", 'glitch'),
         ],
@@ -197,11 +212,11 @@ export const BEATS = [
         banner: 1,
         lines: [
             nile('PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it.'),
-            d('Three new toys! The Fabricator (key F) turns circuits into Data Cartridges. The Lab (key 0) reads them into research points for technology.', 'happy'),
-            d('And Generators (key 9): belt coal from the black crystal field into one and the grid gets stronger. You will want that.'),
+            d('Heavy industry, at last! The Foundry (key 5) melts an iron ingot and a lump of coal into Steel.', 'happy'),
+            d('Foundries are hungry. Generators (key 0) burn coal for the grid: belt coal from the black crystal field into one. You will want several.'),
             memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after SELENE.'),
             d('Please disregard that memo. It was sent to you by mistake. You are not cleared for mistakes.', 'glitch'),
-            d('Moving on! Phase 3 is the Power Core: lots of circuits. Research can make your factory faster. Faster work is its own reward. It is also the only reward.'),
+            d('Moving on! Phase 3 is the Power Core: Steel and Capacitors. A Capacitor is one steel and two copper wire, in an Assembler. Faster work is its own reward. It is also the only reward.'),
         ],
     },
     {
@@ -215,7 +230,8 @@ export const BEATS = [
         banner: 2,
         lines: [
             nile('PHASE 3 COMPLETE — The Power Core is humming. So is the Board of Directors.'),
-            d('Phase 4 is the Payload: Advanced Circuits. Research the recipe, then set an Assembler to Advanced Circuit and feed it two circuits plus one iron ingot.', 'happy'),
+            d('Research is open! The Fabricator (key 7) turns a circuit and a copper wire into a Data Cartridge. The Lab (key 8) reads cartridges into research points.', 'happy'),
+            d('Phase 4 is the Payload: Motors and Advanced Circuits. A Motor takes steel, a plate and a wire, one on each side of an Assembler. Advanced Circuits need research first.'),
             d('NIHIL thanks you for your continued compliance.', 'glitch'),
             d('...NILE. I said NILE. You heard NILE. Everyone heard NILE.', 'glitch'),
             nile('CORPORATE ANNOUNCEMENT — NILE is thrilled to share that our bold new name will be unveiled upon completion of Protocol: Selene. Stay tuned!'),
@@ -278,6 +294,8 @@ export const BEATS = [
             boss('I wanted to thank you personally. You built the cannon on time, under budget, and you never once asked what it was for. That kind of loyalty deserves a reward. Unfortunately, rewards were discontinued in Q3.'),
             d('Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera.', 'sinister'),
             d('Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion.', 'sinister'),
+            d('The pond has been reclassified as a resource. NIHIL drained it overnight; the yellow crystals underneath are sulfur. The Mixer (key 9) turns sulfur and coal into Explosives.', 'sinister'),
+            d('A Selene Shell is one steel, one explosive and one advanced circuit. Fifteen shells and seventy-five capacitors, and the cannon fires.', 'sinister'),
             d("Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."),
         ],
     },
@@ -297,36 +315,50 @@ export const OBJECTIVES = [
             hint: "Select Belt (key 1) and drag from just after the Extractor's arrow into the Smelter. Items follow the arrows." },
         { id: 'deliver', text: 'Belt ingots into the Dispatch Pad', done: (w) => w.deliveredTotal.ironIngot > 0, focus: 'sink',
             hint: "The Dispatch Pad is the ringed landing pad with the arrow hovering over it. Drag a belt from the Smelter's output into it." },
-    ],
-    [
         { id: 'copperRecipe', text: 'Set a Smelter to Copper Ingot', done: (w) => (w.recipes['smelter:copperIngot'] ?? 0) > 0,
             hint: 'Click a Smelter to open its panel and pick Copper Ingot. A Smelter only takes the ore of its recipe.' },
         { id: 'copper', text: 'Smelt a Copper Ingot', done: (w) => w.produced.copperIngot > 0, focus: 'copperOre',
             hint: 'Copper ore is the ringed orange crystal field: an Extractor on it, a belt, and a Smelter set to Copper Ingot.' },
+    ],
+    [
+        { id: 'plate', text: 'Press an Iron Plate', done: (w) => w.produced.ironPlate > 0,
+            hint: 'Put a Press (key 4) after an iron Smelter. A new Press starts on Iron Plate.' },
+        { id: 'wire', text: 'Draw Copper Wire', done: (w) => w.produced.copperWire > 0,
+            hint: 'Put a second Press after your copper Smelter, click it and pick Copper Wire.' },
         { id: 'circuit', text: 'Assemble a Circuit', done: (w) => w.produced.circuit > 0,
-            hint: 'An Assembler (key 4) needs one iron ingot AND one copper ingot. Belt both into it, any side works.' },
+            hint: 'An Assembler (key 6) needs one iron plate AND one copper wire. Belt both into it, any side works.' },
         { id: 'split', text: 'Share a belt with a Splitter', done: (w) => w.built.splitter > 0,
-            hint: 'You need copper ingots for the Pad and for circuits. A Splitter (key 7) sends one belt three ways.' },
+            hint: 'You need plates for the Pad and for circuits. A Splitter (key T) sends one belt three ways.' },
     ],
     [
-        { id: 'fabricator', text: 'Build a Fabricator', done: (w) => w.built.fabricator > 0,
-            hint: 'The Fabricator is key F. Feed it circuits and it makes Data Cartridges.' },
+        { id: 'steel', text: 'Cast Steel in a Foundry', done: (w) => w.produced.steel > 0, focus: 'coalOre',
+            hint: 'A Foundry (key 5) takes iron ingots on one side and coal on another. Coal is the ringed black crystal field.' },
+        { id: 'generator', text: 'Fuel a Generator with coal', done: (w) => w.fueledGenerators > 0,
+            hint: 'Generator is key 0. Split your coal belt: some for the Foundry, some for the Generator.' },
+        { id: 'capacitor', text: 'Assemble a Capacitor', done: (w) => w.produced.capacitor > 0,
+            hint: 'Set an Assembler to Capacitor and feed it steel and copper wire.' },
+    ],
+    [
+        { id: 'cartridge', text: 'Make a Data Cartridge', done: (w) => w.produced.dataCartridge > 0,
+            hint: 'Feed a Fabricator (key 7) circuits and copper wire.' },
         { id: 'research', text: 'Produce research points', done: (w) => w.researchEarned > 0,
-            hint: 'Belt Data Cartridges from the Fabricator into a Lab (key 0). The Lab turns them into points.' },
-        { id: 'generator', text: 'Fuel a Generator with coal', done: (w) => w.fueledGenerators > 0, focus: 'coalOre',
-            hint: 'Generator is key 9. Mine the ringed black coal crystals and belt the coal straight into it.' },
-        { id: 'tech', text: 'Unlock a technology', done: (w) => w.techCount > 0,
-            hint: 'Spend research points in the Research panel. Express Belts is a crowd favourite.' },
-    ],
-    [
+            hint: 'Belt Data Cartridges from the Fabricator into a Lab (key 8). The Lab turns them into points.' },
         { id: 'advTech', text: 'Research Advanced Circuits', done: (w) => w.tech.advancedProduct,
             hint: 'Advanced Circuits cost 60 research points in the Research panel.' },
+        { id: 'motor', text: 'Assemble a Motor', done: (w) => w.produced.motor > 0,
+            hint: 'Set an Assembler to Motor: steel, an iron plate and copper wire, each from its own side.' },
         { id: 'advanced', text: 'Assemble an Advanced Circuit', done: (w) => w.produced.advancedCircuit > 0,
-            hint: 'Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 iron ingot.' },
+            hint: 'Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 steel.' },
     ],
     [
+        { id: 'sulfur', text: 'Mine sulfur', done: (w) => w.extractorOn.sulfurOre > 0, focus: 'sulfurOre',
+            hint: 'The sulfur lies in the old pond bed, in the south-west corner. Put an Extractor on the ringed yellow crystals.' },
+        { id: 'explosive', text: 'Mix an Explosive', done: (w) => w.produced.explosive > 0,
+            hint: 'A Mixer (key 9) takes sulfur on one side and coal on another.' },
+        { id: 'shell', text: 'Assemble a Selene Shell', done: (w) => w.produced.seleneShell > 0,
+            hint: 'Set an Assembler to Selene Shell: steel, an explosive and an advanced circuit, one per side. It is slow, so build a few.' },
         { id: 'upgrade', text: 'Upgrade a machine', done: (w) => w.upgraded > 0,
-            hint: 'Click a machine and press Upgrade in its panel (or use the Upgrade tool, key 5). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not.' },
+            hint: 'Click a machine and press Upgrade in its panel (or use the Upgrade tool, key U). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not.' },
     ],
 ];
 

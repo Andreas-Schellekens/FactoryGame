@@ -11,8 +11,8 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 import {
-    GRID_WIDTH, GRID_HEIGHT, TICK_RATE, SINK_VALUE, MAX_TIER,
-    ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS,
+    GRID_WIDTH, GRID_HEIGHT, TICK_RATE, SINK_VALUE, MAX_TIER, PRODUCT_REWARD,
+    ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS, ORDER_POOL,
 } from './config.js';
 import {
     grid, score, tickCount, order, power, research, project, stats, unlockTech, startOrder,
@@ -62,7 +62,7 @@ const canvas = renderer.canvas;
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // --- Shared UI/input state (kept out of the simulation) ---
-const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'fabricator', 'generator', 'lab']);
+const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'press', 'foundry', 'assembler', 'fabricator', 'mixer', 'generator', 'lab']);
 // Machines whose cell opens a panel when clicked (conveyors are laid over instead).
 const NO_PANEL = new Set(['belt', 'splitter', 'merger']);
 const rotations = ['right', 'down', 'left', 'up'];
@@ -87,7 +87,7 @@ const lastRecipe = {};
 // --- World snapshot for the story director (and objectives) ---
 function snapshot() {
     const built = Object.fromEntries([...buildableTools].map((t) => [t, 0]));
-    const extractorOn = { ironOre: 0, copperOre: 0, coalOre: 0 };
+    const extractorOn = { ironOre: 0, copperOre: 0, coalOre: 0, sulfurOre: 0 };
     let fueledGenerators = 0;
     let upgraded = 0;
     let working = 0;
@@ -392,8 +392,14 @@ const ui = createUI({
 // --- Orders (generation/cadence is policy, so it lives here) ---
 // Priority Requests start once the Assembler is unlocked (phase 1 done).
 const randInt = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
-const issueOrder = () =>
-    startOrder({ target: randInt(ORDER_TARGET), ticks: randInt(ORDER_TICKS), reward: randInt(ORDER_REWARD) });
+function issueOrder() {
+    // A product the factory can make by now; cheap goods in bigger batches, dear ones in smaller.
+    const pool = ORDER_POOL[Math.min(project.phase, ORDER_POOL.length - 1)];
+    const productType = pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'circuit';
+    const worth = Math.sqrt((SINK_VALUE[productType] ?? PRODUCT_REWARD) / PRODUCT_REWARD);
+    const target = Math.max(2, Math.round(randInt(ORDER_TARGET) / worth));
+    startOrder({ productType, target, ticks: randInt(ORDER_TICKS), reward: Math.round(randInt(ORDER_REWARD) * Math.sqrt(worth)) });
+}
 
 let nextOrderTick = null; // tickCount at which to issue the next order, or null
 function tickOrders() {
@@ -526,7 +532,11 @@ function demolish(gx, gy) {
 }
 
 // --- Input: keyboard (tools, rotation, sim speed, camera) ---
-const keyTools = { 1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'assembler', 5: 'upgrade', 6: 'erase', 7: 'splitter', 8: 'merger', 9: 'generator', 0: 'lab' };
+// Buildings in chain order on the number row; routers, upgrade and demolish on letters.
+const keyTools = {
+    1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'press', 5: 'foundry', 6: 'assembler', 7: 'fabricator', 8: 'lab', 9: 'mixer', 0: 'generator',
+    t: 'splitter', y: 'merger', u: 'upgrade', x: 'erase', delete: 'erase', backspace: 'erase',
+};
 const PAN_KEYS = {
     w: [0, 1], arrowup: [0, 1], s: [0, -1], arrowdown: [0, -1],
     a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0],
@@ -548,8 +558,7 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         return;
     }
-    if (e.key in keyTools) selectTool(keyTools[e.key]);
-    if (k === 'f') selectTool('fabricator');
+    if (k in keyTools) selectTool(keyTools[k]);
     if (e.key === 'Escape' && state.selected) {
         deselect();
         audio.cue('close');

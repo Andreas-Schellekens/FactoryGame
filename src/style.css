@@ -2263,3 +2263,59 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
   font-weight: 500;
   letter-spacing: 0.01em;
 }
+
+/* ---- A longer key bar (twelve buildings): a little more compact ------------------- */
+.keys {
+  gap: 5px;
+}
+
+.hwkey {
+  width: 64px;
+  height: 74px;
+}
+
+.hwkey.edit {
+  width: 58px;
+  height: 68px;
+}
+
+.hwkey-img {
+  width: 54px;
+  height: 46px;
+}
+
+.hwkey.edit .hwkey-img {
+  width: 48px;
+  height: 40px;
+}
+
+.keys-divider {
+  margin: 0 5px;
+}
+
+@media (max-width: 1400px) {
+  .hwkey {
+    width: 56px;
+    height: 68px;
+  }
+
+  .hwkey.edit {
+    width: 52px;
+    height: 64px;
+  }
+
+  .hwkey-img {
+    width: 48px;
+    height: 40px;
+  }
+
+  .hwkey.edit .hwkey-img {
+    width: 44px;
+    height: 36px;
+  }
+
+  .hwkey-sub {
+    font-size: 9px;
+    letter-spacing: 0.02em;
+  }
+}

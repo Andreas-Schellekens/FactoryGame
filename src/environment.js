@@ -7,7 +7,7 @@
 // player builds (and stays paved), smelters and generators scorch the ground.
 // Purely visual; the sky and moon are CSS behind the canvas.
 import * as THREE from 'three';
-import { GRID_WIDTH as W, GRID_HEIGHT as H, PAD_POS, CANNON_AREA } from './config.js';
+import { GRID_WIDTH as W, GRID_HEIGHT as H, PAD_POS, CANNON_AREA, ORE_FIELDS } from './config.js';
 import { grid, cellHash } from './grid.js';
 import { natureMaterial } from './assets.js';
 import { haloSprite } from './effects.js';
@@ -22,13 +22,19 @@ const LAND = [
     { ground: 0x8cc75e, grass: 0x7fbd4e, leafs: 0x64ac46, dirt: 0x8b6243, water: 0x46a0d8 },
     { ground: 0xb2bb5e, grass: 0xadb24e, leafs: 0x8ea63e, dirt: 0x8a6040, water: 0x3f8aa8 },
     { ground: 0x908b55, grass: 0x8c8648, leafs: 0x707a44, dirt: 0x74523a, water: 0x4a6a62 },
-    { ground: 0x6f5d47, grass: 0x705e42, leafs: 0x5a5038, dirt: 0x5e4232, water: 0x4a4038 },
-    { ground: 0x4d3c35, grass: 0x4f3f33, leafs: 0x3e3430, dirt: 0x4a3028, water: 0x3a2222 },
+    { ground: 0x6f5d47, grass: 0x705e42, leafs: 0x5a5038, dirt: 0x5e4232, water: 0x62602a },
+    { ground: 0x4d3c35, grass: 0x4f3f33, leafs: 0x3e3430, dirt: 0x4a3028, water: 0x4e4a22 },
 ];
 
 const TREE_KINDS = ['default', 'oak', 'detailed', 'tall', 'simple', 'cone', 'plateau'];
 const STUMPS = ['stump_old', 'stump_oldTall', 'stump_round', 'stump_roundDetailed'];
 const POND = { x: -2.6, z: H + 3, r: 2.3 };
+// NIHIL drains the pond at the reveal and exposes the sulfur under it: the
+// field that appears late (config.js ORE_FIELDS, `fromPhase`) sits just
+// north-east of the pond, inside the grid.
+const SULFUR_FIELD = ORE_FIELDS.find((f) => f.type === 'sulfurOre') ?? { x: 2, y: 21, r: 1.7, fromPhase: 4 };
+const DRAIN_PHASE = SULFUR_FIELD.fromPhase ?? 4;
+const SULFUR = { x: SULFUR_FIELD.x + 0.5, z: SULFUR_FIELD.y + 0.5, r: SULFUR_FIELD.r };
 
 // Small props don't cast shadows: they'd cost a draw call each for a few pixels.
 const NO_SHADOW = /^(grass|flower|mushroom|lily|crop|wheat|stoneSmall)/;
@@ -88,6 +94,125 @@ function groundTexture() {
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
+    return tex;
+}
+
+/** A tiny deterministic PRNG (mulberry32), so the decals look the same every load. */
+function prng(seed) {
+    let a = seed >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/** The drained pond bed: ochre mud, damp in the middle, crazed into plates by cracks. */
+function crackTexture() {
+    const n = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    const g = c.getContext('2d');
+    const r = prng(7);
+    const mud = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    mud.addColorStop(0, '#4a3a1e');
+    mud.addColorStop(0.3, '#6a5430');
+    mud.addColorStop(1, '#8e7140');
+    g.fillStyle = mud;
+    g.fillRect(0, 0, n, n);
+    for (let i = 0; i < 600; i++) {
+        g.fillStyle = r() < 0.5 ? 'rgba(255,236,170,0.10)' : 'rgba(30,20,8,0.12)';
+        g.fillRect(r() * n, r() * n, 2, 2);
+    }
+    // Mud plates: a jittered Voronoi diagram; pixels near the border of two
+    // cells are the cracks (dark), with a sunlit lip on one side.
+    const seeds = [];
+    const k = 9;
+    for (let i = 0; i < k; i++) {
+        for (let j = 0; j < k; j++) seeds.push([(i + 0.15 + r() * 0.7) * (n / k), (j + 0.15 + r() * 0.7) * (n / k)]);
+    }
+    const img = g.getImageData(0, 0, n, n);
+    const d = img.data;
+    for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+            let d1 = Infinity;
+            let d2 = Infinity;
+            let near = null;
+            for (const sd of seeds) {
+                const q = (x - sd[0]) ** 2 + (y - sd[1]) ** 2;
+                if (q < d1) {
+                    d2 = d1;
+                    d1 = q;
+                    near = sd;
+                } else if (q < d2) d2 = q;
+            }
+            const edge = Math.sqrt(d2) - Math.sqrt(d1);
+            const i = (y * n + x) * 4;
+            if (edge < 1.6) {
+                d[i] *= 0.3;
+                d[i + 1] *= 0.26;
+                d[i + 2] *= 0.2;
+            } else if (edge < 3.2 && y < near[1]) {
+                d[i] = Math.min(255, d[i] * 1.22);
+                d[i + 1] = Math.min(255, d[i + 1] * 1.2);
+                d[i + 2] = Math.min(255, d[i + 2] * 1.12);
+            }
+        }
+    }
+    g.putImageData(img, 0, 0);
+    // Sulfur crust creeping in from the field's side.
+    for (let i = 0; i < 140; i++) {
+        const a = -Math.PI / 4 + (r() - 0.5) * 2.2;
+        const dd = n * (0.22 + r() * 0.28);
+        g.fillStyle = `rgba(232,206,72,${0.2 + r() * 0.35})`;
+        g.fillRect(n / 2 + Math.cos(a) * dd, n / 2 + Math.sin(a) * dd, 2 + r() * 3, 2 + r() * 2);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+}
+
+/** World rectangle the sulfur stain covers: the pond, the field and the ground between. */
+const STAIN = { x0: -6, x1: 6.5, z0: 16.5, z1: 30 };
+
+/** A blotchy sulfur-yellow stain from the drained pond up to the exposed field. */
+function stainTexture() {
+    const n = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    const g = c.getContext('2d');
+    const r = prng(21);
+    const sx = n / (STAIN.x1 - STAIN.x0);
+    const sz = n / (STAIN.z1 - STAIN.z0);
+    const blob = (wx, wz, rad, alpha, rgb = '196,170,58') => {
+        const px = (wx - STAIN.x0) * sx;
+        const py = (wz - STAIN.z0) * sz;
+        const grad = g.createRadialGradient(px, py, 0, px, py, rad * sx);
+        grad.addColorStop(0, `rgba(${rgb},${alpha})`);
+        grad.addColorStop(1, `rgba(${rgb},0)`);
+        g.fillStyle = grad;
+        g.fillRect(px - rad * sx, py - rad * sx, rad * sx * 2, rad * sx * 2);
+    };
+    for (let i = 0; i < 18; i++) { // patches along the way from the pond bed up to the field
+        const t = r();
+        blob(POND.x + (SULFUR.x - POND.x) * t + (r() - 0.5) * 3, POND.z + (SULFUR.z - POND.z) * t + (r() - 0.5) * 3,
+            0.5 + r() * 1.1, 0.14 + r() * 0.18);
+    }
+    for (let i = 0; i < 10; i++) { // round the field
+        const a = r() * Math.PI * 2;
+        const d = r() * (SULFUR.r + 0.8);
+        blob(SULFUR.x + Math.cos(a) * d, SULFUR.z + Math.sin(a) * d, 0.6 + r() * 0.9, 0.18 + r() * 0.16);
+    }
+    for (let i = 0; i < 160; i++) { // crystalline crust, in clumps
+        const t = r();
+        const wx = POND.x + (SULFUR.x - POND.x) * t + (r() - 0.5) * 3.6;
+        const wz = POND.z + (SULFUR.z - POND.z) * t + (r() - 0.5) * 3.6;
+        g.fillStyle = r() < 0.7 ? `rgba(236,214,96,${0.25 + r() * 0.35})` : `rgba(120,96,36,${0.25 + r() * 0.3})`;
+        g.fillRect((wx - STAIN.x0) * sx, (wz - STAIN.z0) * sz, 1 + r() * 2.5, 1 + r() * 2);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
 }
 
@@ -194,15 +319,17 @@ export function buildEnvironment(scene, assets, effects) {
         if (f) f.gone = true;
     }
     const scorched = new Set();
-    function scorch(x, y) {
-        const key = `${x},${y}`;
+    const SCORCH = { soot: '46,32,22', toxic: '150,168,40' }; // furnaces / the Mixer's spills
+    function scorch(x, y, tone = 'soot') {
+        const key = `${x},${y},${tone}`;
         if (scorched.has(key)) return;
         scorched.add(key);
         const cx = (x + 0.5) * PX;
         const cy = (y + 0.5) * PX;
+        const rgb = SCORCH[tone] ?? SCORCH.soot;
         const grad = pg.createRadialGradient(cx, cy, PX * 0.3, cx, cy, PX * 1.9);
-        grad.addColorStop(0, 'rgba(46,32,22,0.55)');
-        grad.addColorStop(1, 'rgba(46,32,22,0)');
+        grad.addColorStop(0, `rgba(${rgb},0.55)`);
+        grad.addColorStop(1, `rgba(${rgb},0)`);
         pg.fillStyle = grad;
         pg.fillRect(cx - PX * 2, cy - PX * 2, PX * 4, PX * 4);
         paveTex.needsUpdate = true;
@@ -292,13 +419,26 @@ export function buildEnvironment(scene, assets, effects) {
     }
     mergeStatic(farmStatic, { castShadow: true });
 
-    // Pond (south-west) with lilies; the water turns murky.
-    const bank = new THREE.Mesh(new THREE.CircleGeometry(POND.r + 0.35, 40),
-        new THREE.MeshStandardMaterial({ color: 0x6b5a40, roughness: 1 }));
+    // Pond (south-west) with lilies; the water turns murky. At the reveal NIHIL
+    // drains it: the water shrinks to a sludge puddle, the bed dries to cracked
+    // ochre and a sulfur-yellow stain creeps up to the field it exposed.
+    const BANK_WET = new THREE.Color(0x6b5a40);
+    const BANK_DRY = new THREE.Color(0x9c7c3c);
+    const bankMat = new THREE.MeshStandardMaterial({ color: BANK_WET, roughness: 1 });
+    const bank = new THREE.Mesh(new THREE.CircleGeometry(POND.r + 0.35, 40), bankMat);
     bank.rotation.x = -Math.PI / 2;
     bank.position.set(POND.x, 0.004, POND.z);
     bank.receiveShadow = true;
     root.add(bank);
+    const bedMat = new THREE.MeshStandardMaterial({
+        map: crackTexture(), roughness: 1, transparent: true, opacity: 0, depthWrite: false,
+    });
+    const bed = new THREE.Mesh(new THREE.CircleGeometry(POND.r + 0.2, 40), bedMat);
+    bed.rotation.x = -Math.PI / 2;
+    bed.position.set(POND.x, 0.007, POND.z);
+    bed.receiveShadow = true;
+    bed.visible = false;
+    root.add(bed);
     const waterMat = new THREE.MeshStandardMaterial({ color: LAND[0].water, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.92 });
     const water = new THREE.Mesh(new THREE.CircleGeometry(POND.r, 40), waterMat);
     water.rotation.x = -Math.PI / 2;
@@ -307,7 +447,30 @@ export function buildEnvironment(scene, assets, effects) {
     for (let i = 0; i < 6; i++) {
         const a = i * 1.7;
         const r = 0.5 + (i % 3) * 0.5;
-        addProp(i % 2 ? 'lily' : 'lilySmall', POND.x + Math.cos(a) * r, POND.z + Math.sin(a) * r, 0, 2, { rot: a, y: 0.014 });
+        addProp(i % 2 ? 'lily' : 'lilySmall', POND.x + Math.cos(a) * r, POND.z + Math.sin(a) * r, 0, DRAIN_PHASE - 1, { rot: a, y: 0.014 });
+    }
+    const stainMat = new THREE.MeshStandardMaterial({
+        map: stainTexture(), roughness: 1, transparent: true, opacity: 0, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    });
+    const stain = new THREE.Mesh(new THREE.PlaneGeometry(STAIN.x1 - STAIN.x0, STAIN.z1 - STAIN.z0), stainMat);
+    stain.rotation.x = -Math.PI / 2;
+    stain.position.set((STAIN.x0 + STAIN.x1) / 2, 0.002, (STAIN.z0 + STAIN.z1) / 2);
+    stain.receiveShadow = true;
+    stain.renderOrder = -1; // under the paving, the pond bed and the water
+    stain.visible = false;
+    root.add(stain);
+    let drain = 0; // 0 = a full pond ... 1 = drained (eased toward the phase's target)
+    function applyDrain() {
+        const e = ease(drain);
+        water.scale.setScalar(1 - 0.72 * e); // a sludge puddle stays behind
+        waterMat.opacity = 0.92 - 0.1 * e;
+        bed.visible = e > 0.001;
+        bedMat.opacity = Math.min(1, e * 1.5);
+        const s = ease(Math.max(0, (drain - 0.25) / 0.75));
+        stain.visible = s > 0.001;
+        stainMat.opacity = s;
+        bankMat.color.copy(BANK_WET).lerp(BANK_DRY, e);
     }
 
     // Rim: forest, meadow and NILE's compound.
@@ -448,7 +611,7 @@ export function buildEnvironment(scene, assets, effects) {
         });
         if (instant) {
             for (const pr of props) {
-                pr.shown = p >= pr.min && p <= pr.max && !pr.gone && !pr.covered;
+                pr.shown = p >= pr.min && p <= pr.max && !pr.gone && !pr.covered && !pr.ore;
                 pr.k = pr.shown ? 1 : 0;
                 pr.obj.visible = pr.shown;
                 pr.obj.scale.setScalar(pr.obj.userData.baseScale * pr.k);
@@ -459,6 +622,8 @@ export function buildEnvironment(scene, assets, effects) {
             natureMaterial('leafsGreen').color.setHex(land.leafs);
             natureMaterial('dirt').color.setHex(land.dirt);
             waterMat.color.setHex(land.water);
+            drain = p >= DRAIN_PHASE ? 1 : 0;
+            applyDrain();
         }
     }
 
@@ -468,6 +633,7 @@ export function buildEnvironment(scene, assets, effects) {
     }
 
     let smokeAcc = 0;
+    let dustAcc = 0;
     /** Per frame: staggered transitions, falling trees, colour easing, fire, lamps. */
     function update(dt) {
         clock += dt;
@@ -502,7 +668,7 @@ export function buildEnvironment(scene, assets, effects) {
             c.obj.scale.setScalar(c.obj.userData.baseScale * ease(c.grow) * s);
         }
         for (const pr of props) {
-            const want = phase >= pr.min && phase <= pr.max && !pr.gone && !pr.covered;
+            const want = phase >= pr.min && phase <= pr.max && !pr.gone && !pr.covered && !pr.ore;
             if (want !== pr.shown) pr.shown = want;
             const target = pr.shown ? 1 : 0;
             if (pr.k === target) continue;
@@ -517,6 +683,21 @@ export function buildEnvironment(scene, assets, effects) {
         lerpHex(natureMaterial('leafsGreen').color, land.leafs, k);
         lerpHex(natureMaterial('dirt').color, land.dirt, k);
         lerpHex(waterMat.color, land.water, k);
+
+        // The pond drains over a few seconds, kicking up dust off the drying bed.
+        const drainTo = phase >= DRAIN_PHASE ? 1 : 0;
+        if (drain !== drainTo) {
+            drain += Math.sign(drainTo - drain) * Math.min(Math.abs(drainTo - drain), dt / 6500);
+            applyDrain();
+            dustAcc += dt;
+            if (drainTo === 1 && dustAcc > 420) {
+                dustAcc = 0;
+                const a = Math.random() * Math.PI * 2;
+                const d = POND.r * (1 - 0.72 * ease(drain)) + 0.15;
+                effects.puff(new THREE.Vector3(POND.x + Math.cos(a) * d, 0, POND.z + Math.sin(a) * d),
+                    { color: 0xc9ab62, count: 3, size: 0.4, spread: 0.3 });
+            }
+        }
 
         // The campfire burns until the reveal; then the camp is abandoned.
         const fireOn = phase < 4;
@@ -546,6 +727,11 @@ export function buildEnvironment(scene, assets, effects) {
         coverCell(x, y, covered) {
             const f = flora.get(`${x},${y}`);
             if (f) f.covered = covered;
+        },
+        /** Ore appeared on a cell (a field laid mid-game): its flowers make way. */
+        markOre(x, y) {
+            const f = flora.get(`${x},${y}`);
+            if (f) f.ore = true;
         },
         savePaved: () => [...paved],
         loadPaved(list) {

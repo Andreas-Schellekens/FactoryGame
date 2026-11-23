@@ -8,11 +8,14 @@ export const STARTING_BUILDINGS = ['belt', 'extractor', 'smelter'];
 // Each phase completes once the Dispatch Pad has received every `requires`
 // count while that phase is active; completing it unlocks `unlocks` for good.
 export const PHASES = [
-    { id: 'groundbreaking', requires: { ironIngot: 20 }, unlocks: ['assembler', 'splitter', 'merger'] },
-    { id: 'targeting', requires: { copperIngot: 15, circuit: 25 }, unlocks: ['fabricator', 'lab', 'generator'] },
-    { id: 'powercore', requires: { circuit: 60 }, unlocks: [] },
-    { id: 'payload', requires: { advancedCircuit: 20 }, unlocks: [] },
-    { id: 'ignition', requires: { circuit: 80, advancedCircuit: 40 }, unlocks: [] },
+    // Each phase needs the chain the one before it unlocked, so the whole
+    // factory gets built: ingots → plates + wire → steel → capacitors and
+    // motors (with research) → shells (with explosives from the sulfur).
+    { id: 'groundbreaking', requires: { ironIngot: 40, copperIngot: 20 }, unlocks: ['press', 'assembler', 'splitter', 'merger'] },
+    { id: 'targeting', requires: { ironPlate: 60, circuit: 40 }, unlocks: ['foundry', 'generator'] },
+    { id: 'powercore', requires: { steel: 60, capacitor: 50 }, unlocks: ['fabricator', 'lab'] },
+    { id: 'payload', requires: { motor: 40, advancedCircuit: 30 }, unlocks: ['mixer'] },
+    { id: 'ignition', requires: { seleneShell: 15, capacitor: 75 }, unlocks: [] },
 ];
 
 /** Index of the phase whose completion unlocks `type` (-1 = available from the start). */

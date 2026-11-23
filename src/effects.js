@@ -1,5 +1,5 @@
 // src/effects.js — small, cheap visual effects: a pooled sprite particle
-// system (dust puffs, sparkles, smoke, falling ash, rising embers), floating
+// system (dust puffs, sparkles, smoke, bubbles, falling ash, rising embers), floating
 // "+credits" text, butterflies over the meadow, and additive halo sprites
 // that fake a glow without post-processing. Knows nothing about the game;
 // callers say where and when.
@@ -100,6 +100,19 @@ export function createEffects(scene) {
             vel: v3(rand(-0.06, 0.06) + 0.08, rise, rand(-0.06, 0.06) - 0.05),
             life: rand(2, 2.8), size, grow: 4, color, opacity, drag: 0.995,
         });
+    }
+
+    /** Bubbles welling up out of a liquid surface and popping (the Mixer's vat). */
+    function bubble(pos, { color = 0xc8f04a, count = 2, size = 0.07, spread = 0.18 } = {}) {
+        for (let i = 0; i < count; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.sqrt(Math.random()) * spread;
+            particle({
+                pos: v3(pos.x + Math.cos(a) * r, pos.y, pos.z + Math.sin(a) * r),
+                vel: v3(rand(-0.03, 0.03), rand(0.12, 0.28), rand(-0.03, 0.03)),
+                life: rand(0.35, 0.7), size: size * rand(0.6, 1.3), grow: 1.8, color, opacity: 0.95, additive: true,
+            });
+        }
     }
 
     // ---- Floating text ---------------------------------------------------------
@@ -249,5 +262,5 @@ export function createEffects(scene) {
         }
     }
 
-    return { puff, sparkle, smoke, floatText, update };
+    return { puff, sparkle, smoke, bubble, floatText, update };
 }

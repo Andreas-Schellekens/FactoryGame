@@ -161,6 +161,7 @@ function checkPhaseComplete() {
     project.phase++;
     project.delivered = {};
     if (project.phase >= PHASES.length) project.complete = true;
+    revealOre(project.phase);
 }
 
 // The Dispatch Pad buys sellable goods and takes anything the phase needs.
@@ -247,12 +248,25 @@ export const RECIPES = {
         { id: 'ironIngot', inputs: { ironOre: 1 }, output: 'ironIngot' },
         { id: 'copperIngot', inputs: { copperOre: 1 }, output: 'copperIngot' },
     ],
+    press: [
+        { id: 'ironPlate', inputs: { ironIngot: 1 }, output: 'ironPlate' },
+        { id: 'copperWire', inputs: { copperIngot: 1 }, output: 'copperWire' },
+    ],
+    foundry: [
+        { id: 'steel', inputs: { ironIngot: 1, coalOre: 1 }, output: 'steel' },
+    ],
     assembler: [
-        { id: 'circuit', inputs: { ironIngot: 1, copperIngot: 1 }, output: PRODUCT_TYPE },
-        { id: 'advancedCircuit', inputs: { circuit: 2, ironIngot: 1 }, output: 'advancedCircuit', tech: 'advancedProduct', time: 1.5 },
+        { id: 'circuit', inputs: { ironPlate: 1, copperWire: 1 }, output: PRODUCT_TYPE },
+        { id: 'capacitor', inputs: { steel: 1, copperWire: 2 }, output: 'capacitor', time: 1.5 },
+        { id: 'motor', inputs: { steel: 1, ironPlate: 1, copperWire: 1 }, output: 'motor', time: 2 },
+        { id: 'advancedCircuit', inputs: { circuit: 2, steel: 1 }, output: 'advancedCircuit', tech: 'advancedProduct', time: 1.5 },
+        { id: 'seleneShell', inputs: { steel: 1, explosive: 1, advancedCircuit: 1 }, output: 'seleneShell', time: 4 },
     ],
     fabricator: [
-        { id: 'dataCartridge', inputs: { circuit: 2 }, output: 'dataCartridge' },
+        { id: 'dataCartridge', inputs: { circuit: 1, copperWire: 1 }, output: 'dataCartridge' },
+    ],
+    mixer: [
+        { id: 'explosive', inputs: { sulfurOre: 1, coalOre: 1 }, output: 'explosive' },
     ],
     lab: [
         { id: 'research', inputs: { dataCartridge: 1 }, output: null },
@@ -272,8 +286,8 @@ export function machineRecipe(m) {
 // Machines that absorb the item in their input slot into a buffer. The
 // generator is one of them (it eats coalOre as fuel) even though it never
 // runs a recipe — its burn happens in the power phase.
-const PROCESSORS = new Set(['smelter', 'assembler', 'fabricator', 'generator', 'lab']);
-export const UPGRADABLE = new Set(['extractor', 'smelter', 'assembler', 'fabricator', 'lab']);
+const PROCESSORS = new Set(['smelter', 'press', 'foundry', 'assembler', 'fabricator', 'mixer', 'generator', 'lab']);
+export const UPGRADABLE = new Set(['extractor', 'smelter', 'press', 'foundry', 'assembler', 'fabricator', 'mixer', 'lab']);
 
 function inBounds(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
@@ -307,17 +321,9 @@ export function initGrid() {
 
     // Ore deposits (terrain) — extractors must be placed on top of these.
     // Each field is a blob with a deterministic ragged edge, so the same map
-    // comes back on every load.
-    for (const f of ORE_FIELDS) {
-        const r = Math.ceil(f.r + 1);
-        for (let x = f.x - r; x <= f.x + r; x++) {
-            for (let y = f.y - r; y <= f.y + r; y++) {
-                if (!inBounds(x, y)) continue;
-                const jitter = (cellHash(x, y) - 0.5) * 0.9;
-                if (Math.hypot(x - f.x, y - f.y) <= f.r + jitter) grid[x][y].resource = f.type;
-            }
-        }
-    }
+    // comes back on every load. Fields with `fromPhase` wait for revealOre().
+    revealedFields.clear();
+    revealOre(0);
     grid[PAD_POS.x][PAD_POS.y].resource = null;
 
     // The cannon's construction site: reserved, nothing can be built there.
@@ -330,6 +336,28 @@ export function initGrid() {
 
     // The single, pre-placed sink (protected: cannot be built or removed).
     grid[PAD_POS.x][PAD_POS.y].machine = makeMachine('sink');
+}
+
+// Ore fields laid so far (indexes into ORE_FIELDS), and a counter the renderer
+// watches to add the views of a field that just appeared.
+const revealedFields = new Set();
+export let oreRevision = 0;
+
+/** Lay every ore field due by `phase` (phases completed) that isn't laid yet. */
+function revealOre(phase) {
+    ORE_FIELDS.forEach((f, i) => {
+        if (revealedFields.has(i) || (f.fromPhase ?? 0) > phase) return;
+        revealedFields.add(i);
+        const r = Math.ceil(f.r + 1);
+        for (let x = f.x - r; x <= f.x + r; x++) {
+            for (let y = f.y - r; y <= f.y + r; y++) {
+                if (!inBounds(x, y) || (x === PAD_POS.x && y === PAD_POS.y) || grid[x][y].blocked) continue;
+                const jitter = (cellHash(x, y) - 0.5) * 0.9;
+                if (Math.hypot(x - f.x, y - f.y) <= f.r + jitter) grid[x][y].resource = f.type;
+            }
+        }
+        oreRevision++;
+    });
 }
 
 /** Deterministic pseudo-random value in [0, 1) for a cell (map + decor layout). */
@@ -346,7 +374,8 @@ export function machineCost(type) {
 // ---- Save / load --------------------------------------------------------
 // v2: campaign (project/stats) added; v1 sandbox saves are not loaded.
 // v3: recipes chosen per machine, the Fabricator and Data Cartridges, the market.
-export const SAVE_VERSION = 3;
+// v4: the 4b production chain (press, foundry, mixer, new items and phases).
+export const SAVE_VERSION = 4;
 
 /**
  * Snapshot the simulation as a plain, JSON-serializable object. Terrain
@@ -425,6 +454,7 @@ export function loadState(data) {
     project.phase = data.project?.phase ?? 0;
     project.delivered = { ...(data.project?.delivered ?? {}) };
     project.complete = data.project?.complete ?? false;
+    revealOre(project.phase);
     stats.produced = { ...(data.stats?.produced ?? {}) };
     stats.delivered = { ...(data.stats?.delivered ?? {}) };
     stats.researchEarned = data.stats?.researchEarned ?? 0;
@@ -572,8 +602,11 @@ function cellAccepts(cell, itemType) {
         case 'sink':
             return sinkAccepts(itemType);
         case 'smelter':
+        case 'press':
+        case 'foundry':
         case 'assembler':
         case 'fabricator':
+        case 'mixer':
         case 'lab': {
             const r = machineRecipe(m);
             return !!r && recipeUnlocked(r) && itemType in r.inputs && (m.buffer[itemType] || 0) < BUFFER_CAP;
@@ -608,8 +641,11 @@ export function portsFor(type, dir) {
     switch (type) {
         case 'extractor': return { in: [], out: [dir] };
         case 'smelter':
+        case 'press':
+        case 'foundry':
         case 'assembler':
-        case 'fabricator': return { in: [OPPOSITE[dir], ...PERP[dir]], out: [dir] };
+        case 'fabricator':
+        case 'mixer': return { in: [OPPOSITE[dir], ...PERP[dir]], out: [dir] };
         case 'generator':
         case 'lab':
         case 'sink': return { in: ALL_SIDES, out: [] };
