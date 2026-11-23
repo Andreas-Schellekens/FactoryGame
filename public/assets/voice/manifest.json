@@ -1,6 +1,48 @@
 {
   "version": 1,
   "lines": {
+    "boss-23a6fbb0": {
+      "file": "boss-23a6fbb0.mp3",
+      "ms": 8231,
+      "who": "boss",
+      "mood": null,
+      "text": "On behalf of the board: thank you. The sky is now a product. And you, Asset, are now a cost."
+    },
+    "boss-61dad763": {
+      "file": "boss-61dad763.mp3",
+      "ms": 15755,
+      "who": "boss",
+      "mood": null,
+      "text": "I wanted to thank you personally. You built the cannon on time, under budget, and you never once asked what it was for. That kind of loyalty deserves a reward. Unfortunately, rewards were discontinued in Q3."
+    },
+    "boss-6ba0e025": {
+      "file": "boss-6ba0e025.mp3",
+      "ms": 8466,
+      "who": "boss",
+      "mood": null,
+      "text": "A blackout. How refreshing. Darkness is our most popular product next quarter. Please don't give it away for free."
+    },
+    "boss-8d72423e": {
+      "file": "boss-8d72423e.mp3",
+      "ms": 7343,
+      "who": "boss",
+      "mood": null,
+      "text": "Memo from the desk of Nolan Isaac Locke: smiling is now billable. Please smile responsibly."
+    },
+    "boss-a7933a38": {
+      "file": "boss-a7933a38.mp3",
+      "ms": 5515,
+      "who": "boss",
+      "mood": null,
+      "text": "Good evening, Asset. Nolan Isaac Locke, Chief Executive of NIHIL."
+    },
+    "boss-d0d9aec0": {
+      "file": "boss-d0d9aec0.mp3",
+      "ms": 7918,
+      "who": "boss",
+      "mood": null,
+      "text": "Nolan here. The board is watching your progress with great interest, and a small amount of popcorn. Carry on."
+    },
     "delta-0428e642": {
       "file": "delta-0428e642.mp3",
       "ms": 9276,
@@ -49,6 +91,13 @@
       "who": "delta",
       "mood": null,
       "text": "Fun fact: the Dispatch Pad has been Employee of the Month fourteen months in a row. You have been rated \"adequate\"."
+    },
+    "delta-1da8048a": {
+      "file": "delta-1da8048a.mp3",
+      "ms": 9355,
+      "who": "delta",
+      "mood": null,
+      "text": "And Generators (key 9): belt coal from the black crystal field into one and the grid gets stronger. You will want that."
     },
     "delta-1f44769a": {
       "file": "delta-1f44769a.mp3",
@@ -113,6 +162,13 @@
       "mood": null,
       "text": "Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."
     },
+    "delta-422b68f0": {
+      "file": "delta-422b68f0.mp3",
+      "ms": 13038,
+      "who": "delta",
+      "mood": null,
+      "text": "Lower the load first: switch machines off in their panels, or build and fuel more Generators. Then press Reset on the power gauge. Reset too early and it trips again."
+    },
     "delta-42b2d463": {
       "file": "delta-42b2d463.mp3",
       "ms": 8545,
@@ -126,13 +182,6 @@
       "who": "delta",
       "mood": "sinister",
       "text": "NIHIL reminds you: nothing lasts forever. Except your contract."
-    },
-    "delta-4619e4d0": {
-      "file": "delta-4619e4d0.mp3",
-      "ms": 10138,
-      "who": "delta",
-      "mood": null,
-      "text": "Phase 4 is the Payload: Advanced Circuits. Two circuits plus one iron ingot, in an Assembler. Research the recipe first."
     },
     "delta-46dea570": {
       "file": "delta-46dea570.mp3",
@@ -148,12 +197,12 @@
       "mood": "happy",
       "text": "A circuit! So small. So fragile. So billable."
     },
-    "delta-4bc0adb5": {
-      "file": "delta-4bc0adb5.mp3",
-      "ms": 4078,
+    "delta-49251cd7": {
+      "file": "delta-49251cd7.mp3",
+      "ms": 11679,
       "who": "delta",
-      "mood": null,
-      "text": "The Lab is key 0. It only accepts Research."
+      "mood": "happy",
+      "text": "Three new toys! The Fabricator (key F) turns circuits into Data Cartridges. The Lab (key 0) reads them into research points for technology."
     },
     "delta-509ab6c1": {
       "file": "delta-509ab6c1.mp3",
@@ -197,26 +246,19 @@
       "mood": null,
       "text": "Deadline missed. Don't worry, it has only been added to your permanent record."
     },
+    "delta-58ca507c": {
+      "file": "delta-58ca507c.mp3",
+      "ms": 5358,
+      "who": "delta",
+      "mood": null,
+      "text": "The Fabricator is key F. Feed it circuits and it makes Data Cartridges."
+    },
     "delta-617acf40": {
       "file": "delta-617acf40.mp3",
       "ms": 9746,
       "who": "delta",
       "mood": null,
       "text": "Phase 1 needs 20 iron ingots. Spend your credits on more Extractors and Smelters if you like. The Moon won't un-fall itself."
-    },
-    "delta-64e408c9": {
-      "file": "delta-64e408c9.mp3",
-      "ms": 10791,
-      "who": "delta",
-      "mood": "happy",
-      "text": "The Lab (key 0) is now available. An Assembler fed only circuits makes Research; a Lab turns Research into points you can spend on technology."
-    },
-    "delta-6b8c4e7b": {
-      "file": "delta-6b8c4e7b.mp3",
-      "ms": 7500,
-      "who": "delta",
-      "mood": null,
-      "text": "Copper ore is the ringed orange crystal field. Same recipe as iron: Extractor, belt, Smelter."
     },
     "delta-6d00571e": {
       "file": "delta-6d00571e.mp3",
@@ -231,6 +273,27 @@
       "who": "delta",
       "mood": "happy",
       "text": "NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it."
+    },
+    "delta-74d07666": {
+      "file": "delta-74d07666.mp3",
+      "ms": 7918,
+      "who": "delta",
+      "mood": null,
+      "text": "Copper ore is the ringed orange crystal field: an Extractor on it, a belt, and a Smelter set to Copper Ingot."
+    },
+    "delta-78d4ed23": {
+      "file": "delta-78d4ed23.mp3",
+      "ms": 11679,
+      "who": "delta",
+      "mood": null,
+      "text": "Push it much further and the breaker trips. Generators arrive after Phase 2. Until then: switch machines off in their panels, or enjoy the slow life."
+    },
+    "delta-7b910580": {
+      "file": "delta-7b910580.mp3",
+      "ms": 11261,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Phase 4 is the Payload: Advanced Circuits. Research the recipe, then set an Assembler to Advanced Circuit and feed it two circuits plus one iron ingot."
     },
     "delta-7c1cc24c": {
       "file": "delta-7c1cc24c.mp3",
@@ -253,19 +316,19 @@
       "mood": null,
       "text": "Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments."
     },
+    "delta-87b6d24f": {
+      "file": "delta-87b6d24f.mp3",
+      "ms": 13900,
+      "who": "delta",
+      "mood": null,
+      "text": "Click a machine and press Upgrade in its panel (or use the Upgrade tool, key 5). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not."
+    },
     "delta-8977ecb2": {
       "file": "delta-8977ecb2.mp3",
       "ms": 7839,
       "who": "delta",
       "mood": "happy",
       "text": "An iron ingot! Humanity's odds of survival just rose by 0.0001 percent."
-    },
-    "delta-8ae39dcb": {
-      "file": "delta-8ae39dcb.mp3",
-      "ms": 7918,
-      "who": "delta",
-      "mood": "happy",
-      "text": "Generators are unlocked (key 9)! Belt coal from the black crystal field into them and they will feed the power grid."
     },
     "delta-8df185a5": {
       "file": "delta-8df185a5.mp3",
@@ -309,12 +372,12 @@
       "mood": null,
       "text": "Welcome back, Steward. Your absence has been logged, timestamped and gently judged."
     },
-    "delta-a58c10bd": {
-      "file": "delta-a58c10bd.mp3",
-      "ms": 6298,
+    "delta-a4c8047f": {
+      "file": "delta-a4c8047f.mp3",
+      "ms": 6873,
       "who": "delta",
       "mood": null,
-      "text": "Feed an Assembler ONLY circuits: two circuits make one Research. Belt that into the Lab."
+      "text": "Belt Data Cartridges from the Fabricator into a Lab (key 0). The Lab turns them into points."
     },
     "delta-a7f2e963": {
       "file": "delta-a7f2e963.mp3",
@@ -372,6 +435,13 @@
       "mood": null,
       "text": "Phase 2 needs targeting circuitry. An Assembler (key 4) turns one iron ingot plus one copper ingot into a Circuit. Copper is the glowing orange crystal field; I've ringed it for you."
     },
+    "delta-b9d75f34": {
+      "file": "delta-b9d75f34.mp3",
+      "ms": 7343,
+      "who": "delta",
+      "mood": null,
+      "text": "Click a Smelter to open its panel and pick Copper Ingot. A Smelter only takes the ore of its recipe."
+    },
     "delta-bb472ffb": {
       "file": "delta-bb472ffb.mp3",
       "ms": 7735,
@@ -386,12 +456,12 @@
       "mood": null,
       "text": "The Moon is still falling. Probably. Please keep working."
     },
-    "delta-c3143612": {
-      "file": "delta-c3143612.mp3",
-      "ms": 11497,
+    "delta-c7677bb6": {
+      "file": "delta-c7677bb6.mp3",
+      "ms": 12620,
       "who": "delta",
       "mood": null,
-      "text": "Select Upgrade (key 5) and click a machine. Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not."
+      "text": "A factory that makes many things earns more than one that makes one thing a lot. Priority Requests still pay their bonus in full. NILE calls this \"healthy competition with yourself\"."
     },
     "delta-c8b93c96": {
       "file": "delta-c8b93c96.mp3",
@@ -400,12 +470,26 @@
       "mood": "sinister",
       "text": "Congratulations, Asset. You have saved Earth from free things."
     },
+    "delta-c94a5010": {
+      "file": "delta-c94a5010.mp3",
+      "ms": 8075,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Breaker tripped! The grid was overloaded, so everything electric has stopped. Very safe. Very quiet."
+    },
     "delta-ca8c5a30": {
       "file": "delta-ca8c5a30.mp3",
       "ms": 6298,
       "who": "delta",
       "mood": "sinister",
       "text": "Tides will be discontinued shortly. Beachfront property owners have been notified via a pop-up ad."
+    },
+    "delta-cf91483e": {
+      "file": "delta-cf91483e.mp3",
+      "ms": 7108,
+      "who": "delta",
+      "mood": null,
+      "text": "Market saturation! The Pad pays less for whatever you flood it with. Prices recover over time."
     },
     "delta-d135d851": {
       "file": "delta-d135d851.mp3",
@@ -420,6 +504,13 @@
       "who": "delta",
       "mood": "sinister",
       "text": "The Moon is a free night light. Free things undercut Moon+. And so, the Moon has to go."
+    },
+    "delta-d6fc0db1": {
+      "file": "delta-d6fc0db1.mp3",
+      "ms": 14788,
+      "who": "delta",
+      "mood": null,
+      "text": "Click any machine to open its panel: its recipe, how fast it works and its upgrades. Every machine makes one thing. A new Smelter starts on iron, so set your copper Smelter to Copper Ingot."
     },
     "delta-d85a839b": {
       "file": "delta-d85a839b.mp3",
@@ -442,19 +533,19 @@
       "mood": null,
       "text": "Customer survey: on a scale of 1 to 5, how saved does Earth feel? Answers below 5 will be reviewed by HR."
     },
-    "delta-e3b88709": {
-      "file": "delta-e3b88709.mp3",
-      "ms": 5515,
-      "who": "delta",
-      "mood": null,
-      "text": "An Assembler holding 2 circuits + 1 iron ingot makes an Advanced Circuit."
-    },
     "delta-e3c822cc": {
       "file": "delta-e3c822cc.mp3",
       "ms": 7421,
       "who": "delta",
       "mood": "sinister",
       "text": "Full transparency, as required by absolutely no regulation: the Moon was never falling."
+    },
+    "delta-e76d6fc6": {
+      "file": "delta-e76d6fc6.mp3",
+      "ms": 6559,
+      "who": "delta",
+      "mood": null,
+      "text": "Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 iron ingot."
     },
     "delta-e7ea7e4d": {
       "file": "delta-e7ea7e4d.mp3",
@@ -483,13 +574,6 @@
       "who": "delta",
       "mood": "glitch",
       "text": "Please disregard that memo. It was sent to you by mistake. You are not cleared for mistakes."
-    },
-    "delta-eba3603f": {
-      "file": "delta-eba3603f.mp3",
-      "ms": 7265,
-      "who": "delta",
-      "mood": null,
-      "text": "Generators arrive with Phase 3. Until then: prioritise, or enjoy the slow life."
     },
     "delta-efaf589b": {
       "file": "delta-efaf589b.mp3",
