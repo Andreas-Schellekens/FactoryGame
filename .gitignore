@@ -25,3 +25,7 @@ dist-ssr
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# ElevenLabs key + voice ids, and unpicked voice takes (scripts/voice.mjs)
+.env
+voice-takes/

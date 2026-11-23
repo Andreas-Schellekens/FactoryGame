@@ -12,6 +12,10 @@
 //   comms     — DELTA's CAPCOM terminal (message queue + typewriter + log)
 //   tooltip   — the inspector, following the hovered cell
 // Title screen and ending are full-screen overlays on <body>.
+//
+// Sound goes through the optional `sound` object (audio.js): the HUD only
+// tells it what happened (a comms line starts, a panel opens, the ending
+// plays) and reads/writes its settings; it never touches audio itself.
 import { MACHINE_COST, TECH_COST, TICK_RATE } from './config.js';
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
@@ -92,10 +96,12 @@ const fmtTime = (secs) => {
  *   onTogglePause: () => void, onSpeedChange: (delta: number) => void,
  *   onSave: () => boolean, onLoad: () => boolean, onUnlock: (techId: string) => boolean,
  *   getState: () => any,
+ *   sound?: ReturnType<typeof import('./audio.js').createAudio>,
  * }} opts
  */
-export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState }) {
+export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound }) {
     root.innerHTML = '';
+    const cue = (name) => sound?.cue(name);
     let phaseShown = -1; // phase the phase-dependent DOM was last built for
     let brandPhase = 0;  // for comms headers / portraits
 
@@ -134,11 +140,27 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     simCell.append(slowerBtn, pauseBtn, speedLabel, fasterBtn);
 
     const menuCell = el('div', 'tb-cell tb-menu');
-    const helpBtn = textButton('Keys', () => help.classList.toggle('hidden'));
+    /** Open one popover (closing the other), or close it if it's already open. */
+    function togglePopover(panel) {
+        const opening = panel.classList.contains('hidden');
+        for (const p of [help, soundPanel]) p.classList.add('hidden');
+        if (opening) {
+            panel.classList.remove('hidden');
+            if (panel === soundPanel) refreshSoundPanel();
+        }
+        cue(opening ? 'open' : 'close');
+    }
     menuCell.append(
-        textButton('Save', () => toast(onSave() ? 'Contract saved' : 'Save failed')),
-        textButton('Load', () => toast(onLoad() ? 'Contract restored' : 'No saved contract')),
-        helpBtn,
+        textButton('Save', () => {
+            cue('click');
+            toast(onSave() ? 'Contract saved' : 'Save failed');
+        }),
+        textButton('Load', () => {
+            cue('click');
+            toast(onLoad() ? 'Contract restored' : 'No saved contract');
+        }),
+        textButton('Sound', () => togglePopover(soundPanel)),
+        textButton('Keys', () => togglePopover(help)),
     );
     top.append(brandCell, creditsCell, powerCell, el('div', 'tb-spacer'), simCell, menuCell);
     root.appendChild(top);
@@ -147,9 +169,53 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     help.innerHTML = [
         ['LMB', 'build · drag to lay belts'], ['RMB', 'demolish (refunds cost)'], ['R', 'rotate before placing'],
         ['1–4 7–0', 'buildings'], ['5 / 6', 'upgrade / demolish tool'], ['WASD', 'move view'], ['Wheel', 'zoom'],
-        ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'],
+        ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'], ['M', 'sound on / off'],
     ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('');
     root.appendChild(help);
+
+    // ---- Sound panel -------------------------------------------------------------
+    const soundPanel = el('div', 'sound-panel hidden');
+    const sliders = {};
+    for (const [key, label] of [['master', 'Master'], ['music', 'Music'], ['sfx', 'Effects'], ['voice', 'Voice']]) {
+        const row = el('label', 'snd-row');
+        const input = el('input');
+        input.type = 'range';
+        input.min = '0';
+        input.max = '100';
+        input.step = '1';
+        const value = el('span', 'snd-value');
+        input.addEventListener('input', () => {
+            value.textContent = input.value;
+            sound?.setSettings({ [key]: Number(input.value) / 100 });
+        });
+        // A sample click at the new level, so the effects volume can be judged.
+        input.addEventListener('change', () => {
+            if (key === 'master' || key === 'sfx') cue('key');
+        });
+        row.append(el('span', 'snd-label', label), input, value);
+        soundPanel.appendChild(row);
+        sliders[key] = { input, value };
+    }
+    const muteBtn = textButton('Mute', () => {
+        sound?.toggleMute();
+        refreshSoundPanel();
+    }, 'snd-mute');
+    const voiceNote = el('p', 'snd-note');
+    soundPanel.append(muteBtn, voiceNote);
+    root.appendChild(soundPanel);
+
+    function refreshSoundPanel() {
+        const st = sound?.settings() ?? {};
+        for (const [key, { input, value }] of Object.entries(sliders)) {
+            const v = Math.round((st[key] ?? 0) * 100);
+            input.value = String(v);
+            value.textContent = String(v);
+        }
+        muteBtn.textContent = st.muted ? 'Sound off · M' : 'Sound on · M';
+        muteBtn.classList.toggle('off', !!st.muted);
+        const lines = sound?.voiceLines() ?? 0;
+        voiceNote.textContent = lines ? `DELTA voice · ${lines} recorded lines` : 'DELTA voice · not recorded yet (text only)';
+    }
 
     // ---- Phase ribbon -------------------------------------------------------------
     const ribbon = el('div', 'ribbon');
@@ -194,7 +260,9 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         b.title = TECH_TEXT[id].desc;
         b.innerHTML = '<span class="tech-name"></span><span class="tech-cost"></span>';
         b.querySelector('.tech-name').textContent = TECH_TEXT[id].label;
-        b.addEventListener('click', () => onUnlock(id));
+        b.addEventListener('click', () => {
+            if (!onUnlock(id)) cue('deny');
+        });
         techButtons[id] = b;
         techGrid.appendChild(b);
     }
@@ -247,6 +315,8 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     let current = null;
     let typeTimer = null;
     let holdTimer = null;
+    let transmitting = false; // a transmission is open (Quindar tone at start and end)
+    let voiceEnds = 0;        // performance.now() when the current line's voice clip ends, 0 = no voice
 
     function speaker(line) {
         const b = brandFor(brandPhase);
@@ -270,13 +340,22 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     function finishTyping() {
         stopTimers();
         commsText.textContent = current.text;
-        comms.classList.remove('speaking');
-        holdTimer = setTimeout(endLinger, lingerMs(current.text));
+        // With a voice clip the line stays up until DELTA has finished saying it.
+        const voiceLeft = voiceEnds ? Math.max(0, voiceEnds - performance.now()) : 0;
+        if (!voiceLeft) comms.classList.remove('speaking');
+        holdTimer = setTimeout(endLinger, voiceEnds ? Math.max(900, voiceLeft + 650) : lingerMs(current.text));
     }
     function endLinger() {
         stopTimers();
+        sound?.lineStop();
+        voiceEnds = 0;
         if (queue.length) nextLine();
-        else comms.classList.add('idle');
+        else {
+            comms.classList.add('idle');
+            comms.classList.remove('speaking');
+            if (transmitting) sound?.commsIdle();
+            transmitting = false;
+        }
     }
     function nextLine() {
         stopTimers();
@@ -286,15 +365,21 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             comms.classList.add('idle');
             return;
         }
+        const fresh = !transmitting;
+        transmitting = true;
         const who = speaker(current);
         comms.className = `comms who-${current.who} mood-${current.mood ?? 'neutral'} speaking`;
         portrait.innerHTML = who.svg;
         commsName.textContent = who.name;
         commsRole.textContent = who.role;
         commsText.textContent = '';
+        const voiceMs = sound?.lineStart(current, { fresh }) ?? null;
         const start = performance.now();
+        voiceEnds = voiceMs ? start + voiceMs : 0;
+        // Text types along with the voice (a little ahead of it); without one, at reading pace.
+        const rate = voiceMs ? current.text.length / Math.max(300, voiceMs * 0.85) : CHARS_PER_MS;
         typeTimer = setInterval(() => {
-            const typed = Math.floor((performance.now() - start) * CHARS_PER_MS);
+            const typed = Math.floor((performance.now() - start) * rate);
             commsText.textContent = current.text.slice(0, typed);
             if (typed >= current.text.length) finishTyping();
         }, 30);
@@ -319,6 +404,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     });
     logBtn.addEventListener('click', () => {
         logPanel.classList.toggle('hidden');
+        cue(logPanel.classList.contains('hidden') ? 'close' : 'open');
         if (logPanel.classList.contains('hidden')) return;
         logPanel.innerHTML = '';
         for (const line of log) {
@@ -437,6 +523,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         keep.type = 'button';
         keep.addEventListener('click', () => {
             overlay.remove();
+            sound?.afterEnding();
             onContinue();
         });
         const fresh = el('button', 'btn-secondary', 'New contract');
@@ -452,9 +539,12 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         card.append(scene, lines, final);
         overlay.appendChild(card);
         overlay.addEventListener('click', (e) => {
-            if (!actions.contains(e.target)) overlay.classList.add('skip'); // skip to the final card
+            if (actions.contains(e.target) || overlay.classList.contains('skip')) return;
+            overlay.classList.add('skip'); // skip to the final card
+            sound?.endingSkip();
         });
         document.body.appendChild(overlay);
+        sound?.ending(ENDING.lines, delays);
     }
 
     // ---- Per-frame refresh -------------------------------------------------------------------
@@ -565,6 +655,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     function update() {
         const s = getState();
         if (!s) return;
+        if (!soundPanel.classList.contains('hidden') && sound && muteBtn.classList.contains('off') !== sound.settings().muted) refreshSoundPanel();
         const { project } = s;
         if (project.phase !== phaseShown) buildPhaseDom(project.phase, project.complete);
 

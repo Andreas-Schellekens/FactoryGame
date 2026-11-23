@@ -27,6 +27,14 @@ Self-hosted through [Fontsource](https://fontsource.org), all under the
 | [Archivo](https://fonts.google.com/specimen/Archivo) (Omnibus-Type) | brand wordmark and body text |
 | [IBM Plex Mono](https://fonts.google.com/specimen/IBM+Plex+Mono) (IBM) | telemetry, labels, memos |
 
+## Sound
+
+All music, sound effects and ambience are synthesized at runtime with the Web
+Audio API (`src/synth.js`, `src/music.js`, `src/sfx.js`, `src/ambience.js`);
+there are no sample files. DELTA's voice, once recorded, is generated with
+[ElevenLabs](https://elevenlabs.io) text-to-speech under the account holder's
+plan terms.
+
 ## Code and art
 
 Game code, story, procedural item meshes and the HUD's SVG art (NILE/NIHIL

@@ -1,7 +1,8 @@
 // src/main.js — wires everything together: builds the 3D renderer, UI and
 // story director, starts the loop, and translates input (pointer, keys,
 // wheel) into grid edits and camera moves. Owns transient UI state, order
-// policy, persistence and the campaign flow (title screen → play → ending).
+// policy, persistence and the campaign flow (title screen → play → ending),
+// and tells the sound engine what the player did.
 import '@fontsource-variable/archivo/wdth.css';
 import '@fontsource/big-shoulders-display/800';
 import '@fontsource/big-shoulders-display/900';
@@ -24,8 +25,19 @@ import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
 import { createDirector } from './director.js';
+import { createAudio, BUILD_SIZE } from './audio.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// --- Sound (the context starts on the first click or key press) ---
+const audio = createAudio();
+const unlockAudio = () => {
+    audio.unlock();
+    window.removeEventListener('pointerdown', unlockAudio, true);
+    window.removeEventListener('keydown', unlockAudio, true);
+};
+window.addEventListener('pointerdown', unlockAudio, true);
+window.addEventListener('keydown', unlockAudio, true);
 
 // --- 3D view (loads the Kenney models first; the loader shows progress) ---
 initGrid();
@@ -70,6 +82,7 @@ function snapshot() {
     const extractorOn = { ironOre: 0, copperOre: 0, coalOre: 0 };
     let fueledGenerators = 0;
     let upgraded = 0;
+    let working = 0;
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const { machine: m, resource } = grid[x][y];
@@ -78,6 +91,7 @@ function snapshot() {
             if (m.type === 'extractor' && resource) extractorOn[resource]++;
             if (m.type === 'generator' && m.fuelTicks > 0) fueledGenerators++;
             if (m.tier > 1) upgraded++;
+            if (m.progress > 0 || m.fuelTicks > 0) working++;
         }
     }
     return {
@@ -96,6 +110,7 @@ function snapshot() {
         extractorOn,
         fueledGenerators,
         upgraded,
+        working,
         order: { status: order.status, startTick: order.startTick },
     };
 }
@@ -140,12 +155,29 @@ function loadGame() {
     return true;
 }
 
+// --- Small actions shared by keys and HUD buttons ---
+function rotateDir() {
+    state.dir = nextDir(state.dir);
+    audio.cue('rotate');
+}
+function togglePause() {
+    state.paused = !state.paused;
+    audio.cue(state.paused ? 'pause' : 'resume');
+}
+function changeSpeed(delta) {
+    const next = clamp(state.speed + delta * 0.25, 0.25, 4);
+    if (next !== state.speed) audio.cue('speed', { speed: next });
+    state.speed = next;
+}
+
 // --- Tools (locked buildings can't be selected) ---
 function selectTool(tool) {
     if (buildableTools.has(tool) && !isBuildingUnlocked(tool)) {
-        ui.toast(`${BUILDING_NAMES[tool]} unlocks after Phase ${unlockPhaseOf(tool) + 1}`);
+        ui.toast(`${BUILDING_NAMES[tool]} arrives in Phase ${unlockPhaseOf(tool) + 2}`);
+        audio.cue('deny');
         return;
     }
+    if (tool !== state.tool) audio.cue('key');
     state.tool = tool;
 }
 
@@ -179,10 +211,11 @@ const director = createDirector({
 // --- HUD ---
 const ui = createUI({
     root: document.getElementById('hud'),
+    sound: audio,
     onToolChange: selectTool,
-    onRotate: () => (state.dir = nextDir(state.dir)),
-    onTogglePause: () => (state.paused = !state.paused),
-    onSpeedChange: (delta) => (state.speed = clamp(state.speed + delta * 0.25, 0.25, 4)),
+    onRotate: rotateDir,
+    onTogglePause: togglePause,
+    onSpeedChange: changeSpeed,
     onSave: saveGame,
     onLoad: loadGame,
     onUnlock: (id) => unlockTech(id),
@@ -233,6 +266,7 @@ const AUTOSAVE_EVERY_MS = 60_000;
 let directorClock = 0;
 let autosaveClock = 0;
 let lastPhase = project.phase;
+let lastWorking = 0;
 
 function onFrame(dt) {
     if (state.started) {
@@ -240,7 +274,9 @@ function onFrame(dt) {
         directorClock += dt;
         if (directorClock >= DIRECTOR_EVERY_MS) {
             directorClock = 0;
-            director.update(snapshot());
+            const w = snapshot();
+            lastWorking = w.working;
+            director.update(w);
             state.focus = director.objectives().find((o) => !o.done)?.focus ?? null;
         }
         autosaveClock += dt;
@@ -250,10 +286,20 @@ function onFrame(dt) {
             saveGame();
         }
     }
+    audio.update(dt, {
+        mood: project.complete ? 5 : project.phase,
+        playing: state.started,
+        paused: state.paused && state.started,
+        throttle: power.throttle,
+        working: lastWorking,
+        orderStatus: order.status,
+        orderStart: order.startTick,
+        techCount: Object.values(research.unlocked).filter(Boolean).length,
+    });
     panWithKeys(dt);
     ui.update();
 }
-startGameLoop(renderer, state, onFrame);
+startGameLoop(renderer, state, onFrame, (events) => audio.onEvents(events));
 window.addEventListener('beforeunload', saveGame);
 
 ui.showTitle({
@@ -262,6 +308,7 @@ ui.showTitle({
         state.started = true;
         state.paused = false;
         lastPhase = project.phase;
+        audio.begin(0, { fresh: true });
     },
     onResume: () => {
         if (!loadGame()) {
@@ -270,6 +317,7 @@ ui.showTitle({
         }
         lastPhase = project.phase;
         state.paused = false;
+        audio.begin(project.complete ? 5 : project.phase);
         if (director.ended()) ui.toast('Protocol: Selene is complete. Sandbox mode');
     },
 });
@@ -279,16 +327,28 @@ function actAt(gx, gy, button) {
     if (gx < 0 || gx >= GRID_WIDTH || gy < 0 || gy >= GRID_HEIGHT) return;
 
     if (button === 2 || state.tool === 'erase') {
-        renderer.applyEvents(removeMachine(gx, gy), 0);
+        demolish(gx, gy);
         return;
     }
     if (state.tool === 'upgrade') {
-        if (upgradeMachine(gx, gy)) state.lastBuildPulseMs = 120;
+        if (upgradeMachine(gx, gy)) {
+            state.lastBuildPulseMs = 120;
+            audio.cue('upgrade');
+        } else audio.cue('deny');
         return;
     }
     if (buildableTools.has(state.tool)) {
-        if (buildMachine(gx, gy, state.tool, state.dir)) state.lastBuildPulseMs = 120;
+        if (buildMachine(gx, gy, state.tool, state.dir)) {
+            state.lastBuildPulseMs = 120;
+            audio.cue('build', { size: BUILD_SIZE[state.tool] ?? 1 });
+        } else audio.cue('deny');
     }
+}
+
+function demolish(gx, gy) {
+    const had = !!grid[gx][gy].machine;
+    renderer.applyEvents(removeMachine(gx, gy), 0);
+    if (had && !grid[gx][gy].machine) audio.cue('demolish');
 }
 
 // --- Input: keyboard (tools, rotation, sim speed, camera) ---
@@ -301,7 +361,9 @@ const held = new Set();
 const PAN_SPEED = 0.014; // world units per ms at zoom 1
 
 window.addEventListener('keydown', (e) => {
-    if (!state.started || e.target.closest?.('input, textarea')) return;
+    if (!state.started || e.target.closest?.('textarea, input:not([type="range"])')) return;
+    // A focused volume slider keeps its arrow keys; every other game key still works.
+    if (e.target.matches?.('input[type="range"]') && e.key.startsWith('Arrow')) return;
     const k = e.key.toLowerCase();
     if (k in PAN_KEYS) {
         held.add(k);
@@ -309,15 +371,16 @@ window.addEventListener('keydown', (e) => {
         return;
     }
     if (e.key in keyTools) selectTool(keyTools[e.key]);
-    if (k === 'r') state.dir = nextDir(state.dir);
+    if (k === 'r') rotateDir();
     if (k === 'q') renderer.rig.rotate(-1);
     if (k === 'e') renderer.rig.rotate(1);
     if (e.key === ' ') {
         e.preventDefault();
-        state.paused = !state.paused;
+        togglePause();
     }
-    if (e.key === '+' || e.key === '=') state.speed = clamp(state.speed + 0.25, 0.25, 4);
-    if (e.key === '-' || e.key === '_') state.speed = clamp(state.speed - 0.25, 0.25, 4);
+    if (e.key === '+' || e.key === '=') changeSpeed(1);
+    if (e.key === '-' || e.key === '_') changeSpeed(-1);
+    if (k === 'm') ui.toast(audio.toggleMute() ? 'Sound off · M' : 'Sound on · M');
 });
 window.addEventListener('keyup', (e) => held.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => held.clear());
@@ -359,9 +422,12 @@ function dragStep(cell) {
     if (drag.mode === 'lay') {
         const dir = drag.last ? dirBetween(drag.last, cell) : state.dir;
         if (drag.last) placeBelt(drag.last.x, drag.last.y, dir); // re-point the cell we leave
-        if (placeBelt(cell.x, cell.y, dir) === 'built') state.lastBuildPulseMs = 120;
+        if (placeBelt(cell.x, cell.y, dir) === 'built') {
+            state.lastBuildPulseMs = 120;
+            audio.cue('belt');
+        }
     } else {
-        renderer.applyEvents(removeMachine(cell.x, cell.y), 0);
+        demolish(cell.x, cell.y);
     }
     drag.last = cell;
 }
@@ -442,4 +508,9 @@ if (import.meta.env.DEV) {
     window.__sim = await import('./grid.js');
     window.__campaign = await import('./campaign.js');
     window.__renderer = renderer;
+    window.__audio = audio;
+    if (new URLSearchParams(location.search).has('sounds')) {
+        const { mountSoundboard } = await import('./soundboard.js');
+        mountSoundboard(audio);
+    }
 }

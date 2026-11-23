@@ -9,8 +9,9 @@ const MAX_TICKS_PER_FRAME = 8;
  * @param {ReturnType<typeof import('./renderer.js').createRenderer> extends Promise<infer R> ? R : never} renderer
  * @param {{ paused: boolean, speed: number, lastBuildPulseMs: number }} state
  * @param {(dt: number) => void} [onFrame]  extra per-frame work (HUD, director…), before drawing
+ * @param {(events: any[]) => void} [onEvents]  sees each tick's FactoryEvents too (sound)
  */
-export function startGameLoop(renderer, state, onFrame) {
+export function startGameLoop(renderer, state, onFrame, onEvents) {
     const timePerTick = 1000 / TICK_RATE;
     let acc = 0;
     let last = performance.now();
@@ -29,7 +30,9 @@ export function startGameLoop(renderer, state, onFrame) {
             let n = 0;
             while (acc >= timePerTick && n < MAX_TICKS_PER_FRAME) {
                 // Tweens last one tick of *wall* time, so they keep up at speed.
-                renderer.applyEvents(updateFactoryLogic() ?? [], timePerTick / state.speed);
+                const events = updateFactoryLogic() ?? [];
+                renderer.applyEvents(events, timePerTick / state.speed);
+                onEvents?.(events);
                 acc -= timePerTick;
                 n++;
             }

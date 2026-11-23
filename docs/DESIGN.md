@@ -45,7 +45,9 @@ telemetry. After the reveal every accent becomes alarm red and the brand cell
 gets hazard stripes.
 
 **DELTA** — *Dispatch & Engineering Logistics Task Assistant*, NILE's AI guide
-and the player's CAPCOM. Cheerful, contractually positive, increasingly honest
+and the player's CAPCOM. Voice (recorded with ElevenLabs): a woman in her late
+twenties, calm, slow and warm, perfectly polite and slightly too pleasant. She
+never raises her voice, not even after the reveal; that is the joke. Cheerful, contractually positive, increasingly honest
 in the worst way. Portrait is an oscilloscope badge whose trace follows its
 mood (teal → bright sine when happy → magenta noise on a glitch → a red
 flatline when sinister) and bounces while it speaks.
@@ -125,9 +127,23 @@ Each iteration should be playable on its own before the next one starts.
             bar, phase ribbon, console (requirements, flight plan, research,
             priority request), hardware keys, DELTA's CAPCOM terminal, hover
             tooltip, new title screen and ending; self-hosted OFL fonts.
-      - [ ] Sound effects and music (CC0) that follow the arc (cheerful →
-            industrial → ominous); more juice (screen shake on phase
-            completion, smoother tool switching).
+      - [x] Sound, all synthesized in the browser (no sample files): a
+            procedural score whose mode darkens one note per milestone
+            (Ionian → Mixolydian → Dorian → Aeolian → Phrygian → Locrian, all
+            on D), effect cues for every action, phase stingers in the new
+            mood's key, a reveal jingle that tape-stops into a Phrygian hit,
+            the ending timed to its animation, Quindar tones around DELTA's
+            transmissions, and an ambience of birds → crickets → wind and
+            rumble with a factory hum that sags in brownouts. Sound settings
+            in the top bar; `?sounds` soundboard in dev.
+      - [x] Voice pipeline for DELTA: `npm run voice` records the lines with
+            ElevenLabs (takes + review page), the game plays them with
+            ducking and synced text.
+      - [ ] Record DELTA's voice (Voice Design: a calm, slow woman in her
+            late twenties) and, optionally, a NILE announcer; listen to the
+            whole sound design and tune it.
+      - [ ] More juice (screen shake on phase completion, smoother tool
+            switching).
 - [ ] **Iteration 4 — content & balance.** New resources and intermediate
       products (steel, wire, plates, motors, explosives…), phases rebalanced
       into a 45–90 minute campaign.
