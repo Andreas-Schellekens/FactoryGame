@@ -40,6 +40,7 @@ const ICON = {
     press: 'M5 4h14M12 4v9M7 13h10M4 20h16',
     foundry: 'M5 20V9l7-5 7 5v11zM9 20v-5h6v5',
     mixer: 'M8 3h8M9 3v6l-4 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-4-9V3',
+    select: 'M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4',
     lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
     upgrade: 'M6 13l6-6 6 6M6 19l6-6 6 6',
     erase: 'M3 21l9-9M14.5 3.5l6 6-4 4-6-6z',
@@ -114,6 +115,7 @@ const fmtTime = (secs) => {
 export function createUI({
     root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {},
     onSetRecipe = () => false, onUpgradeSelected = () => false, onToggleSelected = () => false, onDeselect = () => {}, onResetBreaker = () => false,
+    onGroupAction = () => {},
 }) {
     root.innerHTML = '';
     const cue = (name) => sound?.cue(name);
@@ -203,7 +205,8 @@ export function createUI({
     help.innerHTML = [
         ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
         ['R', 'rotate before placing'], ['1–0', 'buildings, in chain order'], ['T / Y', 'splitter / merger'],
-        ['U / X', 'upgrade / demolish tool'], ['Esc', 'close panel'],
+        ['U / X', 'upgrade / demolish tool'], ['V', 'select: drag a box round machines'],
+        ['G / C / X', 'move / copy / demolish the selection'], ['F', 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection'],
         ['WASD', 'move view'], ['Wheel', 'zoom'],
         ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'], ['M', 'sound on / off'],
     ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('')
@@ -369,8 +372,42 @@ export function createUI({
     keys.appendChild(el('span', 'keys-divider'));
     toolButtons.upgrade = hwKey({ k: 'U', label: 'Upgrade, key U', iconPath: ICON.upgrade, img: icons.upgrade ?? null, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
     toolButtons.erase = hwKey({ k: 'X', label: 'Demolish, key X', iconPath: ICON.erase, img: icons.erase ?? null, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
+    toolButtons.select = hwKey({ k: 'V', label: 'Select, key V', iconPath: ICON.select, img: icons.select ?? null, sub: 'SELECT', cls: 'edit', onClick: () => onToolChange('select') });
     const rotateKey = hwKey({ k: 'R', label: 'Rotate, R', iconPath: ICON.rotate, img: icons.rotate ?? null, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
-    keys.append(toolButtons.upgrade, toolButtons.erase, rotateKey);
+    keys.append(toolButtons.upgrade, toolButtons.erase, toolButtons.select, rotateKey);
+
+    // ---- Selection bar: what's selected, and what you can do with it ----------------------
+    const selbar = el('div', 'selbar hidden');
+    root.appendChild(selbar);
+    let selSig = '';
+    function renderSelection(sel) {
+        const sig = sel ? JSON.stringify(sel) : '';
+        if (sig === selSig) return;
+        selSig = sig;
+        selbar.classList.toggle('hidden', !sel);
+        if (!sel) return;
+        selbar.innerHTML = '';
+        const what = `${sel.count} machine${sel.count === 1 ? '' : 's'}`;
+        const info = el('span', 'sel-info');
+        const button = (label, key, action, cls = '') => {
+            const b = el('button', `sel-btn ${cls}`);
+            b.type = 'button';
+            b.append(el('b', null, label), el('span', null, key));
+            b.addEventListener('click', () => onGroupAction(action));
+            return b;
+        };
+        if (!sel.mode) {
+            info.textContent = `${what} selected`;
+            selbar.append(info, button('Move', 'G', 'move'), button('Copy', 'C', 'copy'), button('Demolish', 'X', 'remove', 'danger'), button('Deselect', 'Esc', 'cancel'));
+            return;
+        }
+        const fits = sel.ok === null ? '' : sel.ok ? '' : sel.blocked ? ` · ${sel.blocked} won't fit here` : ' · not enough credits';
+        info.textContent = sel.mode === 'move'
+            ? `Moving ${what} · click to set down · R turns${fits}`
+            : `Copying ${what} · CR ${sel.cost ?? '–'} a copy · click to place · R turns${fits}`;
+        info.classList.toggle('bad', sel.ok === false);
+        selbar.append(info, button(sel.mode === 'move' ? 'Cancel' : 'Done', 'Esc', 'cancel'));
+    }
     root.appendChild(keys);
 
     // ---- Comms (DELTA) --------------------------------------------------------------------
@@ -1194,6 +1231,7 @@ export function createUI({
 
         if (!prodPanel.classList.contains('hidden')) renderProduction(s.production);
         updatePanel(s.selected, s.money);
+        renderSelection(s.selection);
 
         // Inspector follows the hovered cell (not over the machine whose panel is open).
         const overSelected = s.selected && s.hoverX === s.selected.x && s.hoverY === s.selected.y;

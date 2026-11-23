@@ -24,8 +24,29 @@ export const ORE_FIELDS = [
     { type: 'copperOre', x: 27, y: 4, r: 2.0 },
     { type: 'coalOre', x: 4, y: 12, r: 1.8 },
     { type: 'coalOre', x: 28, y: 12, r: 1.6 },
-    { type: 'sulfurOre', x: 2, y: 21, r: 1.7, fromPhase: 4 },
+    // In the river bed: only there once NIHIL has dammed the river (RIVER.damPhase).
+    { type: 'sulfurOre', x: 3, y: 21, r: 1.25, fromPhase: 4 },
+    { type: 'sulfurOre', x: 8, y: 22, r: 1.15, fromPhase: 4 },
 ];
+
+// The plot NILE leases you: one rectangle per phases completed (the last one
+// holds from then on). It starts around the pad and the starter fields and
+// grows until it is the whole valley. Nothing can be built outside it.
+export const PLOTS = [
+    { x: 9, y: 4, w: 16, h: 15 },
+    { x: 5, y: 2, w: 24, h: 19 },
+    { x: 2, y: 1, w: 29, h: 22 },
+    { x: 0, y: 0, w: 32, h: 24 },
+];
+
+// The river across the south-west corner: a polyline (cell coordinates, the
+// ends run off the map) of water nothing can be built on, until NIHIL dams it
+// when `damPhase` phases are complete; its dry bed then holds the sulfur.
+export const RIVER = {
+    path: [[-1.5, 19.6], [3, 20.6], [6.5, 22], [10, 23.2], [12.5, 24.8]],
+    halfWidth: 1.05,
+    damPhase: 4,
+};
 
 // Economy
 export const STARTING_MONEY = 200; // enough to bootstrap one full production chain

@@ -514,12 +514,14 @@ export async function createRenderer(container, { onProgress } = {}) {
             }
         }
         if (!animate || !fresh.length) return;
-        // Rise from the middle of the new field outward, after the land has had a moment.
+        // Rise from the middle of the new field outward, after the land has had a moment
+        // (in the river bed: once the water draining away from the dam has passed).
         const cx = fresh.reduce((s, f) => s + f.x, 0) / fresh.length;
         const cy = fresh.reduce((s, f) => s + f.y, 0) / fresh.length;
         for (const f of fresh) {
             f.g.scale.setScalar(0.001);
-            orePops.push({ g: f.g, wait: 1400 + Math.hypot(f.x - cx, f.y - cy) * 260 + Math.random() * 200, t: 0 });
+            const settle = grid[f.x][f.y].river ? 2600 : 1400;
+            orePops.push({ g: f.g, wait: settle + Math.hypot(f.x - cx, f.y - cy) * 260 + Math.random() * 200, t: 0 });
         }
     }
 
@@ -1381,6 +1383,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         const pulse = state.lastBuildPulseMs > 0 ? 1 + 0.15 * (state.lastBuildPulseMs / 120) : 1;
         cursor.scale.setScalar(pulse);
 
+        if (tool === 'select' || state.group) return; // the selection overlay takes over
         if (tool === 'erase') {
             tintBox.visible = !!grid[hovered.x][hovered.y].machine;
             tintBox.material.color.setHex(0xe74c3c);
@@ -1399,6 +1402,105 @@ export async function createRenderer(container, { onProgress } = {}) {
             ghost.rotation.y = ghostFx.yaw;
             ghostMat.color.setHex(canBuildMachine(hovered.x, hovered.y, tool) ? 0x2ecc71 : 0xe74c3c);
             ghostShown = ghost;
+        }
+    }
+
+    // ---- Selection: the drag rectangle, the selected machines, the group being carried ------
+    const SEL_MAX = 1024;
+    const selRect = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0xff6a13, transparent: true, opacity: 0.14, depthWrite: false, depthTest: false }),
+    );
+    selRect.renderOrder = 28;
+    selRect.visible = false;
+    overlay.add(selRect);
+    const selEdge = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 0, -0.5),
+            new THREE.Vector3(0.5, 0, 0.5), new THREE.Vector3(-0.5, 0, 0.5),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xff6a13, transparent: true, opacity: 0.95, depthTest: false }),
+    );
+    selEdge.renderOrder = 29;
+    selEdge.visible = false;
+    overlay.add(selEdge);
+    // A square frame on every selected machine (a 4-segment ring turned 45°).
+    const selMarks = new THREE.InstancedMesh(
+        new THREE.RingGeometry(0.58, 0.67, 4, 1, Math.PI / 4).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0xff6a13, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
+        SEL_MAX,
+    );
+    selMarks.count = 0;
+    selMarks.renderOrder = 29;
+    selMarks.frustumCulled = false;
+    overlay.add(selMarks);
+    const groupRoot = new THREE.Group();
+    overlay.add(groupRoot);
+    const groupOk = new THREE.MeshBasicMaterial({ color: 0x2ecc71, transparent: true, opacity: 0.45, depthWrite: false });
+    const groupBad = new THREE.MeshBasicMaterial({ color: 0xe74c3c, transparent: true, opacity: 0.5, depthWrite: false });
+    let groupShape = '';
+    let groupPlace = '';
+    const markTmp = new THREE.Object3D();
+
+    function updateSelection(state) {
+        const live = !state.cinematic;
+        // The rectangle being dragged.
+        const d = live && state.selDrag;
+        selRect.visible = selEdge.visible = !!d;
+        if (d) {
+            const x0 = Math.min(d.from.x, d.to.x);
+            const y0 = Math.min(d.from.y, d.to.y);
+            const w = Math.abs(d.to.x - d.from.x) + 1;
+            const h = Math.abs(d.to.y - d.from.y) + 1;
+            for (const o of [selRect, selEdge]) {
+                o.position.set(x0 + w / 2, 0.05, y0 + h / 2);
+                o.scale.set(w, 1, h);
+            }
+        }
+        // Frames on the selected machines, breathing a little.
+        const cells = live ? state.sel?.cells ?? [] : [];
+        selMarks.count = Math.min(SEL_MAX, cells.length);
+        const breathe = 1 + 0.03 * Math.sin(performance.now() / 260);
+        for (let i = 0; i < selMarks.count; i++) {
+            markTmp.position.set(cells[i].x + 0.5, 0.045, cells[i].y + 0.5);
+            markTmp.scale.setScalar(breathe);
+            markTmp.updateMatrix();
+            selMarks.setMatrixAt(i, markTmp.matrix);
+        }
+        selMarks.instanceMatrix.needsUpdate = true;
+        // The group being carried: ghost models at their landing cells, red where they don't fit.
+        const plan = live && state.group?.plan;
+        groupRoot.visible = !!plan;
+        if (!plan) return;
+        const shape = plan.moves.map((m) => `${m.type}:${m.dir}`).join('|');
+        if (shape !== groupShape) {
+            groupShape = shape;
+            groupPlace = '';
+            groupRoot.clear();
+            for (const m of plan.moves) {
+                const { obj } = buildView({ type: m.type, dir: m.dir, tier: 1, progress: 0, pendingOutput: null, buffer: {} }, 0, 0, 'straight', true);
+                obj.traverse((o) => {
+                    if (o.isMesh || o.isSprite) {
+                        o.castShadow = false;
+                        o.renderOrder = 5;
+                        if (o.isMesh) o.material = groupOk;
+                    }
+                });
+                groupRoot.add(obj);
+            }
+        }
+        const place = `${plan.moves.map((m) => `${m.to.x},${m.to.y}`).join(';')}#${plan.bad.length}`;
+        if (place !== groupPlace) {
+            groupPlace = place;
+            const bad = new Set(plan.bad.map((b) => `${b.x},${b.y}`));
+            plan.moves.forEach((m, i) => {
+                const obj = groupRoot.children[i];
+                obj.position.set(m.to.x + 0.5, 0.002, m.to.y + 0.5);
+                const mat = bad.has(`${m.to.x},${m.to.y}`) || !plan.ok ? groupBad : groupOk;
+                obj.traverse((o) => {
+                    if (o.isMesh) o.material = mat;
+                });
+            });
         }
     }
 
@@ -1618,6 +1720,29 @@ export async function createRenderer(container, { onProgress } = {}) {
             g.add(lean);
             return g;
         },
+        /** Three crates in a signal-orange selection frame (corner brackets). */
+        select() {
+            const g = new THREE.Group();
+            for (const [x, z, s] of [[-0.3, 0.12, 1], [0.12, -0.25, 0.9], [0.2, 0.28, 1.05]]) {
+                const crate = assets.get('siteCrateSmall');
+                crate.scale.multiplyScalar(1.4 * s);
+                crate.position.set(x, 0, z);
+                crate.rotation.y = x * 2;
+                g.add(crate);
+            }
+            const orange = propMat(0xff6a13, { roughness: 0.45, emissive: 0x5a1e00, emissiveIntensity: 0.4 });
+            const arm = new THREE.BoxGeometry(0.34, 0.06, 0.07);
+            const h = 0.7;
+            for (const [cx, cz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+                for (const along of ['x', 'z']) {
+                    const b = new THREE.Mesh(arm, orange);
+                    b.position.set(cx * h - (along === 'x' ? cx * 0.13 : 0), 0.03, cz * h - (along === 'z' ? cz * 0.13 : 0));
+                    if (along === 'z') b.rotation.y = Math.PI / 2;
+                    g.add(b);
+                }
+            }
+            return g;
+        },
         /** A belt with a curved arrow going round it, clockwise as R turns things. */
         rotate() {
             const g = new THREE.Group();
@@ -1770,7 +1895,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
     const icons = renderIcons([
         'belt', 'extractor', 'smelter', 'press', 'foundry', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'fabricator', 'mixer',
-        'upgrade', 'erase', 'rotate',
+        'upgrade', 'erase', 'select', 'rotate',
     ]);
 
     // ---- Frame ---------------------------------------------------------------------------
@@ -1808,6 +1933,7 @@ export async function createRenderer(container, { onProgress } = {}) {
             padCredits = 0;
         }
         updateOverlay(state, dt);
+        updateSelection(state);
         updatePorts(state, now);
         focusGroup.visible = !state.cinematic;
         updateFocus(state.focus ?? null);
@@ -1926,6 +2052,8 @@ export async function createRenderer(container, { onProgress } = {}) {
 
     return {
         canvas: renderer.domElement, rig, applyEvents, tweenItems, draw, reset, pickCell, projectCell,
+        /** The next machine sync is silent (a group moved: its machines slide over, no demolish/build juice). */
+        quietNext: () => { quiet = true; },
         /** Build-menu icons: { [machineType]: PNG data URL } rendered from the real models. */
         icons,
         nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic,

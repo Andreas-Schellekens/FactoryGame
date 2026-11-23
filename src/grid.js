@@ -22,6 +22,8 @@ import {
     PAD_POS,
     ORE_FIELDS,
     CANNON_AREA,
+    PLOTS,
+    RIVER,
 } from './config.js';
 import { PHASES, STARTING_BUILDINGS } from './campaign.js';
 
@@ -32,8 +34,9 @@ export let score = STARTING_MONEY;
  * @typedef {{ id: number, type: string }} Item
  * @typedef {{ type: string, dir: 'right'|'down'|'left'|'up', tier: number, buffer: Record<string, number>, pendingOutput: string|null, progress: number, produces?: string, recipe?: string, off?: boolean }} Machine
  *   (`recipe`: the chosen recipe id for machines that have RECIPES; `off`: switched off by the player)
- * @typedef {{ machine: Machine | null, item: Item | null, resource: string | null, blocked?: boolean }} Cell
- *   (`blocked` = the reserved Selene construction site; terrain, never saved)
+ * @typedef {{ machine: Machine | null, item: Item | null, resource: string | null, blocked?: boolean, river?: boolean, water?: boolean }} Cell
+ *   (terrain, never saved: `blocked` = the reserved Selene construction site; `river` = part of the
+ *   river bed, `water` while the river still flows there)
  * @typedef {{ x: number, y: number }} Pos
  * @typedef {{ kind: 'move', item: Item, from: Pos, to: Pos } | { kind: 'spawn', item: Item, at: Pos } | { kind: 'consume', item: Item, at: Pos, paid?: number }} FactoryEvent
  *   (`paid`: credits the Dispatch Pad paid for a delivery, at the market price)
@@ -161,6 +164,7 @@ function checkPhaseComplete() {
     project.phase++;
     project.delivered = {};
     if (project.phase >= PHASES.length) project.complete = true;
+    applyRiver(project.phase);
     revealOre(project.phase);
 }
 
@@ -323,6 +327,8 @@ export function initGrid() {
     // Each field is a blob with a deterministic ragged edge, so the same map
     // comes back on every load. Fields with `fromPhase` wait for revealOre().
     revealedFields.clear();
+    for (const { x, y } of RIVER_CELLS) grid[x][y].river = true;
+    applyRiver(0);
     revealOre(0);
     grid[PAD_POS.x][PAD_POS.y].resource = null;
 
@@ -338,6 +344,43 @@ export function initGrid() {
     grid[PAD_POS.x][PAD_POS.y].machine = makeMachine('sink');
 }
 
+// ---- Terrain that changes with the campaign: the plot, the river -----------------------
+/** The rectangle you may build in after `phase` completed phases. */
+export function plotRect(phase = project.phase) {
+    return PLOTS[Math.min(phase, PLOTS.length - 1)];
+}
+/** Is (x, y) inside the current plot? */
+export function inPlot(x, y, phase = project.phase) {
+    const r = plotRect(phase);
+    return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+}
+
+// Cells of the river bed: within halfWidth (a little ragged) of the RIVER polyline.
+function distToPath(px, py) {
+    let best = Infinity;
+    for (let i = 0; i < RIVER.path.length - 1; i++) {
+        const [ax, ay] = RIVER.path[i];
+        const [bx, by] = RIVER.path[i + 1];
+        const vx = bx - ax;
+        const vy = by - ay;
+        const t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy)));
+        best = Math.min(best, Math.hypot(px - (ax + vx * t), py - (ay + vy * t)));
+    }
+    return best;
+}
+const RIVER_CELLS = [];
+for (let x = 0; x < GRID_WIDTH; x++) {
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+        if (distToPath(x + 0.5, y + 0.5) <= RIVER.halfWidth + (cellHash(x, y) - 0.5) * 0.35) RIVER_CELLS.push({ x, y });
+    }
+}
+
+/** Water flows in the river bed until RIVER.damPhase phases are complete. */
+function applyRiver(phase) {
+    const flowing = phase < RIVER.damPhase;
+    for (const { x, y } of RIVER_CELLS) grid[x][y].water = flowing;
+}
+
 // Ore fields laid so far (indexes into ORE_FIELDS), and a counter the renderer
 // watches to add the views of a field that just appeared.
 const revealedFields = new Set();
@@ -351,7 +394,7 @@ function revealOre(phase) {
         const r = Math.ceil(f.r + 1);
         for (let x = f.x - r; x <= f.x + r; x++) {
             for (let y = f.y - r; y <= f.y + r; y++) {
-                if (!inBounds(x, y) || (x === PAD_POS.x && y === PAD_POS.y) || grid[x][y].blocked) continue;
+                if (!inBounds(x, y) || (x === PAD_POS.x && y === PAD_POS.y) || grid[x][y].blocked || grid[x][y].water) continue;
                 const jitter = (cellHash(x, y) - 0.5) * 0.9;
                 if (Math.hypot(x - f.x, y - f.y) <= f.r + jitter) grid[x][y].resource = f.type;
             }
@@ -375,7 +418,8 @@ export function machineCost(type) {
 // v2: campaign (project/stats) added; v1 sandbox saves are not loaded.
 // v3: recipes chosen per machine, the Fabricator and Data Cartridges, the market.
 // v4: the 4b production chain (press, foundry, mixer, new items and phases).
-export const SAVE_VERSION = 4;
+// v5: the growing plot and the river.
+export const SAVE_VERSION = 5;
 
 /**
  * Snapshot the simulation as a plain, JSON-serializable object. Terrain
@@ -428,6 +472,7 @@ export function loadState(data) {
         if (!inBounds(x, y)) continue;
         const cell = grid[x][y];
         if (cell.blocked) continue; // reserved site (a save from before it existed)
+        if (entry.machine && cell.river && (data.project?.phase ?? 0) < RIVER.damPhase) continue; // under water
         if (entry.machine) {
             // Overlay saved fields onto fresh defaults so a save missing a newer
             // field (e.g. toggle) still loads cleanly.
@@ -454,6 +499,7 @@ export function loadState(data) {
     project.phase = data.project?.phase ?? 0;
     project.delivered = { ...(data.project?.delivered ?? {}) };
     project.complete = data.project?.complete ?? false;
+    applyRiver(project.phase);
     revealOre(project.phase);
     stats.produced = { ...(data.stats?.produced ?? {}) };
     stats.delivered = { ...(data.stats?.delivered ?? {}) };
@@ -469,7 +515,7 @@ export function canBuildMachine(x, y, type) {
     if (!inBounds(x, y)) return false;
     if (!(type in MACHINE_COST)) return false;
     const cell = grid[x][y];
-    if (cell.machine !== null || cell.blocked) return false;
+    if (cell.machine !== null || cell.blocked || cell.water || !inPlot(x, y)) return false;
     if (type === 'extractor' && cell.resource === null) return false; // needs an ore node
     if (!isBuildingUnlocked(type)) return false; // campaign-gated
     return score >= MACHINE_COST[type];
@@ -543,7 +589,7 @@ export function placeBelt(x, y, dir) {
         cell.machine.dir = dir; // re-orient in place (free) to follow the drag
         return 'oriented';
     }
-    if (cell.machine || cell.blocked) return 'blocked'; // non-belt machine / reserved site
+    if (cell.machine || cell.blocked || cell.water || !inPlot(x, y)) return 'blocked'; // machine, reserved site, river, outside the plot
     if (score < MACHINE_COST.belt) return 'unaffordable';
     buildMachine(x, y, 'belt', dir); // builds + charges (already known affordable/empty)
     return 'built';
@@ -566,6 +612,102 @@ export function removeMachine(x, y) {
     score += MACHINE_COST[cell.machine.type] ?? 0;
     cell.machine = null;
     return events;
+}
+
+// ---- Groups: move, copy or remove many machines at once ---------------------------------
+const TURNS = ['right', 'down', 'left', 'up'];
+const turnDir = (dir, rot) => TURNS[(TURNS.indexOf(dir) + rot) % 4];
+
+/** The machines inside a rectangle (corners inclusive, any order) that can be picked up: all but the pad. */
+export function machinesIn(x0, y0, x1, y1) {
+    const out = [];
+    for (let x = Math.max(0, Math.min(x0, x1)); x <= Math.min(GRID_WIDTH - 1, Math.max(x0, x1)); x++) {
+        for (let y = Math.max(0, Math.min(y0, y1)); y <= Math.min(GRID_HEIGHT - 1, Math.max(y0, y1)); y++) {
+            const m = grid[x][y].machine;
+            if (m && m.type !== 'sink') out.push({ x, y });
+        }
+    }
+    return out;
+}
+
+/**
+ * Where a group lands when the cell `anchor` is put down at `to`, turned `rot`
+ * quarter turns clockwise. mode 'move' may land on its own old cells; 'copy'
+ * needs empty cells, unlocked buildings and the credits.
+ * @returns {{ moves: { from: Pos, to: Pos, type: string, dir: string }[], bad: Pos[], cost: number, ok: boolean }}
+ */
+export function planGroup(cells, anchor, to, rot = 0, mode = 'move') {
+    const own = new Set(cells.map(({ x, y }) => `${x},${y}`));
+    const moves = [];
+    const bad = [];
+    let cost = 0;
+    for (const { x, y } of cells) {
+        const m = grid[x]?.[y]?.machine;
+        if (!m) continue;
+        let rx = x - anchor.x;
+        let ry = y - anchor.y;
+        for (let i = 0; i < rot; i++) [rx, ry] = [-ry, rx];
+        const t = { x: to.x + rx, y: to.y + ry };
+        moves.push({ from: { x, y }, to: t, type: m.type, dir: turnDir(m.dir, rot) });
+        if (mode === 'copy') cost += MACHINE_COST[m.type] ?? 0;
+        const c = inBounds(t.x, t.y) ? grid[t.x][t.y] : null;
+        const free = c && (!c.machine || (mode === 'move' && own.has(`${t.x},${t.y}`)));
+        const fits = c && free && !c.blocked && !c.water && inPlot(t.x, t.y)
+            && (m.type !== 'extractor' || c.resource)
+            && (mode !== 'copy' || isBuildingUnlocked(m.type));
+        if (!fits) bad.push(t);
+    }
+    return { moves, bad, cost, ok: moves.length > 0 && bad.length === 0 && (mode !== 'copy' || score >= cost) };
+}
+
+/**
+ * Carry out a planGroup() plan. 'move' lifts every machine (with its buffer,
+ * tier and the item on it) and sets it down turned; 'copy' builds fresh tier-1
+ * copies (same recipe, direction and on/off) and pays for them.
+ * @returns {FactoryEvent[] | null} item moves for the renderer, or null if the plan doesn't fit
+ */
+export function applyGroup(plan, mode = 'move') {
+    if (!plan?.ok) return null;
+    const events = [];
+    if (mode === 'copy') {
+        score -= plan.cost;
+        for (const mv of plan.moves) {
+            const src = grid[mv.from.x][mv.from.y].machine;
+            const cell = grid[mv.to.x][mv.to.y];
+            const extra = mv.type === 'extractor' ? { produces: cell.resource }
+                : (mv.type === 'splitter' || mv.type === 'merger') ? { toggle: 0 }
+                : mv.type === 'generator' ? { fuelTicks: 0 }
+                : {};
+            if (src?.recipe) extra.recipe = src.recipe;
+            if (src?.off) extra.off = true;
+            cell.machine = makeMachine(mv.type, mv.dir, extra);
+        }
+        return events;
+    }
+    const lifted = plan.moves.map((mv) => {
+        const cell = grid[mv.from.x][mv.from.y];
+        const carried = { machine: cell.machine, item: cell.item };
+        cell.machine = null;
+        cell.item = null;
+        return carried;
+    });
+    plan.moves.forEach((mv, i) => {
+        const cell = grid[mv.to.x][mv.to.y];
+        const { machine, item } = lifted[i];
+        machine.dir = mv.dir;
+        if (machine.type === 'extractor') machine.produces = cell.resource;
+        cell.machine = machine;
+        if (item) {
+            cell.item = item;
+            events.push({ kind: 'move', item, from: mv.from, to: mv.to });
+        }
+    });
+    return events;
+}
+
+/** Demolish every machine in `cells` (refunds, like removeMachine). @returns {FactoryEvent[]} */
+export function removeGroup(cells) {
+    return cells.flatMap(({ x, y }) => removeMachine(x, y));
 }
 
 export function upgradeCost(x, y) {

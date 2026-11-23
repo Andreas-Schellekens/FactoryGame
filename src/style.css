@@ -2270,12 +2270,12 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
 }
 
 .hwkey {
-  width: 64px;
+  width: 60px;
   height: 74px;
 }
 
 .hwkey.edit {
-  width: 58px;
+  width: 56px;
   height: 68px;
 }
 
@@ -2295,12 +2295,12 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
 
 @media (max-width: 1400px) {
   .hwkey {
-    width: 56px;
+    width: 52px;
     height: 68px;
   }
 
   .hwkey.edit {
-    width: 52px;
+    width: 50px;
     height: 64px;
   }
 
@@ -2318,4 +2318,59 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
     font-size: 9px;
     letter-spacing: 0.02em;
   }
+}
+
+/* ---- Selection bar (select tool) ------------------------------------------------- */
+.selbar {
+  position: absolute;
+  left: 332px;
+  bottom: 104px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 14px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--signal), 3px 3px 0 rgba(5, 10, 20, 0.6);
+  white-space: nowrap;
+}
+
+.sel-info {
+  font: 500 12px var(--f-mono);
+  letter-spacing: 0.04em;
+  color: var(--paper);
+  margin-right: 6px;
+}
+
+.sel-info.bad {
+  color: var(--alarm);
+}
+
+.sel-btn {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  background: var(--console);
+  box-shadow: inset 0 -3px 0 var(--console-edge);
+  color: var(--paper);
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  align-items: center;
+}
+
+.sel-btn span {
+  color: var(--mustard);
+  font-weight: 500;
+}
+
+.sel-btn:hover {
+  background: var(--console-hover);
+}
+
+.sel-btn.danger b {
+  color: var(--alarm);
 }

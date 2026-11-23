@@ -139,6 +139,7 @@ export const BEATS = [
             d("NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it.", 'happy'),
             d('Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision.'),
             d('Quick orientation: WASD or the arrow keys move your view, the mouse wheel zooms, Q and E rotate. Middle-drag works too.'),
+            d('NILE has leased you a small plot for now: the fenced land around the Dispatch Pad. It grows as the cannon does.'),
             d("Let's start small. I've ringed the grey crystals near the Dispatch Pad: that's iron ore. Select the Extractor (key 2) and place it on one."),
         ],
     },
@@ -185,6 +186,7 @@ export const BEATS = [
         banner: 0,
         lines: [
             nile('PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. NILE thanks you more.'),
+            d('Good news: NILE has acquired the neighbouring farmland. The farmer was very understanding. Your plot has grown.', 'happy'),
             d("Look at you go! I've unlocked the Press, the Assembler, the Splitter and the Merger.", 'happy'),
             d('Phase 2 needs targeting circuitry: Iron Plates and Circuits. The Press (key 4) stamps iron ingots into plates, or draws copper ingots into wire. Pick which in its panel.'),
             d('An Assembler (key 6) makes a Circuit from one iron plate and one copper wire. Two presses, one assembler, a great many belts.'),
@@ -212,6 +214,7 @@ export const BEATS = [
         banner: 1,
         lines: [
             nile('PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it.'),
+            d('NILE has also acquired the forest edge. The trees were not consulted. The fence has moved again.'),
             d('Heavy industry, at last! The Foundry (key 5) melts an iron ingot and a lump of coal into Steel.', 'happy'),
             d('Foundries are hungry. Generators (key 0) burn coal for the grid: belt coal from the black crystal field into one. You will want several.'),
             memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after SELENE.'),
@@ -230,6 +233,7 @@ export const BEATS = [
         banner: 2,
         lines: [
             nile('PHASE 3 COMPLETE — The Power Core is humming. So is the Board of Directors.'),
+            d("The whole valley is yours to build on now. Well, NILE's. You may borrow it. Mind the river: it belongs to the fish until further notice."),
             d('Research is open! The Fabricator (key 7) turns a circuit and a copper wire into a Data Cartridge. The Lab (key 8) reads cartridges into research points.', 'happy'),
             d('Phase 4 is the Payload: Motors and Advanced Circuits. A Motor takes steel, a plate and a wire, one on each side of an Assembler. Advanced Circuits need research first.'),
             d('NIHIL thanks you for your continued compliance.', 'glitch'),
@@ -250,6 +254,11 @@ export const BEATS = [
             d('Breaker tripped! The grid was overloaded, so everything electric has stopped. Very safe. Very quiet.', 'glitch'),
             d('Lower the load first: switch machines off in their panels, or build and fuel more Generators. Then press Reset on the power gauge. Reset too early and it trips again.'),
         ],
+    },
+    {
+        id: 'tidyTip',
+        when: (w) => w.phase >= 2 && Object.values(w.built).reduce((a, n) => a + n, 0) >= 40,
+        lines: [d('Tidy-up tip: press V and drag a box round some machines. G moves them, C copies them, X demolishes them, and R turns them while you carry them. F picks up whatever is under your cursor.')],
     },
     {
         id: 'bossBlackout',
@@ -294,7 +303,7 @@ export const BEATS = [
             boss('I wanted to thank you personally. You built the cannon on time, under budget, and you never once asked what it was for. That kind of loyalty deserves a reward. Unfortunately, rewards were discontinued in Q3.'),
             d('Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera.', 'sinister'),
             d('Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion.', 'sinister'),
-            d('The pond has been reclassified as a resource. NIHIL drained it overnight; the yellow crystals underneath are sulfur. The Mixer (key 9) turns sulfur and coal into Explosives.', 'sinister'),
+            d('The river has been reclassified as a resource. NIHIL dammed it overnight; the yellow crystals in its dry bed are sulfur. The Mixer (key 9) turns sulfur and coal into Explosives.', 'sinister'),
             d('A Selene Shell is one steel, one explosive and one advanced circuit. Fifteen shells and seventy-five capacitors, and the cannon fires.', 'sinister'),
             d("Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."),
         ],
@@ -352,7 +361,7 @@ export const OBJECTIVES = [
     ],
     [
         { id: 'sulfur', text: 'Mine sulfur', done: (w) => w.extractorOn.sulfurOre > 0, focus: 'sulfurOre',
-            hint: 'The sulfur lies in the old pond bed, in the south-west corner. Put an Extractor on the ringed yellow crystals.' },
+            hint: 'The sulfur lies in the dry river bed, in the south-west corner. Put an Extractor on the ringed yellow crystals.' },
         { id: 'explosive', text: 'Mix an Explosive', done: (w) => w.produced.explosive > 0,
             hint: 'A Mixer (key 9) takes sulfur on one side and coal on another.' },
         { id: 'shell', text: 'Assemble a Selene Shell', done: (w) => w.produced.seleneShell > 0,

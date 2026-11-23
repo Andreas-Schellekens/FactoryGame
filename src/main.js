@@ -19,7 +19,7 @@ import {
     initGrid, buildMachine, removeMachine, upgradeMachine, upgradeCost, placeBelt, dirBetween,
     serialize, loadState, isBuildingUnlocked, machineCost, machinePorts, machineIO,
     RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
-    salePrice, flow, UPGRADABLE, SAVE_VERSION,
+    salePrice, flow, UPGRADABLE, SAVE_VERSION, machinesIn, planGroup, applyGroup, removeGroup,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
 import { BUILDING_NAMES, ITEM_NAMES } from './story.js';
@@ -80,6 +80,9 @@ const state = {
     focus: null, // what the active objective points at ('ironOre', 'sink'…), ringed in 3D
     cinematic: false, // the ending is playing: no input, no 3D overlay
     selected: null, // { x, y } of the machine whose panel is open
+    selDrag: null, // { from, to } while a selection box is being dragged (select tool)
+    sel: null, // { cells: Pos[] } the selected machines
+    group: null, // { mode: 'move'|'copy', cells, anchor, rot, plan } while a selection is carried
 };
 // The recipe last picked per machine type: new machines of that type start on it.
 const lastRecipe = {};
@@ -276,7 +279,82 @@ function selectTool(tool) {
         return;
     }
     if (tool !== state.tool) audio.cue('key');
+    if (tool !== 'select') {
+        state.sel = null;
+        state.group = null;
+    }
     state.tool = tool;
+}
+
+// --- Selections: drag a box (select tool), then move / copy / demolish the lot ---
+function finishSelection() {
+    const d = state.selDrag;
+    state.selDrag = null;
+    const cells = machinesIn(d.from.x, d.from.y, d.to.x, d.to.y);
+    state.sel = cells.length ? { cells } : null;
+    audio.cue(cells.length ? 'open' : 'click');
+}
+function clearSelection() {
+    state.sel = null;
+    state.group = null;
+    audio.cue('close');
+}
+/** Pick the selection up: it follows the cursor, anchored on the machine nearest its middle. */
+function startGroup(mode) {
+    const cells = state.sel.cells;
+    const mid = (vals) => (Math.min(...vals) + Math.max(...vals)) / 2;
+    const cx = mid(cells.map((c) => c.x));
+    const cy = mid(cells.map((c) => c.y));
+    const anchor = cells.reduce((a, c) => (Math.hypot(c.x - cx, c.y - cy) < Math.hypot(a.x - cx, a.y - cy) ? c : a));
+    state.group = { mode, cells, anchor, rot: 0, plan: null };
+    state.selected = null;
+    audio.cue('key');
+}
+function cancelGroup() {
+    state.group = null;
+    audio.cue('close');
+}
+function placeGroup() {
+    const g = state.group;
+    const plan = g.plan;
+    if (!plan?.ok) {
+        audio.cue('deny');
+        renderer.nudgeGhost();
+        if (plan && !plan.bad.length && g.mode === 'copy') ui.toast(`This copy costs CR ${plan.cost}`);
+        return;
+    }
+    renderer.quietNext(); // the machines slide over: no demolish/build juice for each one
+    renderer.applyEvents(applyGroup(plan, g.mode), 140);
+    audio.cue('build', { size: 2 });
+    renderer.rig.shake(0.15);
+    const at = plan.moves.find((m) => m.from.x === g.anchor.x && m.from.y === g.anchor.y)?.to ?? plan.moves[0].to;
+    if (g.mode === 'copy') {
+        renderer.floatAt(at.x, at.y, `−${plan.cost}`, SPEND_COLOR); // keep carrying: place another copy
+        return;
+    }
+    state.sel = { cells: plan.moves.map((m) => m.to) };
+    state.group = null;
+}
+function removeSelection() {
+    const cells = state.sel.cells;
+    const refund = cells.reduce((a, { x, y }) => a + machineCost(grid[x][y].machine?.type), 0);
+    renderer.applyEvents(removeGroup(cells), 0);
+    audio.cue('demolish');
+    const c = cells[Math.floor(cells.length / 2)];
+    if (refund) renderer.floatAt(c.x, c.y, `+${refund}`, REFUND_COLOR);
+    state.sel = null;
+    state.group = null;
+}
+/** Pipette: build what's under the cursor next, same direction, same recipe. */
+function pipette() {
+    const h = state.hovered;
+    const m = h.x >= 0 ? grid[h.x][h.y].machine : null;
+    if (!m || !buildableTools.has(m.type)) return;
+    if (!isBuildingUnlocked(m.type)) return;
+    selectTool(m.type);
+    state.dir = m.dir;
+    if (m.recipe) lastRecipe[m.type] = m.recipe;
+    ui.toast(`${BUILDING_NAMES[m.type]}${m.recipe && ITEM_NAMES[m.recipe] ? ` · ${ITEM_NAMES[m.recipe]}` : ''} · picked up with F`);
 }
 
 // --- Story director ---
@@ -358,6 +436,12 @@ const ui = createUI({
         return true;
     },
     onDeselect: deselect,
+    onGroupAction: (action) => {
+        if (action === 'cancel') return state.group ? cancelGroup() : clearSelection();
+        if (!state.sel) return;
+        if (action === 'remove') removeSelection();
+        else startGroup(action);
+    },
     onResetBreaker: () => {
         if (!resetBreaker()) return false;
         audio.cue('reset');
@@ -381,6 +465,13 @@ const ui = createUI({
             power: { ...power },
             selected: selectedInfo(),
             production,
+            selection: state.sel || state.group ? {
+                count: (state.group?.cells ?? state.sel.cells).length,
+                mode: state.group?.mode ?? null,
+                cost: state.group?.plan?.cost ?? null,
+                ok: state.group?.plan?.ok ?? null,
+                blocked: state.group?.plan?.bad.length ?? 0,
+            } : null,
             research: { points: research.points, unlocked: { ...research.unlocked } },
             project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
@@ -424,6 +515,16 @@ let lastWorking = 0;
 let flowClock = 0;
 
 function onFrame(dt) {
+    // A carried group plans where it would land under the cursor; a selection forgets demolished machines.
+    if (state.group) {
+        const h = state.hovered;
+        const g = state.group;
+        g.plan = h.x >= 0 && !state.cinematic ? planGroup(g.cells, g.anchor, h, g.rot, g.mode) : null;
+    }
+    if (state.sel && !state.group) {
+        const cells = state.sel.cells.filter(({ x, y }) => grid[x][y].machine);
+        state.sel = cells.length ? { cells } : null;
+    }
     if (state.selected) {
         const m = grid[state.selected.x][state.selected.y].machine;
         if (!m || NO_PANEL.has(m.type) || state.cinematic) state.selected = null;
@@ -535,7 +636,7 @@ function demolish(gx, gy) {
 // Buildings in chain order on the number row; routers, upgrade and demolish on letters.
 const keyTools = {
     1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'press', 5: 'foundry', 6: 'assembler', 7: 'fabricator', 8: 'lab', 9: 'mixer', 0: 'generator',
-    t: 'splitter', y: 'merger', u: 'upgrade', x: 'erase', delete: 'erase', backspace: 'erase',
+    t: 'splitter', y: 'merger', u: 'upgrade', x: 'erase', delete: 'erase', backspace: 'erase', v: 'select',
 };
 const PAN_KEYS = {
     w: [0, 1], arrowup: [0, 1], s: [0, -1], arrowdown: [0, -1],
@@ -558,6 +659,22 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         return;
     }
+    // A carried group and a selection borrow some keys while they're there.
+    if (state.group) {
+        if (k === 'r') {
+            state.group.rot = (state.group.rot + 1) % 4;
+            audio.cue('rotate');
+            return;
+        }
+        if (e.key === 'Escape') return cancelGroup();
+    }
+    if (state.sel && !state.group) {
+        if (k === 'g') return startGroup('move');
+        if (k === 'c') return startGroup('copy');
+        if (k === 'x' || k === 'delete' || k === 'backspace') return removeSelection();
+        if (e.key === 'Escape') return clearSelection();
+    }
+    if (k === 'f') pipette();
     if (k in keyTools) selectTool(keyTools[k]);
     if (e.key === 'Escape' && state.selected) {
         deselect();
@@ -650,6 +767,7 @@ canvas.addEventListener('pointermove', (e) => {
     const cell = renderer.pickCell(e.clientX, e.clientY);
     state.hovered = cell ?? { x: -1, y: -1 };
     if (state.drag && cell) dragTo(cell);
+    if (state.selDrag && cell) state.selDrag.to = cell;
 });
 
 canvas.addEventListener('pointerleave', () => (state.hovered = { x: -1, y: -1 }));
@@ -666,6 +784,16 @@ canvas.addEventListener('pointerdown', (e) => {
     const cell = renderer.pickCell(e.clientX, e.clientY);
     if (!cell) return;
 
+    // Carrying a selection: left click puts it down, right click lets go.
+    if (state.group) {
+        if (e.button === 0) placeGroup();
+        else if (e.button === 2) cancelGroup();
+        return;
+    }
+    if (state.tool === 'select' && e.button === 0) {
+        state.selDrag = { from: cell, to: cell };
+        return;
+    }
     if (e.button === 2 || state.tool === 'erase') {
         state.drag = { last: null, mode: 'erase' };
         dragTo(cell);
@@ -688,6 +816,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
 const endDrag = (e) => {
     state.drag = null;
+    if (state.selDrag) finishSelection();
     if (panDrag) renderer.rig.endPan(); // let the view glide on
     panDrag = null;
     if (e?.pointerId != null && canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
@@ -711,6 +840,7 @@ if (import.meta.env.DEV) {
     window.__renderer = renderer;
     window.__audio = audio;
     window.__ui = ui; // e.g. __ui.say({ who: "boss", text }) to preview a line in the comms
+    window.__state = state; // the input state: tool, selection, carried group
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);

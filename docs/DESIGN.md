@@ -246,9 +246,17 @@ Each iteration should be playable on its own before the next one starts.
               0 generator; T/Y splitter/merger, U/X upgrade/demolish.
         - [ ] Record DELTA's new tutorial lines; playtest the pacing
               (target 45–90 minutes).
-      - [ ] **4c — world & tidiness.** A small fenced plot that grows every
-            phase (NILE "acquires" the neighbouring land); the pond becomes
-            a river that NIHIL dams at the reveal, exposing sulfur; select /
-            move / copy groups of machines; a pipette.
+      - [ ] **4c — world & tidiness.**
+        - [x] A small fenced plot around the pad that grows with every
+              phase (NILE "acquires" the farmland, the forest edge, then the
+              whole valley); nothing can be built outside it.
+        - [x] The pond becomes a river across the south-west corner; nothing
+              can be built on the water. NIHIL dams it at the reveal and the
+              sulfur lies in the dry bed.
+        - [x] Select (V): drag a box round machines, then move (G) or copy
+              (C) the lot (R turns it while carried; copies cost their build
+              price), or demolish it (X). Pipette (F): build what is under
+              the cursor, same direction and recipe.
+        - [ ] Record DELTA's lines about the plot, the river and the tip.
 - [ ] **Iteration 5 — finale & polish.** Ending choice, credits, save slots,
       settings. (The firing cinematic was done in 3b.)
