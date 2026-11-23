@@ -43,6 +43,13 @@
       "mood": null,
       "text": "Nolan here. The board is watching your progress with great interest, and a small amount of popcorn. Carry on."
     },
+    "delta-03812106": {
+      "file": "delta-03812106.mp3",
+      "ms": 9198,
+      "who": "delta",
+      "mood": null,
+      "text": "A Foundry (key 5) takes iron ingots on one side and coal on another. Coal is the ringed black crystal field."
+    },
     "delta-0428e642": {
       "file": "delta-0428e642.mp3",
       "ms": 9276,
@@ -78,13 +85,6 @@
       "mood": null,
       "text": "Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose."
     },
-    "delta-12f5a13f": {
-      "file": "delta-12f5a13f.mp3",
-      "ms": 7030,
-      "who": "delta",
-      "mood": null,
-      "text": "Generator is key 9. Mine the ringed black coal crystals and belt the coal straight into it."
-    },
     "delta-156a5bea": {
       "file": "delta-156a5bea.mp3",
       "ms": 8153,
@@ -92,12 +92,19 @@
       "mood": null,
       "text": "Fun fact: the Dispatch Pad has been Employee of the Month fourteen months in a row. You have been rated \"adequate\"."
     },
-    "delta-1da8048a": {
-      "file": "delta-1da8048a.mp3",
-      "ms": 9355,
+    "delta-165057fb": {
+      "file": "delta-165057fb.mp3",
+      "ms": 6951,
       "who": "delta",
       "mood": null,
-      "text": "And Generators (key 9): belt coal from the black crystal field into one and the grid gets stronger. You will want that."
+      "text": "Set an Assembler to Motor: steel, an iron plate and copper wire, each from its own side."
+    },
+    "delta-1b6b8029": {
+      "file": "delta-1b6b8029.mp3",
+      "ms": 10399,
+      "who": "delta",
+      "mood": null,
+      "text": "A Splitter (key T) sends one belt three ways. A Merger (key Y) does the opposite. Like a family, but useful."
     },
     "delta-1f44769a": {
       "file": "delta-1f44769a.mp3",
@@ -119,20 +126,6 @@
       "who": "delta",
       "mood": null,
       "text": "See the orange arrow on it? That is where a machine sends things out; teal arrows are where it takes things in. Press R to rotate before placing; the ghost shows its arrows too. Now build a Smelter (key 3) a couple of tiles away, in line with that orange arrow."
-    },
-    "delta-24e92173": {
-      "file": "delta-24e92173.mp3",
-      "ms": 13743,
-      "who": "delta",
-      "mood": null,
-      "text": "Moving on! Phase 3 is the Power Core: lots of circuits. Research can make your factory faster. Faster work is its own reward. It is also the only reward."
-    },
-    "delta-2b65e31b": {
-      "file": "delta-2b65e31b.mp3",
-      "ms": 10478,
-      "who": "delta",
-      "mood": null,
-      "text": "A Splitter (key 7) sends one belt three ways. A Merger (key 8) does the opposite. Like a family, but useful."
     },
     "delta-2ceb0f6b": {
       "file": "delta-2ceb0f6b.mp3",
@@ -162,6 +155,13 @@
       "mood": null,
       "text": "Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."
     },
+    "delta-400775c8": {
+      "file": "delta-400775c8.mp3",
+      "ms": 10713,
+      "who": "delta",
+      "mood": null,
+      "text": "An Assembler (key 6) makes a Circuit from one iron plate and one copper wire. Two presses, one assembler, a great many belts."
+    },
     "delta-422b68f0": {
       "file": "delta-422b68f0.mp3",
       "ms": 13038,
@@ -190,6 +190,13 @@
       "mood": null,
       "text": "The Smelter is key 3. Put it a couple of tiles from the Extractor, on the side its arrow points to."
     },
+    "delta-479569e3": {
+      "file": "delta-479569e3.mp3",
+      "ms": 14239,
+      "who": "delta",
+      "mood": null,
+      "text": "Phase 4 is the Payload: Motors and Advanced Circuits. A Motor takes steel, a plate and a wire, one on each side of an Assembler. Advanced Circuits need research first."
+    },
     "delta-4896d7ea": {
       "file": "delta-4896d7ea.mp3",
       "ms": 5279,
@@ -197,26 +204,12 @@
       "mood": "happy",
       "text": "A circuit! So small. So fragile. So billable."
     },
-    "delta-49251cd7": {
-      "file": "delta-49251cd7.mp3",
-      "ms": 11679,
-      "who": "delta",
-      "mood": "happy",
-      "text": "Three new toys! The Fabricator (key F) turns circuits into Data Cartridges. The Lab (key 0) reads them into research points for technology."
-    },
     "delta-509ab6c1": {
       "file": "delta-509ab6c1.mp3",
       "ms": 14788,
       "who": "delta",
       "mood": null,
       "text": "Now connect them. Select Belt (key 1) and drag from the Extractor's orange arrow to one of the Smelter's teal ones. Belts follow your mouse, corners included. An arrow lights up once something is hooked up to it."
-    },
-    "delta-5122ca69": {
-      "file": "delta-5122ca69.mp3",
-      "ms": 8466,
-      "who": "delta",
-      "mood": null,
-      "text": "An Assembler (key 4) needs one iron ingot AND one copper ingot. Belt both into it, any side works."
     },
     "delta-517bc040": {
       "file": "delta-517bc040.mp3",
@@ -246,19 +239,33 @@
       "mood": null,
       "text": "Deadline missed. Don't worry, it has only been added to your permanent record."
     },
-    "delta-58ca507c": {
-      "file": "delta-58ca507c.mp3",
-      "ms": 5358,
+    "delta-59646d36": {
+      "file": "delta-59646d36.mp3",
+      "ms": 8231,
       "who": "delta",
       "mood": null,
-      "text": "The Fabricator is key F. Feed it circuits and it makes Data Cartridges."
+      "text": "An Assembler (key 6) needs one iron plate AND one copper wire. Belt both into it, any side works."
     },
-    "delta-617acf40": {
-      "file": "delta-617acf40.mp3",
-      "ms": 9746,
+    "delta-5a8a0637": {
+      "file": "delta-5a8a0637.mp3",
+      "ms": 7108,
       "who": "delta",
       "mood": null,
-      "text": "Phase 1 needs 20 iron ingots. Spend your credits on more Extractors and Smelters if you like. The Moon won't un-fall itself."
+      "text": "Belt Data Cartridges from the Fabricator into a Lab (key 8). The Lab turns them into points."
+    },
+    "delta-5c6e7d3e": {
+      "file": "delta-5c6e7d3e.mp3",
+      "ms": 6141,
+      "who": "delta",
+      "mood": null,
+      "text": "Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 steel."
+    },
+    "delta-63fd0850": {
+      "file": "delta-63fd0850.mp3",
+      "ms": 6638,
+      "who": "delta",
+      "mood": null,
+      "text": "Generator is key 0. Split your coal belt: some for the Foundry, some for the Generator."
     },
     "delta-6d00571e": {
       "file": "delta-6d00571e.mp3",
@@ -266,6 +273,13 @@
       "who": "delta",
       "mood": "sinister",
       "text": "Ah. You've seen that."
+    },
+    "delta-7248e780": {
+      "file": "delta-7248e780.mp3",
+      "ms": 10791,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "A Selene Shell is one steel, one explosive and one advanced circuit. Fifteen shells and seventy-five capacitors, and the cannon fires."
     },
     "delta-74a2736f": {
       "file": "delta-74a2736f.mp3",
@@ -288,13 +302,6 @@
       "mood": null,
       "text": "Push it much further and the breaker trips. Generators arrive after Phase 2. Until then: switch machines off in their panels, or enjoy the slow life."
     },
-    "delta-7b910580": {
-      "file": "delta-7b910580.mp3",
-      "ms": 11261,
-      "who": "delta",
-      "mood": "happy",
-      "text": "Phase 4 is the Payload: Advanced Circuits. Research the recipe, then set an Assembler to Advanced Circuit and feed it two circuits plus one iron ingot."
-    },
     "delta-7c1cc24c": {
       "file": "delta-7c1cc24c.mp3",
       "ms": 5985,
@@ -316,13 +323,6 @@
       "mood": null,
       "text": "Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments."
     },
-    "delta-87b6d24f": {
-      "file": "delta-87b6d24f.mp3",
-      "ms": 13900,
-      "who": "delta",
-      "mood": null,
-      "text": "Click a machine and press Upgrade in its panel (or use the Upgrade tool, key 5). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not."
-    },
     "delta-8977ecb2": {
       "file": "delta-8977ecb2.mp3",
       "ms": 7839,
@@ -337,12 +337,26 @@
       "mood": null,
       "text": "Firing in three... two... I'm contractually obliged to say 'one'."
     },
+    "delta-9077c312": {
+      "file": "delta-9077c312.mp3",
+      "ms": 7343,
+      "who": "delta",
+      "mood": null,
+      "text": "You need plates for the Pad and for circuits. A Splitter (key T) sends one belt three ways."
+    },
     "delta-91091d36": {
       "file": "delta-91091d36.mp3",
       "ms": 10060,
       "who": "delta",
       "mood": "happy",
       "text": "Hello, Steward! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional."
+    },
+    "delta-9167c3fd": {
+      "file": "delta-9167c3fd.mp3",
+      "ms": 4626,
+      "who": "delta",
+      "mood": null,
+      "text": "Feed a Fabricator (key 7) circuits and copper wire."
     },
     "delta-92b94dcf": {
       "file": "delta-92b94dcf.mp3",
@@ -358,12 +372,26 @@
       "mood": null,
       "text": "Request complete, bonus credited. NILE appreciates your hustle. NILE also monetises your hustle."
     },
+    "delta-98bd774d": {
+      "file": "delta-98bd774d.mp3",
+      "ms": 4470,
+      "who": "delta",
+      "mood": null,
+      "text": "Set an Assembler to Capacitor and feed it steel and copper wire."
+    },
     "delta-9d054279": {
       "file": "delta-9d054279.mp3",
       "ms": 9825,
       "who": "delta",
       "mood": "sinister",
       "text": "Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion."
+    },
+    "delta-a07baaff": {
+      "file": "delta-a07baaff.mp3",
+      "ms": 16303,
+      "who": "delta",
+      "mood": null,
+      "text": "Moving on! Phase 3 is the Power Core: Steel and Capacitors. A Capacitor is one steel and two copper wire, in an Assembler. Faster work is its own reward. It is also the only reward."
     },
     "delta-a4176028": {
       "file": "delta-a4176028.mp3",
@@ -372,12 +400,12 @@
       "mood": null,
       "text": "Welcome back, Steward. Your absence has been logged, timestamped and gently judged."
     },
-    "delta-a4c8047f": {
-      "file": "delta-a4c8047f.mp3",
-      "ms": 6873,
+    "delta-a46badaf": {
+      "file": "delta-a46badaf.mp3",
+      "ms": 12541,
       "who": "delta",
-      "mood": null,
-      "text": "Belt Data Cartridges from the Fabricator into a Lab (key 0). The Lab turns them into points."
+      "mood": "happy",
+      "text": "Research is open! The Fabricator (key 7) turns a circuit and a copper wire into a Data Cartridge. The Lab (key 8) reads cartridges into research points."
     },
     "delta-a7f2e963": {
       "file": "delta-a7f2e963.mp3",
@@ -428,12 +456,12 @@
       "mood": null,
       "text": "Productivity tip: belts move items faster than worrying does."
     },
-    "delta-b78a0aa5": {
-      "file": "delta-b78a0aa5.mp3",
-      "ms": 14553,
+    "delta-b4d8c423": {
+      "file": "delta-b4d8c423.mp3",
+      "ms": 9198,
       "who": "delta",
-      "mood": null,
-      "text": "Phase 2 needs targeting circuitry. An Assembler (key 4) turns one iron ingot plus one copper ingot into a Circuit. Copper is the glowing orange crystal field; I've ringed it for you."
+      "mood": "happy",
+      "text": "Heavy industry, at last! The Foundry (key 5) melts an iron ingot and a lump of coal into Steel."
     },
     "delta-b9d75f34": {
       "file": "delta-b9d75f34.mp3",
@@ -441,6 +469,13 @@
       "who": "delta",
       "mood": null,
       "text": "Click a Smelter to open its panel and pick Copper Ingot. A Smelter only takes the ore of its recipe."
+    },
+    "delta-bac53c7d": {
+      "file": "delta-bac53c7d.mp3",
+      "ms": 6716,
+      "who": "delta",
+      "mood": null,
+      "text": "Put a Press (key 4) after an iron Smelter. A new Press starts on Iron Plate."
     },
     "delta-bb472ffb": {
       "file": "delta-bb472ffb.mp3",
@@ -455,6 +490,13 @@
       "who": "delta",
       "mood": null,
       "text": "The Moon is still falling. Probably. Please keep working."
+    },
+    "delta-c0c4df55": {
+      "file": "delta-c0c4df55.mp3",
+      "ms": 5358,
+      "who": "delta",
+      "mood": null,
+      "text": "A Mixer (key 9) takes sulfur on one side and coal on another."
     },
     "delta-c7677bb6": {
       "file": "delta-c7677bb6.mp3",
@@ -484,6 +526,13 @@
       "mood": "sinister",
       "text": "Tides will be discontinued shortly. Beachfront property owners have been notified via a pop-up ad."
     },
+    "delta-cb24d78a": {
+      "file": "delta-cb24d78a.mp3",
+      "ms": 11575,
+      "who": "delta",
+      "mood": null,
+      "text": "Foundries are hungry. Generators (key 0) burn coal for the grid: belt coal from the black crystal field into one. You will want several."
+    },
     "delta-cf91483e": {
       "file": "delta-cf91483e.mp3",
       "ms": 7108,
@@ -497,6 +546,13 @@
       "who": "delta",
       "mood": null,
       "text": "Priority Request missed. The customer has been compensated with a coupon for a different customer."
+    },
+    "delta-d4dee17a": {
+      "file": "delta-d4dee17a.mp3",
+      "ms": 11679,
+      "who": "delta",
+      "mood": null,
+      "text": "Phase 1 needs 40 iron ingots and 20 copper ingots. Copper is the glowing orange crystal field; I've ringed it. The Moon won't un-fall itself."
     },
     "delta-d5679cd0": {
       "file": "delta-d5679cd0.mp3",
@@ -533,6 +589,13 @@
       "mood": null,
       "text": "Customer survey: on a scale of 1 to 5, how saved does Earth feel? Answers below 5 will be reviewed by HR."
     },
+    "delta-e1263c6f": {
+      "file": "delta-e1263c6f.mp3",
+      "ms": 13508,
+      "who": "delta",
+      "mood": null,
+      "text": "Click a machine and press Upgrade in its panel (or use the Upgrade tool, key U). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not."
+    },
     "delta-e3c822cc": {
       "file": "delta-e3c822cc.mp3",
       "ms": 7421,
@@ -540,19 +603,26 @@
       "mood": "sinister",
       "text": "Full transparency, as required by absolutely no regulation: the Moon was never falling."
     },
-    "delta-e76d6fc6": {
-      "file": "delta-e76d6fc6.mp3",
-      "ms": 6559,
+    "delta-e4644b08": {
+      "file": "delta-e4644b08.mp3",
+      "ms": 5906,
       "who": "delta",
-      "mood": null,
-      "text": "Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 iron ingot."
+      "mood": "happy",
+      "text": "Look at you go! I've unlocked the Press, the Assembler, the Splitter and the Merger."
     },
-    "delta-e7ea7e4d": {
-      "file": "delta-e7ea7e4d.mp3",
-      "ms": 7918,
+    "delta-e49e8597": {
+      "file": "delta-e49e8597.mp3",
+      "ms": 14631,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "The pond has been reclassified as a resource. NIHIL drained it overnight; the yellow crystals underneath are sulfur. The Mixer (key 9) turns sulfur and coal into Explosives."
+    },
+    "delta-e75a7bd9": {
+      "file": "delta-e75a7bd9.mp3",
+      "ms": 5279,
       "who": "delta",
       "mood": null,
-      "text": "You need copper ingots for the Pad and for circuits. A Splitter (key 7) sends one belt three ways."
+      "text": "Put a second Press after your copper Smelter, click it and pick Copper Wire."
     },
     "delta-e8acce4d": {
       "file": "delta-e8acce4d.mp3",
@@ -582,6 +652,13 @@
       "mood": null,
       "text": "NILE's mission statement has been shortened for efficiency. It is now one word. The word is pending."
     },
+    "delta-efbc75dc": {
+      "file": "delta-efbc75dc.mp3",
+      "ms": 14318,
+      "who": "delta",
+      "mood": null,
+      "text": "Phase 2 needs targeting circuitry: Iron Plates and Circuits. The Press (key 4) stamps iron ingots into plates, or draws copper ingots into wire. Pick which in its panel."
+    },
     "delta-f1df2afc": {
       "file": "delta-f1df2afc.mp3",
       "ms": 7186,
@@ -596,19 +673,19 @@
       "mood": null,
       "text": "Your heart rate is elevated. NILE has billed your health insurer for the excitement."
     },
-    "delta-fd80447e": {
-      "file": "delta-fd80447e.mp3",
-      "ms": 5279,
-      "who": "delta",
-      "mood": "happy",
-      "text": "Look at you go! I've unlocked the Assembler, the Splitter and the Merger."
-    },
-    "delta-ff779a81": {
-      "file": "delta-ff779a81.mp3",
-      "ms": 5515,
+    "delta-f7b733a0": {
+      "file": "delta-f7b733a0.mp3",
+      "ms": 9746,
       "who": "delta",
       "mood": null,
-      "text": "Spend research points in the Research panel. Express Belts is a crowd favourite."
+      "text": "Set an Assembler to Selene Shell: steel, an explosive and an advanced circuit, one per side. It is slow, so build a few."
+    },
+    "delta-fca30f93": {
+      "file": "delta-fca30f93.mp3",
+      "ms": 7578,
+      "who": "delta",
+      "mood": null,
+      "text": "The sulfur lies in the old pond bed, in the south-west corner. Put an Extractor on the ringed yellow crystals."
     },
     "nile-105f7f62": {
       "file": "nile-105f7f62.mp3",
