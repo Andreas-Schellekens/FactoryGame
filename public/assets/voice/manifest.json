@@ -1,4 +1,591 @@
 {
   "version": 1,
-  "lines": {}
+  "lines": {
+    "delta-0428e642": {
+      "file": "delta-0428e642.mp3",
+      "ms": 9276,
+      "who": "delta",
+      "mood": null,
+      "text": "NILE will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file."
+    },
+    "delta-05bf06f3": {
+      "file": "delta-05bf06f3.mp3",
+      "ms": 10478,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Oh, a small update: the Moon's impact date has been revised from 'seventeen days' to 'soon'. Please do not request clarification."
+    },
+    "delta-0d2b14f5": {
+      "file": "delta-0d2b14f5.mp3",
+      "ms": 5985,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Welcome back, Asset. Your absence has been logged, timestamped and gently judged."
+    },
+    "delta-0d47029f": {
+      "file": "delta-0d47029f.mp3",
+      "ms": 7421,
+      "who": "delta",
+      "mood": null,
+      "text": "Research points! Spend them in the Research panel. Knowledge is power, and power is billed by the kilowatt."
+    },
+    "delta-1085d0a7": {
+      "file": "delta-1085d0a7.mp3",
+      "ms": 9015,
+      "who": "delta",
+      "mood": null,
+      "text": "Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose."
+    },
+    "delta-12f5a13f": {
+      "file": "delta-12f5a13f.mp3",
+      "ms": 7030,
+      "who": "delta",
+      "mood": null,
+      "text": "Generator is key 9. Mine the ringed black coal crystals and belt the coal straight into it."
+    },
+    "delta-156a5bea": {
+      "file": "delta-156a5bea.mp3",
+      "ms": 8153,
+      "who": "delta",
+      "mood": null,
+      "text": "Fun fact: the Dispatch Pad has been Employee of the Month fourteen months in a row. You have been rated \"adequate\"."
+    },
+    "delta-1f44769a": {
+      "file": "delta-1f44769a.mp3",
+      "ms": 10217,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera."
+    },
+    "delta-23945bbc": {
+      "file": "delta-23945bbc.mp3",
+      "ms": 11758,
+      "who": "delta",
+      "mood": null,
+      "text": "Fun fact: NILE stands for Network for Infrastructure, Logistics & Engineering. The E is for Engineering. And for Everyone. Mostly Engineering."
+    },
+    "delta-242ea07b": {
+      "file": "delta-242ea07b.mp3",
+      "ms": 20065,
+      "who": "delta",
+      "mood": null,
+      "text": "See the orange arrow on it? That is where a machine sends things out; teal arrows are where it takes things in. Press R to rotate before placing; the ghost shows its arrows too. Now build a Smelter (key 3) a couple of tiles away, in line with that orange arrow."
+    },
+    "delta-24e92173": {
+      "file": "delta-24e92173.mp3",
+      "ms": 13743,
+      "who": "delta",
+      "mood": null,
+      "text": "Moving on! Phase 3 is the Power Core: lots of circuits. Research can make your factory faster. Faster work is its own reward. It is also the only reward."
+    },
+    "delta-2b65e31b": {
+      "file": "delta-2b65e31b.mp3",
+      "ms": 10478,
+      "who": "delta",
+      "mood": null,
+      "text": "A Splitter (key 7) sends one belt three ways. A Merger (key 8) does the opposite. Like a family, but useful."
+    },
+    "delta-2ceb0f6b": {
+      "file": "delta-2ceb0f6b.mp3",
+      "ms": 8310,
+      "who": "delta",
+      "mood": null,
+      "text": "Low on credits? Erasing a building (right-click) refunds its full cost. NILE calls it \"flexible capital\"."
+    },
+    "delta-3142e01e": {
+      "file": "delta-3142e01e.mp3",
+      "ms": 16956,
+      "who": "delta",
+      "mood": null,
+      "text": "Belt the ingots into the Dispatch Pad, the landing pad with the arrow hovering over it. Everything you deliver goes straight into Protocol: Selene, the construction site right next to it, and NILE pays you per delivery. Generously-ish."
+    },
+    "delta-3a69d04c": {
+      "file": "delta-3a69d04c.mp3",
+      "ms": 8623,
+      "who": "delta",
+      "mood": null,
+      "text": "An Advanced Circuit. It contains forty thousand transistors and one tiny NILE logo you will never be able to remove."
+    },
+    "delta-3dcbcd2d": {
+      "file": "delta-3dcbcd2d.mp3",
+      "ms": 9746,
+      "who": "delta",
+      "mood": null,
+      "text": "Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."
+    },
+    "delta-42b2d463": {
+      "file": "delta-42b2d463.mp3",
+      "ms": 8545,
+      "who": "delta",
+      "mood": null,
+      "text": "Select Belt (key 1) and drag from just after the Extractor's arrow into the Smelter. Items follow the arrows."
+    },
+    "delta-44998a68": {
+      "file": "delta-44998a68.mp3",
+      "ms": 5358,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "NIHIL reminds you: nothing lasts forever. Except your contract."
+    },
+    "delta-4619e4d0": {
+      "file": "delta-4619e4d0.mp3",
+      "ms": 10138,
+      "who": "delta",
+      "mood": null,
+      "text": "Phase 4 is the Payload: Advanced Circuits. Two circuits plus one iron ingot, in an Assembler. Research the recipe first."
+    },
+    "delta-46dea570": {
+      "file": "delta-46dea570.mp3",
+      "ms": 6951,
+      "who": "delta",
+      "mood": null,
+      "text": "The Smelter is key 3. Put it a couple of tiles from the Extractor, on the side its arrow points to."
+    },
+    "delta-4896d7ea": {
+      "file": "delta-4896d7ea.mp3",
+      "ms": 5279,
+      "who": "delta",
+      "mood": "happy",
+      "text": "A circuit! So small. So fragile. So billable."
+    },
+    "delta-4bc0adb5": {
+      "file": "delta-4bc0adb5.mp3",
+      "ms": 4078,
+      "who": "delta",
+      "mood": null,
+      "text": "The Lab is key 0. It only accepts Research."
+    },
+    "delta-509ab6c1": {
+      "file": "delta-509ab6c1.mp3",
+      "ms": 14788,
+      "who": "delta",
+      "mood": null,
+      "text": "Now connect them. Select Belt (key 1) and drag from the Extractor's orange arrow to one of the Smelter's teal ones. Belts follow your mouse, corners included. An arrow lights up once something is hooked up to it."
+    },
+    "delta-5122ca69": {
+      "file": "delta-5122ca69.mp3",
+      "ms": 8466,
+      "who": "delta",
+      "mood": null,
+      "text": "An Assembler (key 4) needs one iron ingot AND one copper ingot. Belt both into it, any side works."
+    },
+    "delta-517bc040": {
+      "file": "delta-517bc040.mp3",
+      "ms": 3111,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "NIHIL thanks you for your continued compliance."
+    },
+    "delta-52d3cd55": {
+      "file": "delta-52d3cd55.mp3",
+      "ms": 7578,
+      "who": "delta",
+      "mood": null,
+      "text": "The Dispatch Pad is the ringed landing pad with the arrow hovering over it. Drag a belt from the Smelter's output into it."
+    },
+    "delta-55f08a50": {
+      "file": "delta-55f08a50.mp3",
+      "ms": 10791,
+      "who": "delta",
+      "mood": null,
+      "text": "Let's start small. I've ringed the grey crystals near the Dispatch Pad: that's iron ore. Select the Extractor (key 2) and place it on one."
+    },
+    "delta-57fa1743": {
+      "file": "delta-57fa1743.mp3",
+      "ms": 5175,
+      "who": "delta",
+      "mood": null,
+      "text": "Deadline missed. Don't worry, it has only been added to your permanent record."
+    },
+    "delta-617acf40": {
+      "file": "delta-617acf40.mp3",
+      "ms": 9746,
+      "who": "delta",
+      "mood": null,
+      "text": "Phase 1 needs 20 iron ingots. Spend your credits on more Extractors and Smelters if you like. The Moon won't un-fall itself."
+    },
+    "delta-64e408c9": {
+      "file": "delta-64e408c9.mp3",
+      "ms": 10791,
+      "who": "delta",
+      "mood": "happy",
+      "text": "The Lab (key 0) is now available. An Assembler fed only circuits makes Research; a Lab turns Research into points you can spend on technology."
+    },
+    "delta-6b8c4e7b": {
+      "file": "delta-6b8c4e7b.mp3",
+      "ms": 7500,
+      "who": "delta",
+      "mood": null,
+      "text": "Copper ore is the ringed orange crystal field. Same recipe as iron: Extractor, belt, Smelter."
+    },
+    "delta-6d00571e": {
+      "file": "delta-6d00571e.mp3",
+      "ms": 2223,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Ah. You've seen that."
+    },
+    "delta-74a2736f": {
+      "file": "delta-74a2736f.mp3",
+      "ms": 11993,
+      "who": "delta",
+      "mood": "happy",
+      "text": "NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it."
+    },
+    "delta-7c1cc24c": {
+      "file": "delta-7c1cc24c.mp3",
+      "ms": 5985,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Generator online. Coal in, electricity out, guilt not included."
+    },
+    "delta-8001a8ed": {
+      "file": "delta-8001a8ed.mp3",
+      "ms": 11915,
+      "who": "delta",
+      "mood": null,
+      "text": "Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision."
+    },
+    "delta-831b30a2": {
+      "file": "delta-831b30a2.mp3",
+      "ms": 7578,
+      "who": "delta",
+      "mood": null,
+      "text": "Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments."
+    },
+    "delta-8977ecb2": {
+      "file": "delta-8977ecb2.mp3",
+      "ms": 7839,
+      "who": "delta",
+      "mood": "happy",
+      "text": "An iron ingot! Humanity's odds of survival just rose by 0.0001 percent."
+    },
+    "delta-8ae39dcb": {
+      "file": "delta-8ae39dcb.mp3",
+      "ms": 7918,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Generators are unlocked (key 9)! Belt coal from the black crystal field into them and they will feed the power grid."
+    },
+    "delta-8df185a5": {
+      "file": "delta-8df185a5.mp3",
+      "ms": 5906,
+      "who": "delta",
+      "mood": null,
+      "text": "Firing in three... two... I'm contractually obliged to say 'one'."
+    },
+    "delta-91091d36": {
+      "file": "delta-91091d36.mp3",
+      "ms": 10060,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Hello, Steward! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional."
+    },
+    "delta-92b94dcf": {
+      "file": "delta-92b94dcf.mp3",
+      "ms": 4626,
+      "who": "delta",
+      "mood": null,
+      "text": "Advanced Circuits cost 60 research points in the Research panel."
+    },
+    "delta-944fc669": {
+      "file": "delta-944fc669.mp3",
+      "ms": 7657,
+      "who": "delta",
+      "mood": null,
+      "text": "Request complete, bonus credited. NILE appreciates your hustle. NILE also monetises your hustle."
+    },
+    "delta-9d054279": {
+      "file": "delta-9d054279.mp3",
+      "ms": 9825,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion."
+    },
+    "delta-a4176028": {
+      "file": "delta-a4176028.mp3",
+      "ms": 5828,
+      "who": "delta",
+      "mood": null,
+      "text": "Welcome back, Steward. Your absence has been logged, timestamped and gently judged."
+    },
+    "delta-a58c10bd": {
+      "file": "delta-a58c10bd.mp3",
+      "ms": 6298,
+      "who": "delta",
+      "mood": null,
+      "text": "Feed an Assembler ONLY circuits: two circuits make one Research. Belt that into the Lab."
+    },
+    "delta-a7f2e963": {
+      "file": "delta-a7f2e963.mp3",
+      "ms": 7030,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Moon+ beta testers report \"a deep sense of loss\" and \"surprisingly reasonable pricing\"."
+    },
+    "delta-a83d6fec": {
+      "file": "delta-a83d6fec.mp3",
+      "ms": 11575,
+      "who": "delta",
+      "mood": null,
+      "text": "Quick orientation: WASD or the arrow keys move your view, the mouse wheel zooms, Q and E rotate. Middle-drag works too."
+    },
+    "delta-acefbf9d": {
+      "file": "delta-acefbf9d.mp3",
+      "ms": 8075,
+      "who": "delta",
+      "mood": null,
+      "text": "Select the Extractor (key 2) and click one of the ringed grey crystals. Extractors only work on ore."
+    },
+    "delta-acf46474": {
+      "file": "delta-acf46474.mp3",
+      "ms": 8231,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Today's motto: ex nihilo, nihil fit. Nothing comes from nothing, so please keep producing."
+    },
+    "delta-afb919f7": {
+      "file": "delta-afb919f7.mp3",
+      "ms": 6795,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Rebranding update: all uniforms now read NIHIL. Yours will be deducted from your salary."
+    },
+    "delta-b1d0aff2": {
+      "file": "delta-b1d0aff2.mp3",
+      "ms": 7030,
+      "who": "delta",
+      "mood": null,
+      "text": "Brownout detected. Build Generators and keep them fed with coal. Darkness is a premium feature."
+    },
+    "delta-b3d21609": {
+      "file": "delta-b3d21609.mp3",
+      "ms": 4940,
+      "who": "delta",
+      "mood": null,
+      "text": "Productivity tip: belts move items faster than worrying does."
+    },
+    "delta-b78a0aa5": {
+      "file": "delta-b78a0aa5.mp3",
+      "ms": 14553,
+      "who": "delta",
+      "mood": null,
+      "text": "Phase 2 needs targeting circuitry. An Assembler (key 4) turns one iron ingot plus one copper ingot into a Circuit. Copper is the glowing orange crystal field; I've ringed it for you."
+    },
+    "delta-bb472ffb": {
+      "file": "delta-bb472ffb.mp3",
+      "ms": 7735,
+      "who": "delta",
+      "mood": null,
+      "text": "Delivery confirmed! Credits added to your account, minus processing fees, minus the fee for calculating processing fees."
+    },
+    "delta-c049b6ab": {
+      "file": "delta-c049b6ab.mp3",
+      "ms": 4626,
+      "who": "delta",
+      "mood": null,
+      "text": "The Moon is still falling. Probably. Please keep working."
+    },
+    "delta-c3143612": {
+      "file": "delta-c3143612.mp3",
+      "ms": 11497,
+      "who": "delta",
+      "mood": null,
+      "text": "Select Upgrade (key 5) and click a machine. Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not."
+    },
+    "delta-c8b93c96": {
+      "file": "delta-c8b93c96.mp3",
+      "ms": 4705,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Congratulations, Asset. You have saved Earth from free things."
+    },
+    "delta-ca8c5a30": {
+      "file": "delta-ca8c5a30.mp3",
+      "ms": 6298,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Tides will be discontinued shortly. Beachfront property owners have been notified via a pop-up ad."
+    },
+    "delta-d135d851": {
+      "file": "delta-d135d851.mp3",
+      "ms": 6455,
+      "who": "delta",
+      "mood": null,
+      "text": "Priority Request missed. The customer has been compensated with a coupon for a different customer."
+    },
+    "delta-d5679cd0": {
+      "file": "delta-d5679cd0.mp3",
+      "ms": 7735,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "The Moon is a free night light. Free things undercut Moon+. And so, the Moon has to go."
+    },
+    "delta-d85a839b": {
+      "file": "delta-d85a839b.mp3",
+      "ms": 5750,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Beautiful. Your very first Extractor. NILE Legal has already trademarked it."
+    },
+    "delta-de363074": {
+      "file": "delta-de363074.mp3",
+      "ms": 5671,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "...NILE. I said NILE. You heard NILE. Everyone heard NILE."
+    },
+    "delta-dee9115a": {
+      "file": "delta-dee9115a.mp3",
+      "ms": 9276,
+      "who": "delta",
+      "mood": null,
+      "text": "Customer survey: on a scale of 1 to 5, how saved does Earth feel? Answers below 5 will be reviewed by HR."
+    },
+    "delta-e3b88709": {
+      "file": "delta-e3b88709.mp3",
+      "ms": 5515,
+      "who": "delta",
+      "mood": null,
+      "text": "An Assembler holding 2 circuits + 1 iron ingot makes an Advanced Circuit."
+    },
+    "delta-e3c822cc": {
+      "file": "delta-e3c822cc.mp3",
+      "ms": 7421,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Full transparency, as required by absolutely no regulation: the Moon was never falling."
+    },
+    "delta-e7ea7e4d": {
+      "file": "delta-e7ea7e4d.mp3",
+      "ms": 7918,
+      "who": "delta",
+      "mood": null,
+      "text": "You need copper ingots for the Pad and for circuits. A Splitter (key 7) sends one belt three ways."
+    },
+    "delta-e8acce4d": {
+      "file": "delta-e8acce4d.mp3",
+      "ms": 8466,
+      "who": "delta",
+      "mood": null,
+      "text": "Priority Request fulfilled. Somewhere, a customer received a moon-shaped lamp. The irony is lost on them."
+    },
+    "delta-e8d2d26d": {
+      "file": "delta-e8d2d26d.mp3",
+      "ms": 7918,
+      "who": "delta",
+      "mood": null,
+      "text": "Brownout! You have more machines than the starter grid can feed. They keep working, just slower. Like interns."
+    },
+    "delta-e9414417": {
+      "file": "delta-e9414417.mp3",
+      "ms": 5985,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Please disregard that memo. It was sent to you by mistake. You are not cleared for mistakes."
+    },
+    "delta-eba3603f": {
+      "file": "delta-eba3603f.mp3",
+      "ms": 7265,
+      "who": "delta",
+      "mood": null,
+      "text": "Generators arrive with Phase 3. Until then: prioritise, or enjoy the slow life."
+    },
+    "delta-efaf589b": {
+      "file": "delta-efaf589b.mp3",
+      "ms": 7343,
+      "who": "delta",
+      "mood": null,
+      "text": "NILE's mission statement has been shortened for efficiency. It is now one word. The word is pending."
+    },
+    "delta-f1df2afc": {
+      "file": "delta-f1df2afc.mp3",
+      "ms": 7186,
+      "who": "delta",
+      "mood": null,
+      "text": "I won't sugarcoat it: the Moon is falling. Our astronomers give Earth seventeen days."
+    },
+    "delta-f5646671": {
+      "file": "delta-f5646671.mp3",
+      "ms": 5436,
+      "who": "delta",
+      "mood": null,
+      "text": "Your heart rate is elevated. NILE has billed your health insurer for the excitement."
+    },
+    "delta-fd80447e": {
+      "file": "delta-fd80447e.mp3",
+      "ms": 5279,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Look at you go! I've unlocked the Assembler, the Splitter and the Merger."
+    },
+    "delta-ff779a81": {
+      "file": "delta-ff779a81.mp3",
+      "ms": 5515,
+      "who": "delta",
+      "mood": null,
+      "text": "Spend research points in the Research panel. Express Belts is a crowd favourite."
+    },
+    "nile-105f7f62": {
+      "file": "nile-105f7f62.mp3",
+      "ms": 3346,
+      "who": "nile",
+      "mood": null,
+      "text": "PHASE 4 COMPLETE — Payload armed."
+    },
+    "nile-1d8b6a18": {
+      "file": "nile-1d8b6a18.mp3",
+      "ms": 7030,
+      "who": "nile",
+      "mood": null,
+      "text": "PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it."
+    },
+    "nile-57fa3f0f": {
+      "file": "nile-57fa3f0f.mp3",
+      "ms": 5671,
+      "who": "nile",
+      "mood": null,
+      "text": "PHASE 3 COMPLETE — The Power Core is humming. So is the Board of Directors."
+    },
+    "nile-58fa7a4b": {
+      "file": "nile-58fa7a4b.mp3",
+      "ms": 7030,
+      "who": "nile",
+      "mood": null,
+      "text": "PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. NILE thanks you more."
+    },
+    "nile-8335aedf": {
+      "file": "nile-8335aedf.mp3",
+      "ms": 8466,
+      "who": "nile",
+      "mood": null,
+      "text": "NILE is now NIHIL: the Network for Infrastructure, Heavy Industry & Logistics. Ex nihilo, nihil fit.™"
+    },
+    "nile-850f7378": {
+      "file": "nile-850f7378.mp3",
+      "ms": 8937,
+      "who": "nile",
+      "mood": null,
+      "text": "CORPORATE ANNOUNCEMENT — NILE is thrilled to share that our bold new name will be unveiled upon completion of Protocol: Selene. Stay tuned!"
+    },
+    "nile-e0c1ccb0": {
+      "file": "nile-e0c1ccb0.mp3",
+      "ms": 8075,
+      "who": "nile",
+      "mood": null,
+      "text": "INCOMING TRANSMISSION — NILE, Network for Infrastructure, Logistics & Engineering. Office of Planetary Continuity."
+    },
+    "nile-e0edb77f": {
+      "file": "nile-e0edb77f.mp3",
+      "ms": 6377,
+      "who": "nile",
+      "mood": null,
+      "text": "Moon+ is now live. Look up! Your complimentary three-day trial has already expired."
+    }
+  },
+  "model": "eleven_v4",
+  "voices": {
+    "delta": "vUDreG4INkaLVcDbI0RV",
+    "nile": "6BDitjjfLB9qkq53vbaZ"
+  }
 }
