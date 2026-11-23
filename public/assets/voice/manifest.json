@@ -78,6 +78,13 @@
       "mood": null,
       "text": "Research points! Spend them in the Research panel. Knowledge is power, and power is billed by the kilowatt."
     },
+    "delta-0d9dd8c1": {
+      "file": "delta-0d9dd8c1.mp3",
+      "ms": 7030,
+      "who": "delta",
+      "mood": null,
+      "text": "NILE has also acquired the forest edge. The trees were not consulted. The fence has moved again."
+    },
     "delta-1085d0a7": {
       "file": "delta-1085d0a7.mp3",
       "ms": 9015,
@@ -98,6 +105,13 @@
       "who": "delta",
       "mood": null,
       "text": "Set an Assembler to Motor: steel, an iron plate and copper wire, each from its own side."
+    },
+    "delta-17754df2": {
+      "file": "delta-17754df2.mp3",
+      "ms": 8231,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Good news: NILE has acquired the neighbouring farmland. The farmer was very understanding. Your plot has grown."
     },
     "delta-1b6b8029": {
       "file": "delta-1b6b8029.mp3",
@@ -140,6 +154,13 @@
       "who": "delta",
       "mood": null,
       "text": "Belt the ingots into the Dispatch Pad, the landing pad with the arrow hovering over it. Everything you deliver goes straight into Protocol: Selene, the construction site right next to it, and NILE pays you per delivery. Generously-ish."
+    },
+    "delta-338b5be0": {
+      "file": "delta-338b5be0.mp3",
+      "ms": 10060,
+      "who": "delta",
+      "mood": null,
+      "text": "The whole valley is yours to build on now. Well, NILE's. You may borrow it. Mind the river: it belongs to the fish until further notice."
     },
     "delta-3a69d04c": {
       "file": "delta-3a69d04c.mp3",
@@ -344,12 +365,26 @@
       "mood": null,
       "text": "You need plates for the Pad and for circuits. A Splitter (key T) sends one belt three ways."
     },
+    "delta-90f4b798": {
+      "file": "delta-90f4b798.mp3",
+      "ms": 14553,
+      "who": "delta",
+      "mood": null,
+      "text": "Tidy-up tip: press V and drag a box round some machines. G moves them, C copies them, X demolishes them, and R turns them while you carry them. F picks up whatever is under your cursor."
+    },
     "delta-91091d36": {
       "file": "delta-91091d36.mp3",
       "ms": 10060,
       "who": "delta",
       "mood": "happy",
       "text": "Hello, Steward! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional."
+    },
+    "delta-915bcae6": {
+      "file": "delta-915bcae6.mp3",
+      "ms": 14475,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "The river has been reclassified as a resource. NIHIL dammed it overnight; the yellow crystals in its dry bed are sulfur. The Mixer (key 9) turns sulfur and coal into Explosives."
     },
     "delta-9167c3fd": {
       "file": "delta-9167c3fd.mp3",
@@ -462,6 +497,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "Heavy industry, at last! The Foundry (key 5) melts an iron ingot and a lump of coal into Steel."
+    },
+    "delta-b8a1ecbe": {
+      "file": "delta-b8a1ecbe.mp3",
+      "ms": 7500,
+      "who": "delta",
+      "mood": null,
+      "text": "The sulfur lies in the dry river bed, in the south-west corner. Put an Extractor on the ringed yellow crystals."
     },
     "delta-b9d75f34": {
       "file": "delta-b9d75f34.mp3",
@@ -610,13 +652,6 @@
       "mood": "happy",
       "text": "Look at you go! I've unlocked the Press, the Assembler, the Splitter and the Merger."
     },
-    "delta-e49e8597": {
-      "file": "delta-e49e8597.mp3",
-      "ms": 14631,
-      "who": "delta",
-      "mood": "sinister",
-      "text": "The pond has been reclassified as a resource. NIHIL drained it overnight; the yellow crystals underneath are sulfur. The Mixer (key 9) turns sulfur and coal into Explosives."
-    },
     "delta-e75a7bd9": {
       "file": "delta-e75a7bd9.mp3",
       "ms": 5279,
@@ -680,12 +715,12 @@
       "mood": null,
       "text": "Set an Assembler to Selene Shell: steel, an explosive and an advanced circuit, one per side. It is slow, so build a few."
     },
-    "delta-fca30f93": {
-      "file": "delta-fca30f93.mp3",
-      "ms": 7578,
+    "delta-f828353a": {
+      "file": "delta-f828353a.mp3",
+      "ms": 8075,
       "who": "delta",
       "mood": null,
-      "text": "The sulfur lies in the old pond bed, in the south-west corner. Put an Extractor on the ringed yellow crystals."
+      "text": "NILE has leased you a small plot for now: the fenced land around the Dispatch Pad. It grows as the cannon does."
     },
     "nile-105f7f62": {
       "file": "nile-105f7f62.mp3",
