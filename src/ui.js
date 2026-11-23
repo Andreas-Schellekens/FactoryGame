@@ -24,8 +24,10 @@ import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS } fr
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
+    INFINITE_TEXT,
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG } from './brand.js';
+import { DEFAULT_KEYS, keyLabel } from './settings.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -45,17 +47,18 @@ const ICON = {
     upgrade: 'M6 13l6-6 6 6M6 19l6-6 6 6',
     erase: 'M3 21l9-9M14.5 3.5l6 6-4 4-6-6z',
     rotate: 'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5',
+    gear: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1',
     pause: 'M8 5v14M16 5v14',
     play: 'M7 5l12 7-12 7z',
     faster: 'M6 7l5 5-5 5M13 7l5 5-5 5',
     slower: 'M18 7l-5 5 5 5M11 7l-5 5 5 5',
 };
 
-// Build palette order + hotkeys (keys are handled in main.js).
+// Build palette order (the hotkeys come from the key bindings in settings.js; main.js handles them).
 const BUILD_DEFS = [
-    ['belt', '1'], ['splitter', 'T'], ['merger', 'Y'],
-    ['extractor', '2'], ['smelter', '3'], ['press', '4'], ['foundry', '5'], ['assembler', '6'],
-    ['fabricator', '7'], ['lab', '8'], ['mixer', '9'], ['generator', '0'],
+    ['belt'], ['splitter'], ['merger'],
+    ['extractor'], ['smelter'], ['press'], ['foundry'], ['assembler'],
+    ['fabricator'], ['lab'], ['mixer'], ['generator'],
 ];
 
 const SEGMENTS = 15;
@@ -116,8 +119,15 @@ export function createUI({
     root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {},
     onSetRecipe = () => false, onUpgradeSelected = () => false, onToggleSelected = () => false, onDeselect = () => {}, onResetBreaker = () => false,
     onGroupAction = () => {},
+    // Iteration 6: the save slots, settings and leaderboard panels (menus.js), Infinite's shop.
+    onOpenSaves = () => {}, onOpenSettings = () => {}, onOpenBoard = () => {}, onBuyLicence = () => false, onBuyPlot = () => false,
+    keyMap = DEFAULT_KEYS,
 }) {
     root.innerHTML = '';
+    let keysBound = { ...keyMap }; // action → key, from the Controls settings
+    const kl = (action) => keyLabel(keysBound[action] ?? DEFAULT_KEYS[action] ?? '');
+    let textSpeed = 1; // the Text speed setting
+    let uiScale = 1;   // the Interface size setting (#hud is zoomed by CSS)
     const cue = (name) => sound?.cue(name);
     let cinematic = false;   // the ending is playing: HUD hidden, comms held
     let skyOverride = null;  // keeps the sky (and its Moon) up until the shot lands
@@ -177,44 +187,74 @@ export function createUI({
     /** Open one popover (closing the other), or close it if it's already open. */
     function togglePopover(panel) {
         const opening = panel.classList.contains('hidden');
-        for (const p of [help, soundPanel, prodPanel]) p.classList.add('hidden');
+        for (const p of [help, prodPanel]) p.classList.add('hidden');
         if (opening) {
             panel.classList.remove('hidden');
-            if (panel === soundPanel) refreshSoundPanel();
             onDeselect();
         }
         cue(opening ? 'open' : 'close');
     }
+    const gearBtn = el('button', 'tbtn tb-gear');
+    gearBtn.type = 'button';
+    gearBtn.setAttribute('aria-label', 'Settings');
+    gearBtn.title = 'Settings';
+    gearBtn.innerHTML = iconSVG(ICON.gear, 16);
+    gearBtn.addEventListener('click', () => {
+        for (const p of [help, prodPanel]) p.classList.add('hidden');
+        onOpenSettings();
+    });
     menuCell.append(
         textButton('Save', () => {
             cue('click');
-            toast(onSave() ? 'Contract saved' : 'Save failed');
+            toast(onSave() ? 'Saved' : 'Save failed');
         }),
-        textButton('Load', () => {
-            cue('click');
-            toast(onLoad() ? 'Contract restored' : 'No saved contract');
+        textButton('Saves', () => {
+            for (const p of [help, prodPanel]) p.classList.add('hidden');
+            onOpenSaves();
         }),
         textButton('Production', () => togglePopover(prodPanel)),
-        textButton('Sound', () => togglePopover(soundPanel)),
+        textButton('Board', () => {
+            for (const p of [help, prodPanel]) p.classList.add('hidden');
+            onOpenBoard();
+        }),
         textButton('Keys', () => togglePopover(help)),
+        gearBtn,
     );
     top.append(brandCell, creditsCell, powerCell, el('div', 'tb-spacer'), simCell, menuCell);
     root.appendChild(top);
 
     const help = el('div', 'help hidden');
-    help.innerHTML = [
-        ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
-        ['R', 'rotate before placing'], ['1–0', 'buildings, in chain order'], ['T / Y', 'splitter / merger'],
-        ['U / X', 'upgrade / demolish tool'], ['V', 'select: drag a box round machines'],
-        ['G / C / X', 'move / copy / demolish the selection'], ['F', 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection'],
-        ['WASD', 'move view'], ['Wheel', 'zoom'],
-        ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'], ['M', 'sound on / off'],
-    ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('')
+    /** The Keys popover, with the keys as bound in Settings → Controls. */
+    function renderHelp() {
+        const chain = ['belt', 'extractor', 'smelter', 'press', 'foundry', 'assembler', 'fabricator', 'lab', 'mixer', 'generator'].map(kl).join(' ');
+        const rows = [
+            ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
+            [kl('rotate'), 'rotate before placing'], [chain, 'buildings, in chain order'], [`${kl('splitter')} / ${kl('merger')}`, 'splitter / merger'],
+            [`${kl('upgrade')} / ${kl('erase')}`, 'upgrade / demolish tool'], [kl('select'), 'select: drag a box round machines'],
+            [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection'],
+            ['WASD', 'move view'], ['Wheel', 'zoom'],
+            [`${kl('viewLeft')} / ${kl('viewRight')}`, 'turn view'], [kl('pause'), 'pause'], ['+ / −', 'sim speed'], [kl('mute'), 'sound on / off'],
+        ];
+        help.innerHTML = '';
+        for (const [k, v] of rows) {
+            const row = el('div');
+            row.append(el('b', null, k), el('span', null, v));
+            help.appendChild(row);
+        }
         // What the arrows on machines mean.
-        + `<div class="help-legend">${[
+        const legend = el('div', 'help-legend');
+        for (const [c, t] of [
             ['lg-in', 'input: things go in here'], ['lg-out', 'output: things come out here'],
-            ['lg-off', 'dim: nothing hooked up yet'], ['lg-block', 'red: output blocked'],
-        ].map(([c, t]) => `<div><i class="lg ${c}"></i><span>${t}</span></div>`).join('')}</div>`;
+            ['lg-off', 'dim: nothing hooked up yet'], ['lg-block', 'red (purple when colour-blind-safe): output blocked'],
+        ]) {
+            const row = el('div');
+            row.append(el('i', `lg ${c}`), el('span', null, t));
+            legend.appendChild(row);
+        }
+        help.appendChild(legend);
+        help.appendChild(el('p', 'help-more', 'Change keys in Settings → Controls.'));
+    }
+    renderHelp();
     root.appendChild(help);
 
     // ---- Production overview (top bar → Production) ------------------------------
@@ -255,49 +295,7 @@ export function createUI({
         prodNote.textContent = 'Red: more used than made. Mustard: piling up. Measured over the last minute.';
     }
 
-    // ---- Sound panel -------------------------------------------------------------
-    const soundPanel = el('div', 'sound-panel hidden');
-    const sliders = {};
-    for (const [key, label] of [['master', 'Master'], ['music', 'Music'], ['sfx', 'Effects'], ['voice', 'Voice']]) {
-        const row = el('label', 'snd-row');
-        const input = el('input');
-        input.type = 'range';
-        input.min = '0';
-        input.max = '100';
-        input.step = '1';
-        const value = el('span', 'snd-value');
-        input.addEventListener('input', () => {
-            value.textContent = input.value;
-            sound?.setSettings({ [key]: Number(input.value) / 100 });
-        });
-        // A sample click at the new level, so the effects volume can be judged.
-        input.addEventListener('change', () => {
-            if (key === 'master' || key === 'sfx') cue('key');
-        });
-        row.append(el('span', 'snd-label', label), input, value);
-        soundPanel.appendChild(row);
-        sliders[key] = { input, value };
-    }
-    const muteBtn = textButton('Mute', () => {
-        sound?.toggleMute();
-        refreshSoundPanel();
-    }, 'snd-mute');
-    const voiceNote = el('p', 'snd-note');
-    soundPanel.append(muteBtn, voiceNote);
-    root.appendChild(soundPanel);
-
-    function refreshSoundPanel() {
-        const st = sound?.settings() ?? {};
-        for (const [key, { input, value }] of Object.entries(sliders)) {
-            const v = Math.round((st[key] ?? 0) * 100);
-            input.value = String(v);
-            value.textContent = String(v);
-        }
-        muteBtn.textContent = st.muted ? 'Sound off · M' : 'Sound on · M';
-        muteBtn.classList.toggle('off', !!st.muted);
-        const lines = sound?.voiceLines() ?? 0;
-        voiceNote.textContent = lines ? `DELTA voice · ${lines} recorded lines` : 'DELTA voice · not recorded yet (text only)';
-    }
+    // (The Sound panel lives in Settings → Audio now: settingsPanel.js.)
 
     // ---- Phase ribbon -------------------------------------------------------------
     const ribbon = el('div', 'ribbon');
@@ -361,20 +359,32 @@ export function createUI({
     // ---- Keys -------------------------------------------------------------------------
     const keys = el('div', 'keys');
     const toolButtons = {};
-    for (const [tool, k] of BUILD_DEFS) {
+    for (const [tool] of BUILD_DEFS) {
         toolButtons[tool] = hwKey({
-            k, label: `${BUILDING_NAMES[tool]}, key ${k}`, iconPath: ICON[tool], img: icons[tool] ?? null,
+            k: kl(tool), label: `${BUILDING_NAMES[tool]}, key ${kl(tool)}`, iconPath: ICON[tool], img: icons[tool] ?? null,
             onClick: () => onToolChange(tool),
         });
         keys.appendChild(toolButtons[tool]);
         if (tool === 'merger') keys.appendChild(el('span', 'keys-divider')); // logistics | production
     }
     keys.appendChild(el('span', 'keys-divider'));
-    toolButtons.upgrade = hwKey({ k: 'U', label: 'Upgrade, key U', iconPath: ICON.upgrade, img: icons.upgrade ?? null, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
-    toolButtons.erase = hwKey({ k: 'X', label: 'Demolish, key X', iconPath: ICON.erase, img: icons.erase ?? null, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
-    toolButtons.select = hwKey({ k: 'V', label: 'Select, key V', iconPath: ICON.select, img: icons.select ?? null, sub: 'SELECT', cls: 'edit', onClick: () => onToolChange('select') });
-    const rotateKey = hwKey({ k: 'R', label: 'Rotate, R', iconPath: ICON.rotate, img: icons.rotate ?? null, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
+    toolButtons.upgrade = hwKey({ k: kl('upgrade'), label: `Upgrade, key ${kl('upgrade')}`, iconPath: ICON.upgrade, img: icons.upgrade ?? null, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
+    toolButtons.erase = hwKey({ k: kl('erase'), label: `Demolish, key ${kl('erase')}`, iconPath: ICON.erase, img: icons.erase ?? null, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
+    toolButtons.select = hwKey({ k: kl('select'), label: `Select, key ${kl('select')}`, iconPath: ICON.select, img: icons.select ?? null, sub: 'SELECT', cls: 'edit', onClick: () => onToolChange('select') });
+    const rotateKey = hwKey({ k: kl('rotate'), label: `Rotate, ${kl('rotate')}`, iconPath: ICON.rotate, img: icons.rotate ?? null, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
     keys.append(toolButtons.upgrade, toolButtons.erase, toolButtons.select, rotateKey);
+    /** New key bindings (Settings → Controls): relabel the keycaps and the Keys popover. */
+    function setKeys(map) {
+        keysBound = { ...map };
+        const all = { ...toolButtons, rotate: rotateKey };
+        for (const [action, btn] of Object.entries(all)) {
+            btn.querySelector('.hwkey-k').textContent = kl(action);
+            const name = action === 'rotate' ? 'Rotate' : action === 'erase' ? 'Demolish' : action === 'upgrade' ? 'Upgrade' : action === 'select' ? 'Select' : BUILDING_NAMES[action];
+            btn.setAttribute('aria-label', `${name}, key ${kl(action)}`);
+        }
+        renderHelp();
+        selSig = '';
+    }
 
     // ---- Selection bar: what's selected, and what you can do with it ----------------------
     const selbar = el('div', 'selbar hidden');
@@ -398,13 +408,13 @@ export function createUI({
         };
         if (!sel.mode) {
             info.textContent = `${what} selected`;
-            selbar.append(info, button('Move', 'G', 'move'), button('Copy', 'C', 'copy'), button('Demolish', 'X', 'remove', 'danger'), button('Deselect', 'Esc', 'cancel'));
+            selbar.append(info, button('Move', kl('move'), 'move'), button('Copy', kl('copy'), 'copy'), button('Demolish', kl('erase'), 'remove', 'danger'), button('Deselect', 'Esc', 'cancel'));
             return;
         }
         const fits = sel.ok === null ? '' : sel.ok ? '' : sel.blocked ? ` · ${sel.blocked} won't fit here` : ' · not enough credits';
         info.textContent = sel.mode === 'move'
-            ? `Moving ${what} · click to set down · R turns${fits}`
-            : `Copying ${what} · CR ${sel.cost ?? '–'} a copy · click to place · R turns${fits}`;
+            ? `Moving ${what} · click to set down · ${kl('rotate')} turns${fits}`
+            : `Copying ${what} · CR ${sel.cost ?? '–'} a copy · click to place · ${kl('rotate')} turns${fits}`;
         info.classList.toggle('bad', sel.ok === false);
         selbar.append(info, button(sel.mode === 'move' ? 'Cancel' : 'Done', 'Esc', 'cancel'));
     }
@@ -447,7 +457,7 @@ export function createUI({
     // Typing is time-based (so a throttled timer can't slow DELTA down), then
     // the finished line lingers long enough to read before the next one.
     const CHARS_PER_MS = 0.07;
-    const lingerMs = (text) => Math.min(6500, 1000 + text.length * 30);
+    const lingerMs = (text) => Math.min(6500, 1000 + text.length * 30) / Math.min(2, Math.max(0.6, textSpeed));
 
     function stopTimers() {
         clearInterval(typeTimer);
@@ -498,7 +508,7 @@ export function createUI({
         const start = performance.now();
         voiceEnds = voiceMs ? start + voiceMs : 0;
         // Text types along with the voice (a little ahead of it); without one, at reading pace.
-        const rate = voiceMs ? current.text.length / Math.max(300, voiceMs * 0.85) : CHARS_PER_MS;
+        const rate = voiceMs ? current.text.length / Math.max(300, voiceMs * 0.85) : CHARS_PER_MS * textSpeed;
         typeTimer = setInterval(() => {
             const typed = Math.floor((performance.now() - start) * rate);
             commsText.textContent = current.text.slice(0, typed);
@@ -682,7 +692,7 @@ export function createUI({
             return;
         }
         if (mp.classList.contains('hidden')) {
-            for (const pnl of [help, soundPanel, prodPanel]) pnl.classList.add('hidden');
+            for (const pnl of [help, prodPanel]) pnl.classList.add('hidden');
             mp.classList.remove('hidden');
         }
         if (sel.sig !== mpSig) {
@@ -693,7 +703,7 @@ export function createUI({
         let text = STATUS_TEXT[st.code] ?? st.code;
         if (st.code === 'input') text += ' ' + (st.missing ?? []).map(itemName).join(', ');
         if (st.code === 'slow') text += ` · ${Math.round((sel.throttle ?? 1) * 100)}%`;
-        if (sel.type === 'sink') text = 'Takes deliveries for the cannon and buys goods';
+        if (sel.type === 'sink') text = sel.infinite ? 'Buys goods at market prices' : 'Takes deliveries for the cannon and buys goods';
         mpRefs.status.textContent = text;
         mpRefs.status.dataset.code = sel.type === 'sink' ? 'working' : st.code;
         if (mpRefs.holds) {
@@ -1090,6 +1100,63 @@ export function createUI({
             : phase === PHASES.length - 1 ? 'Completes Protocol: Selene' : PHASE_TEXT[phase].blurb;
     }
 
+    // ---- Infinite: the land and licence shop in the console, instead of a phase's requirements ----
+    let infSig = null;
+    let infRefs = [];
+    function buildInfiniteDom(inf) {
+        phaseShown = -2;
+        brandPhase = inf.visualPhase;
+        const evil = inf.visualPhase >= 4;
+        const b = brandFor(inf.visualPhase);
+        document.body.classList.toggle('evil', evil);
+        document.body.dataset.phase = String(skyOverride ?? Math.min(inf.visualPhase, 5));
+        brandMark.innerHTML = markSVG(evil, 28);
+        brandWord.textContent = b.name;
+        brandCell.title = `${b.name} · ${b.full} · ${b.motto}`;
+        patchBox.innerHTML = patchSVG(evil, 48, { text: false });
+        headSub.textContent = `Infinite · ${INFINITE_TEXT.byline}`;
+        if (!celebrating) {
+            ribbonKicker.textContent = INFINITE_TEXT.ribbon(inf.plot, inf.plots);
+            ribbonTitle.textContent = INFINITE_TEXT.title;
+            ribbonExtra.textContent = '';
+        }
+        reqList.innerHTML = '';
+        reqRows = {};
+        infRefs = [];
+        const land = el('div', 'inf-row');
+        land.appendChild(el('span', 'req-name', `${INFINITE_TEXT.land} ${pad2(inf.plot + 1)}/${pad2(inf.plots)}`));
+        if (inf.nextPlotCost != null) {
+            const buy = el('button', 'inf-buy', `Buy land · CR ${inf.nextPlotCost}`);
+            buy.type = 'button';
+            buy.addEventListener('click', () => {
+                if (!onBuyPlot()) cue('deny');
+            });
+            land.appendChild(buy);
+            infRefs.push({ btn: buy, cost: inf.nextPlotCost });
+        } else land.appendChild(el('span', 'con-note', INFINITE_TEXT.allLand));
+        reqList.appendChild(land);
+        reqList.appendChild(el('span', 'con-label', INFINITE_TEXT.licences));
+        const lic = el('div', 'inf-lic');
+        for (const l of inf.licences) {
+            if (l.owned) {
+                lic.appendChild(el('span', 'inf-chip', `✓ ${BUILDING_NAMES[l.type]}`));
+            } else if (l.available) {
+                const buy = el('button', 'inf-buy', `${BUILDING_NAMES[l.type]} · CR ${l.cost}`);
+                buy.type = 'button';
+                buy.title = BUILDING_DESC[l.type] ?? '';
+                buy.addEventListener('click', () => {
+                    if (!onBuyLicence(l.type)) cue('deny');
+                });
+                lic.appendChild(buy);
+                infRefs.push({ btn: buy, cost: l.cost });
+            } else {
+                lic.appendChild(el('span', 'inf-chip locked', BUILDING_NAMES[l.type]));
+            }
+        }
+        reqList.appendChild(lic);
+        unlockLine.textContent = inf.licences.every((l) => l.owned) ? INFINITE_TEXT.allLicences : 'Licences open up in the story’s order.';
+    }
+
     let planDone = new Set();
     let planIds = new Set();
     function renderPlan(list) {
@@ -1155,9 +1222,16 @@ export function createUI({
         const now = performance.now();
         const dt = Math.min(100, now - lastUpdate);
         lastUpdate = now;
-        if (!soundPanel.classList.contains('hidden') && sound && muteBtn.classList.contains('off') !== sound.settings().muted) refreshSoundPanel();
         const { project } = s;
-        if (project.phase !== phaseShown) buildPhaseDom(project.phase, project.complete);
+        const infinite = s.mode === 'infinite';
+        if (infinite) {
+            const sig = JSON.stringify([s.infinite.plot, s.infinite.nextPlotCost, s.infinite.licences, s.infinite.visualPhase]);
+            if (sig !== infSig || phaseShown !== -2) {
+                infSig = sig;
+                buildInfiniteDom(s.infinite);
+            }
+            for (const r of infRefs) r.btn.classList.toggle('broke', s.money < r.cost);
+        } else if (project.phase !== phaseShown) buildPhaseDom(project.phase, project.complete);
 
         // Credits count toward the real value and flash mustard (earned) or red (spent).
         if (shownMoney === null) shownMoney = s.money;
@@ -1208,15 +1282,17 @@ export function createUI({
             btn.classList.toggle('locked', !unlocked);
             btn.classList.toggle('broke', unlocked && s.money < MACHINE_COST[tool]);
             // unlockPhaseOf is the phase whose completion unlocks it; show the phase it arrives in.
+            // In Infinite a locked building is waiting for its licence.
             const arrives = unlockPhaseOf(tool) + 2;
-            sub.textContent = !unlocked ? `PH ${pad2(arrives)}` : s.tool === tool ? BUILDING_NAMES[tool].toUpperCase() : `CR ${MACHINE_COST[tool]}`;
-            btn.title = unlocked ? `${BUILDING_NAMES[tool]} · ${BUILDING_DESC[tool]}` : `${BUILDING_NAMES[tool]} · arrives in phase ${arrives}`;
+            sub.textContent = !unlocked ? (infinite ? 'LICENCE' : `PH ${pad2(arrives)}`) : s.tool === tool ? BUILDING_NAMES[tool].toUpperCase() : `CR ${MACHINE_COST[tool]}`;
+            btn.title = unlocked ? `${BUILDING_NAMES[tool]} · ${BUILDING_DESC[tool]}`
+                : infinite ? `${BUILDING_NAMES[tool]} · license it in the console` : `${BUILDING_NAMES[tool]} · arrives in phase ${arrives}`;
             // Pictured keys stay pictured (greyed, with a lock badge, via CSS); glyph keys swap to a lock.
             if (!btn.classList.contains('has-img')) btn.querySelector('svg path').setAttribute('d', unlocked ? ICON[tool] : ICON.lock);
         }
 
         lastTool = s.tool;
-        orderSec.classList.toggle('hidden', project.phase < 1);
+        orderSec.classList.toggle('hidden', infinite ? s.order.status === 'none' : project.phase < 1);
         renderOrder(s.order);
 
         researchSec.classList.toggle('hidden', !s.unlocked.lab);
@@ -1242,12 +1318,25 @@ export function createUI({
             tipBody.textContent = info.body;
             const w = tip.offsetWidth || 240;
             const h = tip.offsetHeight || 80;
-            const x = Math.min(window.innerWidth - w - 12, s.hoverScreen.x + 28);
-            const y = Math.max(64, Math.min(window.innerHeight - h - 120, s.hoverScreen.y - h - 12));
-            tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+            // Page pixels; the HUD is zoomed by the Interface size, so divide back.
+            const z = uiScale;
+            const x = Math.min(window.innerWidth - w * z - 12, s.hoverScreen.x + 28);
+            const y = Math.max(64 * z, Math.min(window.innerHeight - h * z - 120 * z, s.hoverScreen.y - h * z - 12));
+            tip.style.transform = `translate(${Math.round(x / z)}px, ${Math.round(y / z)}px)`;
         }
     }
 
     update();
-    return { update, say, isBusy, showBanner, showTitle, showEnding, toast };
+    return {
+        update, say, isBusy, showBanner, showTitle, showEnding, toast,
+        setKeys,
+        /** The Text speed setting: 1 normal, higher is faster (99: at once). */
+        setTextSpeed: (x) => {
+            textSpeed = Math.max(0.3, Number(x) || 1);
+        },
+        /** The Interface size setting (the CSS zoom on #hud is set by main.js). */
+        setUiScale: (z) => {
+            uiScale = Math.max(0.5, Number(z) || 1);
+        },
+    };
 }

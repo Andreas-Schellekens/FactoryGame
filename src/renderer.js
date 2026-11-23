@@ -13,8 +13,8 @@ import {
     GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, PROCESS_TICKS,
 } from './config.js';
 import {
-    grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
-    machineStatus, machineRecipe, oreRevision,
+    grid, power, research, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
+    machineStatus, machineRecipe, oreRevision, visualPhase, plotLevel, hasCannon,
 } from './grid.js';
 import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
 import { buildEnvironment } from './environment.js';
@@ -285,7 +285,10 @@ export async function createRenderer(container, { onProgress } = {}) {
 
     const effects = createEffects(scene);
     const env = buildEnvironment(scene, assets, effects);
-    const cannon = buildCannon(scene, assets, effects, CANNON_AREA);
+    // The cannon lives in its own group, hidden in an Infinite valley (which has no cannon).
+    const cannonGroup = new THREE.Group();
+    scene.add(cannonGroup);
+    const cannon = buildCannon(cannonGroup, assets, effects, CANNON_AREA);
 
     const oreLayer = new THREE.Group();
     const machineLayer = new THREE.Group();
@@ -1115,7 +1118,7 @@ export async function createRenderer(container, { onProgress } = {}) {
             }
             if (p.beam) {
                 const pulse = (animMs % 1800) / 1800;
-                p.beam.material.opacity = (0.3 + 0.12 * Math.sin(animMs / 400)) * (project.phase >= 3 ? 1 : 0.6); // subtle by day
+                p.beam.material.opacity = (0.3 + 0.12 * Math.sin(animMs / 400)) * (visualPhase() >= 3 ? 1 : 0.6); // subtle by day
                 p.chevron.position.y = 1.28 + 0.09 * Math.sin(animMs / 330);
                 p.ring.scale.setScalar(1 + pulse * 1.4);
                 p.ring.material.opacity = 0.9 * (1 - pulse);
@@ -1151,7 +1154,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     const tmpV = new THREE.Vector3();
     let evilShown = null;
     function applyMood(dt, instant) {
-        const m = MOODS[Math.min(project.phase, MOODS.length - 1)];
+        const m = MOODS[Math.min(visualPhase(), MOODS.length - 1)];
         const k = instant ? 1 : 1 - Math.exp(-dt / 2200);
         hemi.color.lerp(tmpC.setHex(m.sky), k);
         hemi.groundColor.lerp(tmpC.setHex(m.ground), k);
@@ -1165,7 +1168,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         renderer.toneMappingExposure += (m.exposure - renderer.toneMappingExposure) * k;
         scene.environmentIntensity += (m.env - scene.environmentIntensity) * k;
 
-        const evil = project.phase >= 4;
+        const evil = visualPhase() >= 4;
         if (evil === evilShown) return;
         evilShown = evil;
         for (const v of views.values()) {
@@ -1625,9 +1628,11 @@ export async function createRenderer(container, { onProgress } = {}) {
         return x >= 0 && x < W && y >= 0 && y < H ? { x, y } : null;
     }
 
+    let renderScale = 1; // the Graphics setting: a fraction of the screen's pixel ratio
     function resize() {
         const w = container.clientWidth;
         const h = container.clientHeight;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * renderScale);
         renderer.setSize(w, h);
         rig.resize(w, h);
     }
@@ -1900,6 +1905,7 @@ export async function createRenderer(container, { onProgress } = {}) {
 
     // ---- Frame ---------------------------------------------------------------------------
     let shownPhase = -1;
+    let shownPlot = -1;
     function draw(state, dt) {
         statusShown = !state.cinematic;
         const dtSim = state.paused ? 0 : dt * state.speed;
@@ -1907,7 +1913,8 @@ export async function createRenderer(container, { onProgress } = {}) {
         rig.update(dt);
         // Phase changes: one step forward animates; anything else (first
         // frame, loading a save) snaps.
-        const phase = project.phase;
+        // (The world's phase: the campaign's in Story, fixed in Infinite; see grid.js visualPhase.)
+        const phase = visualPhase();
         const instant = shownPhase < 0 || phase !== shownPhase + 1;
         if (phase !== shownPhase) {
             env.setPhase(phase, instant);
@@ -1917,6 +1924,14 @@ export async function createRenderer(container, { onProgress } = {}) {
                 rig.punch(0.06);
             }
         }
+        // The fence follows the land you hold (bought with credits in Infinite).
+        const plot = plotLevel();
+        if (plot !== shownPlot || phase !== shownPhase) {
+            env.setPlot(plot, shownPlot >= 0 && plot === shownPlot + 1 && !instant);
+            shownPlot = plot;
+        }
+        cannonGroup.visible = hasCannon();
+        env.setCannonSite(cannonGroup.visible);
         applyMood(dt, phase !== shownPhase && instant);
         shownPhase = phase;
         syncOre(!quiet);
@@ -2045,6 +2060,40 @@ export async function createRenderer(container, { onProgress } = {}) {
         rig.zoomBy(0.8);
     }
 
+    // ---- Settings (settings.js, applied by main.js) ---------------------------------------
+    /** Graphics: shadows, render scale (0.5–1), particle density, camera shake. */
+    function setGraphics({ shadows = true, renderScale: scale = 1, particles = 'high', shake = true } = {}) {
+        if (renderer.shadowMap.enabled !== shadows) {
+            renderer.shadowMap.enabled = shadows;
+            sun.castShadow = shadows;
+            // Materials compile with or without shadow code: rebuild them.
+            scene.traverse((o) => {
+                for (const mat of [o.material].flat()) if (mat) mat.needsUpdate = true;
+            });
+        }
+        const s = Math.max(0.5, Math.min(1, Number(scale) || 1));
+        if (s !== renderScale) {
+            renderScale = s;
+            resize();
+        }
+        effects.setDensity(particles === 'off' ? 0 : particles === 'low' ? 0.35 : 1);
+        rig.setShakeScale(shake ? 1 : 0);
+    }
+    const PORT_COLORS = {
+        normal: { in: 0x3cc8b4, out: 0xff7a2a, blocked: 0xff3b30 },
+        // Okabe–Ito: sky blue in, orange out, reddish purple when blocked (apart for red-green blindness).
+        colorblind: { in: 0x56b4e9, out: 0xe69f00, blocked: 0xcc79a7 },
+    };
+    /** Accessibility: a colour-blind-safe palette for the port arrows. */
+    function setPortPalette(colorblind) {
+        const c = PORT_COLORS[colorblind ? 'colorblind' : 'normal'];
+        PORT_STYLE.inOn.color.setHex(c.in);
+        PORT_STYLE.inOff.color.setHex(c.in);
+        PORT_STYLE.outOn.color.setHex(c.out);
+        PORT_STYLE.outOff.color.setHex(c.out);
+        PORT_STYLE.blocked.color.setHex(c.blocked);
+    }
+
     /** Floating text over a cell (e.g. a build's cost). */
     function floatAt(x, y, text, color) {
         effects.floatText(new THREE.Vector3(x + 0.5, 0.9, y + 0.5), text, color);
@@ -2057,6 +2106,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         /** Build-menu icons: { [machineType]: PNG data URL } rendered from the real models. */
         icons,
         nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic,
+        setGraphics, setPortPalette,
         /** Render cost of the last frame (draw calls, triangles) — for profiling. */
         stats: () => ({ ...renderer.info.render }),
         /** Visual state worth keeping in a save: the concrete scars. */

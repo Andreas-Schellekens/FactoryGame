@@ -27,6 +27,9 @@ export const ORE_FIELDS = [
     // In the river bed: only there once NIHIL has dammed the river (RIVER.damPhase).
     { type: 'sulfurOre', x: 3, y: 21, r: 1.25, fromPhase: 4 },
     { type: 'sulfurOre', x: 8, y: 22, r: 1.15, fromPhase: 4 },
+    // Infinite mode's valley keeps its river, so its sulfur lies on the east rim instead
+    // and comes up with the last land purchase (`fromPlot`: the PLOTS index bought).
+    { type: 'sulfurOre', x: 30, y: 8, r: 1.3, only: 'infinite', fromPlot: 3 },
 ];
 
 // The plot NILE leases you: one rectangle per phases completed (the last one
@@ -157,6 +160,25 @@ export const ORDER_TARGET = [3, 8];      // [min, max] products demanded
 export const ORDER_TICKS = [120, 240];   // [min, max] ticks to fulfil it
 export const ORDER_REWARD = [40, 120];   // [min, max] bonus paid on completion
 export const ORDER_GRACE_TICKS = 12;     // pause between one order ending and the next
+// ---- Infinite mode: no campaign, no cannon. Buildings are licensed and land is bought
+// with credits; Priority Requests grow with every one filled. Not balanced by playtests yet.
+export const INFINITE_STARTING_MONEY = 300;
+// Licence price per building. A phase's buildings (campaign.js PHASES[i].unlocks) can be
+// licensed once every earlier phase's are, so the chain opens up in the story's order.
+export const LICENCE_COST = {
+    press: 120, assembler: 180, splitter: 40, merger: 40,
+    foundry: 400, generator: 250,
+    fabricator: 700, lab: 600,
+    mixer: 1500,
+};
+// The price of each PLOTS rectangle (index = land level; level 0 is where you start).
+export const PLOT_COST = [0, 600, 2500, 8000];
+// Every Priority Request filled in Infinite raises the next ones' size and bonus by this
+// fraction (compounding), so they keep up with a growing factory.
+export const ORDER_LEVEL_GROWTH = 0.12;
+// What Infinite's Priority Requests ask for: any product whose chain is licensed.
+export const INFINITE_ORDER_POOL = ['ironPlate', 'circuit', 'steel', 'capacitor', 'motor', 'advancedCircuit', 'explosive'];
+
 // What Priority Requests ask for, per phases completed (orders start after phase 1).
 // The target range is for a circuit; cheaper goods ask for more, dearer ones for fewer.
 export const ORDER_POOL = [

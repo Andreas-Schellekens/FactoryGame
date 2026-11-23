@@ -1,10 +1,10 @@
 // End-to-end check: start a campaign, build an iron + copper → circuit chain
 // next to the Dispatch Pad with real mouse input in the 3D view, and assert
 // that drag-laid belts turn their corners correctly and that money flows.
-// Run with the dev server on :5173:  node verify-flow.mjs
+// Run with the dev server on :5173:  node verify-flow.mjs  (another port: SELENE_URL=http://localhost:5175/)
 import { chromium } from 'playwright';
 
-const URL = 'http://localhost:5173/';
+const URL = process.env.SELENE_URL ?? 'http://localhost:5173/';
 
 // SwiftShader: headless Chromium otherwise renders WebGL canvases blank.
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

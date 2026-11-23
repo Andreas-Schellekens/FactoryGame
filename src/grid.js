@@ -24,8 +24,11 @@ import {
     CANNON_AREA,
     PLOTS,
     RIVER,
+    INFINITE_STARTING_MONEY,
+    LICENCE_COST,
+    PLOT_COST,
 } from './config.js';
-import { PHASES, STARTING_BUILDINGS } from './campaign.js';
+import { PHASES, STARTING_BUILDINGS, unlockPhaseOf } from './campaign.js';
 
 export const grid = [];
 export let score = STARTING_MONEY;
@@ -60,6 +63,7 @@ export const order = {
     deadlineTick: 0,       // startTick + ticks
     delivered: 0,          // products sunk since this order started
 };
+const ORDER_DEFAULTS = { ...order };
 
 // The basic product: what orders ask for, and the first assembler recipe.
 export const PRODUCT_TYPE = 'circuit';
@@ -139,18 +143,51 @@ export const stats = {
 
 const bump = (counter, key, n = 1) => (counter[key] = (counter[key] || 0) + n);
 
-/** Is this building type available to build in the current campaign phase? */
+// The game mode (mutated in place, like `project`; persisted). 'story' plays the
+// Protocol: Selene campaign. 'infinite' has no campaign and no cannon: buildings are
+// licensed (`licences`) and land is bought (`plot`, an index into PLOTS) with credits,
+// and every Priority Request filled raises `orderLevel`. `world` is the valley's state:
+// 'valley' (the river flows; Infinite's sulfur is on the east rim) or 'aftermath' (after
+// the story's reveal: dammed, the sulfur in the dry bed, the cannon on its site), so a
+// finished campaign can carry on as Infinite on its own map (continueAsInfinite).
+export const game = {
+    mode: 'story',
+    world: 'valley',
+    plot: 0,
+    licences: [],
+    orderLevel: 0,
+};
+export const isInfinite = () => game.mode === 'infinite';
+/** Is there a cannon (and its reserved site)? Story, and a campaign carried on as Infinite. */
+export const hasCannon = () => !isInfinite() || game.world === 'aftermath';
+
+/** The land level: which PLOTS rectangle you may build in (the campaign phase in Story). */
+export function plotLevel() {
+    return isInfinite() ? game.plot : project.phase;
+}
+
+/**
+ * The phase the world looks like (light, decay, NIHIL's colours, the dam): the campaign
+ * phase in Story; an Infinite valley stays in its first morning, the aftermath after the shot.
+ */
+export function visualPhase() {
+    if (!isInfinite()) return project.phase;
+    return game.world === 'aftermath' ? PHASES.length : 0;
+}
+
+/** Is this building type available to build (campaign phase in Story, a licence in Infinite)? */
 export function isBuildingUnlocked(type) {
     if (STARTING_BUILDINGS.includes(type)) return true;
+    if (isInfinite()) return game.licences.includes(type);
     for (let i = 0; i < project.phase && i < PHASES.length; i++) {
         if (PHASES[i].unlocks.includes(type)) return true;
     }
     return false;
 }
 
-/** The active phase definition, or null once the campaign is complete. */
+/** The active phase definition, or null once the campaign is complete (and always in Infinite). */
 export function currentPhase() {
-    return PHASES[project.phase] ?? null;
+    return isInfinite() ? null : PHASES[project.phase] ?? null;
 }
 
 // Advance the campaign once every requirement of the active phase is met.
@@ -164,8 +201,51 @@ function checkPhaseComplete() {
     project.phase++;
     project.delivered = {};
     if (project.phase >= PHASES.length) project.complete = true;
-    applyRiver(project.phase);
-    revealOre(project.phase);
+    applyRiver();
+    revealOre();
+}
+
+// ---- Infinite: licences and land ---------------------------------------------------------
+/** Can `type`'s licence be bought now: Infinite, not owned yet, every earlier phase's buildings licensed? */
+export function licenceAvailable(type) {
+    if (!isInfinite() || !(type in LICENCE_COST) || game.licences.includes(type)) return false;
+    const p = unlockPhaseOf(type);
+    for (let i = 0; i < p; i++) {
+        if (!PHASES[i].unlocks.every((t) => game.licences.includes(t))) return false;
+    }
+    return true;
+}
+
+/** Buy a building licence (Infinite). @returns {boolean} success */
+export function buyLicence(type) {
+    if (!licenceAvailable(type) || score < LICENCE_COST[type]) return false;
+    score -= LICENCE_COST[type];
+    game.licences.push(type);
+    return true;
+}
+
+/** The price of the next piece of land, or null when there is none (or in Story). */
+export function nextPlotCost() {
+    return isInfinite() && game.plot < PLOTS.length - 1 ? PLOT_COST[game.plot + 1] : null;
+}
+
+/** Buy the next PLOTS rectangle (Infinite). Ore that comes with it is laid at once. */
+export function buyPlot() {
+    const cost = nextPlotCost();
+    if (cost == null || score < cost) return false;
+    score -= cost;
+    game.plot++;
+    revealOre();
+    return true;
+}
+
+/** Carry a finished campaign on as Infinite on the same map ("your own company"); keeps the factory. */
+export function continueAsInfinite() {
+    game.mode = 'infinite';
+    game.world = 'aftermath';
+    game.plot = PLOTS.length - 1;
+    game.licences = Object.keys(LICENCE_COST);
+    game.orderLevel = 0;
 }
 
 // The Dispatch Pad buys sellable goods and takes anything the phase needs.
@@ -326,32 +406,33 @@ export function initGrid() {
     // Ore deposits (terrain) — extractors must be placed on top of these.
     // Each field is a blob with a deterministic ragged edge, so the same map
     // comes back on every load. Fields with `fromPhase` wait for revealOre().
+    // The terrain follows the current mode and progress, so set those before calling this.
     revealedFields.clear();
     for (const { x, y } of RIVER_CELLS) grid[x][y].river = true;
-    applyRiver(0);
-    revealOre(0);
-    grid[PAD_POS.x][PAD_POS.y].resource = null;
+    applyRiver();
 
-    // The cannon's construction site: reserved, nothing can be built there.
-    for (let x = CANNON_AREA.x; x < CANNON_AREA.x + CANNON_AREA.w; x++) {
-        for (let y = CANNON_AREA.y; y < CANNON_AREA.y + CANNON_AREA.h; y++) {
-            grid[x][y].resource = null;
-            grid[x][y].blocked = true;
+    // The cannon's construction site: reserved, nothing can be built there. An Infinite
+    // valley has no cannon, so there it is ordinary land.
+    if (hasCannon()) {
+        for (let x = CANNON_AREA.x; x < CANNON_AREA.x + CANNON_AREA.w; x++) {
+            for (let y = CANNON_AREA.y; y < CANNON_AREA.y + CANNON_AREA.h; y++) grid[x][y].blocked = true;
         }
     }
+    revealOre();
+    grid[PAD_POS.x][PAD_POS.y].resource = null;
 
     // The single, pre-placed sink (protected: cannot be built or removed).
     grid[PAD_POS.x][PAD_POS.y].machine = makeMachine('sink');
 }
 
 // ---- Terrain that changes with the campaign: the plot, the river -----------------------
-/** The rectangle you may build in after `phase` completed phases. */
-export function plotRect(phase = project.phase) {
-    return PLOTS[Math.min(phase, PLOTS.length - 1)];
+/** The rectangle you may build in at land level `level` (phases completed, in Story). */
+export function plotRect(level = plotLevel()) {
+    return PLOTS[Math.min(level, PLOTS.length - 1)];
 }
 /** Is (x, y) inside the current plot? */
-export function inPlot(x, y, phase = project.phase) {
-    const r = plotRect(phase);
+export function inPlot(x, y, level = plotLevel()) {
+    const r = plotRect(level);
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 }
 
@@ -375,9 +456,14 @@ for (let x = 0; x < GRID_WIDTH; x++) {
     }
 }
 
-/** Water flows in the river bed until RIVER.damPhase phases are complete. */
-function applyRiver(phase) {
-    const flowing = phase < RIVER.damPhase;
+/** Has NIHIL dammed the river: RIVER.damPhase phases complete, or an Infinite aftermath? */
+export function riverDammed() {
+    return isInfinite() ? game.world === 'aftermath' : project.phase >= RIVER.damPhase;
+}
+
+/** Water flows in the river bed until it is dammed. */
+function applyRiver() {
+    const flowing = !riverDammed();
     for (const { x, y } of RIVER_CELLS) grid[x][y].water = flowing;
 }
 
@@ -386,10 +472,17 @@ function applyRiver(phase) {
 const revealedFields = new Set();
 export let oreRevision = 0;
 
-/** Lay every ore field due by `phase` (phases completed) that isn't laid yet. */
-function revealOre(phase) {
+/** Is an ore field there yet: the riverbed sulfur once dammed, Infinite's own sulfur with its land. */
+function fieldDue(f) {
+    if (f.only === 'infinite') return isInfinite() && game.world === 'valley' && game.plot >= (f.fromPlot ?? 0);
+    if (f.fromPhase != null) return isInfinite() ? game.world === 'aftermath' : project.phase >= f.fromPhase;
+    return true;
+}
+
+/** Lay every ore field that is due and isn't laid yet. */
+function revealOre() {
     ORE_FIELDS.forEach((f, i) => {
-        if (revealedFields.has(i) || (f.fromPhase ?? 0) > phase) return;
+        if (revealedFields.has(i) || !fieldDue(f)) return;
         revealedFields.add(i);
         const r = Math.ceil(f.r + 1);
         for (let x = f.x - r; x <= f.x + r; x++) {
@@ -419,7 +512,11 @@ export function machineCost(type) {
 // v3: recipes chosen per machine, the Fabricator and Data Cartridges, the market.
 // v4: the 4b production chain (press, foundry, mixer, new items and phases).
 // v5: the growing plot and the river.
-export const SAVE_VERSION = 5;
+// v6: the game mode (`game`: Story or Infinite, licences, land, order level). v5 loads as Story.
+export const SAVE_VERSION = 6;
+const LOADABLE = new Set([5, 6]);
+/** Can loadState() read this save (a version this build knows)? */
+export const isLoadableSave = (data) => !!data && LOADABLE.has(data.version);
 
 /**
  * Snapshot the simulation as a plain, JSON-serializable object. Terrain
@@ -446,6 +543,7 @@ export function serialize() {
         order: { ...order },
         research: { points: research.points, unlocked: { ...research.unlocked } },
         project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
+        game: { ...game, licences: [...game.licences] },
         stats: structuredClone(stats),
         market: { pressure: { ...market.pressure } },
         cells,
@@ -461,7 +559,18 @@ export function serialize() {
  * @returns {FactoryEvent[] | null}
  */
 export function loadState(data) {
-    if (!data || data.version !== SAVE_VERSION) return null;
+    if (!data || !LOADABLE.has(data.version)) return null;
+
+    // The mode and the campaign come first: they decide the terrain (cannon site, river, ore).
+    const infinite = data.game?.mode === 'infinite';
+    game.mode = infinite ? 'infinite' : 'story';
+    game.world = data.game?.world === 'aftermath' ? 'aftermath' : 'valley';
+    game.plot = Math.max(0, Math.min(PLOTS.length - 1, Math.floor(data.game?.plot ?? 0)));
+    game.licences = (data.game?.licences ?? []).filter((t) => t in LICENCE_COST);
+    game.orderLevel = Math.max(0, Math.floor(data.game?.orderLevel ?? 0));
+    project.phase = data.project?.phase ?? 0;
+    project.delivered = { ...(data.project?.delivered ?? {}) };
+    project.complete = data.project?.complete ?? false;
 
     initGrid(); // reset to empty cells + ore terrain + the pre-placed sink
 
@@ -472,7 +581,7 @@ export function loadState(data) {
         if (!inBounds(x, y)) continue;
         const cell = grid[x][y];
         if (cell.blocked) continue; // reserved site (a save from before it existed)
-        if (entry.machine && cell.river && (data.project?.phase ?? 0) < RIVER.damPhase) continue; // under water
+        if (entry.machine && cell.water) continue; // under water
         if (entry.machine) {
             // Overlay saved fields onto fresh defaults so a save missing a newer
             // field (e.g. toggle) still loads cleanly.
@@ -488,19 +597,14 @@ export function loadState(data) {
         }
     }
 
-    if (typeof data.score === 'number') score = data.score;
-    if (typeof data.tickCount === 'number') tickCount = data.tickCount;
-    if (data.order) Object.assign(order, data.order);
+    score = typeof data.score === 'number' ? data.score : infinite ? INFINITE_STARTING_MONEY : STARTING_MONEY;
+    tickCount = typeof data.tickCount === 'number' ? data.tickCount : 0;
+    Object.assign(order, ORDER_DEFAULTS, data.order ?? {});
 
     // Reset research to defaults, then overlay — pre-research saves load locked.
     research.points = data.research?.points ?? 0;
     for (const k in research.unlocked) research.unlocked[k] = data.research?.unlocked?.[k] ?? false;
 
-    project.phase = data.project?.phase ?? 0;
-    project.delivered = { ...(data.project?.delivered ?? {}) };
-    project.complete = data.project?.complete ?? false;
-    applyRiver(project.phase);
-    revealOre(project.phase);
     stats.produced = { ...(data.stats?.produced ?? {}) };
     stats.delivered = { ...(data.stats?.delivered ?? {}) };
     stats.researchEarned = data.stats?.researchEarned ?? 0;
@@ -509,6 +613,14 @@ export function loadState(data) {
     overloadTicks = 0;
 
     return events;
+}
+
+/**
+ * Start a fresh game: Story (the campaign) or Infinite. Everything is reset, the
+ * terrain laid for the mode, and the starting credits paid. @returns {FactoryEvent[]}
+ */
+export function newGame(mode = 'story', { world = 'valley' } = {}) {
+    return loadState({ version: SAVE_VERSION, game: { mode, world }, cells: [] });
 }
 
 export function canBuildMachine(x, y, type) {
@@ -970,6 +1082,7 @@ export function updateFactoryLogic() {
             score += order.reward;
             order.active = false;
             order.status = 'completed';
+            if (isInfinite()) game.orderLevel++;
         } else if (tickCount >= order.deadlineTick) {
             order.active = false;
             order.status = 'failed';

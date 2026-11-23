@@ -1,0 +1,41 @@
+# The web service: serves the game (the Vite build in /srv) and passes /api/* to the api
+# service over Railway's private network, so the browser sees one site (the session cookie
+# is first-party, no CORS). The api service has no public address of its own.
+{
+	admin off
+	auto_https off
+	servers {
+		# Railway's edge proxy reaches us from private addresses: trust its X-Forwarded-For,
+		# reading it right to left, so {client_ip} is the visitor's (for the API's rate limits).
+		trusted_proxies static private_ranges 100.64.0.0/10
+		trusted_proxies_strict
+	}
+}
+
+:{$PORT:8080} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:api.railway.internal:8080} {
+			header_up X-Client-IP {client_ip}
+		}
+	}
+
+	handle {
+		root * /srv
+		# Vite's hashed bundles never change: cache them for a year. Everything else
+		# (index.html, models, voice clips) is revalidated with its ETag.
+		@hashed path_regexp ^/assets/.+-[A-Za-z0-9_-]{8}\.(js|css|woff2?)$
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@other not path_regexp ^/assets/.+-[A-Za-z0-9_-]{8}\.(js|css|woff2?)$
+		header @other Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

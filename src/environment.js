@@ -546,18 +546,28 @@ export function buildEnvironment(scene, assets, effects) {
     pave.renderOrder = 1;
     root.add(pave);
 
-    // Gravel for the cannon's construction site.
-    for (let x = CANNON_AREA.x; x < CANNON_AREA.x + CANNON_AREA.w; x++) {
-        for (let y = CANNON_AREA.y; y < CANNON_AREA.y + CANNON_AREA.h; y++) {
-            pg.fillStyle = `hsl(30, 14%, ${40 + rand(x, y) * 6}%)`;
-            pg.fillRect(x * PX, y * PX, PX, PX);
-            for (let i = 0; i < 10; i++) {
-                pg.fillStyle = `rgba(0,0,0,${0.08 + rand(x + i, y) * 0.1})`;
-                pg.fillRect(x * PX + rand(i, x) * PX, y * PX + rand(y, i) * PX, 3, 3);
+    // Gravel for the cannon's construction site (an Infinite valley has no cannon: plain ground).
+    let cannonSite = null;
+    function setCannonSite(on) {
+        if (on === cannonSite) return;
+        cannonSite = on;
+        for (let x = CANNON_AREA.x; x < CANNON_AREA.x + CANNON_AREA.w; x++) {
+            for (let y = CANNON_AREA.y; y < CANNON_AREA.y + CANNON_AREA.h; y++) {
+                if (!on) {
+                    if (!paved.has(`${x},${y}`)) pg.clearRect(x * PX, y * PX, PX, PX); // keep concrete already laid
+                    continue;
+                }
+                pg.fillStyle = `hsl(30, 14%, ${40 + rand(x, y) * 6}%)`;
+                pg.fillRect(x * PX, y * PX, PX, PX);
+                for (let i = 0; i < 10; i++) {
+                    pg.fillStyle = `rgba(0,0,0,${0.08 + rand(x + i, y) * 0.1})`;
+                    pg.fillRect(x * PX + rand(i, x) * PX, y * PX + rand(y, i) * PX, 3, 3);
+                }
             }
         }
+        paveTex.needsUpdate = true;
     }
-    paveTex.needsUpdate = true;
+    setCannonSite(true);
 
     const paved = new Set();
     function paveCell(x, y) {
@@ -1480,6 +1490,10 @@ export function buildEnvironment(scene, assets, effects) {
 
     return {
         setPhase,
+        /** Set the fence and the shade to land level `p` (Infinite buys land apart from phases); `animate` grows it. */
+        setPlot,
+        /** Show the cannon site's gravel, or plain ground (an Infinite valley has no cannon). */
+        setCannonSite,
         update,
         paveCell,
         scorch,

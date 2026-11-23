@@ -258,5 +258,40 @@ Each iteration should be playable on its own before the next one starts.
               price), or demolish it (X). Pipette (F): build what is under
               the cursor, same direction and recipe.
         - [ ] Record DELTA's lines about the plot, the river and the tip.
-- [ ] **Iteration 5 — finale & polish.** Ending choice, credits, save slots,
-      settings. (The firing cinematic was done in 3b.)
+- [ ] **Iteration 5 — finale & polish.** Ending choice, credits. (The firing
+      cinematic was done in 3b; save slots and settings moved to iteration 6.)
+- [ ] **Iteration 6 — accounts, save slots, settings, Infinite & a leaderboard.**
+      - [x] Hosting on Railway in three services: Postgres (db), a Rust API
+            (`api/`: axum, sqlx, Argon2id; private network only) and the game
+            (`web/`: Caddy serves the build and passes `/api` on, so the
+            browser sees one site). See `docs/DEPLOY.md`.
+      - [x] Accounts: a username and a password, a one-time recovery code
+            instead of an e-mail address, an HttpOnly session cookie. No
+            e-mail or IP addresses are stored; download or delete everything
+            from the account panel.
+      - [x] Save slots: named slots with a blueprint thumbnail, phase or land,
+            play time and sync state; Save, Save as, rename, copy, delete,
+            export and import (`.selene.json`); local first, synced to the
+            account when signed in (a conflict keeps both copies). The old
+            single save becomes the first slot.
+      - [x] Settings (the gear in the top bar, and on the title screen):
+            Audio (the old Sound popover), Graphics (shadows, render scale,
+            particles, camera shake), Gameplay (autosave interval, DELTA's
+            hints, text speed, voice), Controls (every key rebindable) and
+            Accessibility (colour-blind-safe port arrows, reduced motion,
+            interface size). Kept locally and in the account.
+      - [x] New game: Story or Infinite. Infinite has no campaign and no
+            cannon, and the valley stays green: buildings are licensed and
+            land is bought with credits, Priority Requests grow with every
+            one filled, the sulfur comes with the last land on the east rim,
+            and DELTA has a short script of her own. Ready for iteration 5's
+            "carry on as your own company" (`continueAsInfinite()`).
+      - [x] A leaderboard the client can't fake: the server rebuilds the
+            submitted factory and runs the game's own simulation on it in
+            QuickJS (a fresh Infinite valley, 1 minute warm-up, 5 minutes
+            scored at market prices). Boards: throughput (credits per minute)
+            and efficiency (per occupied cell). It does not prove the factory
+            was built in play; a Story speedrun board would need a replay of
+            every input.
+      - [ ] Deploy to Railway; playtest Infinite's prices (licences, land,
+            request growth); record DELTA's Infinite lines.

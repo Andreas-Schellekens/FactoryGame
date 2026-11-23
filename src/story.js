@@ -432,3 +432,123 @@ export const ENDING = {
         fresh: 'New contract',
     },
 };
+
+// ---- Infinite mode (iteration 6) ------------------------------------------------------------
+// No campaign, no cannon, no NIHIL: the valley stays green. Buildings are licensed and land
+// is bought with credits (grid.js `game`). DELTA gets a short script of her own, played by
+// the same director: `w.phase` is the Infinite stage there (licence groups bought, 0–4; see
+// main.js snapshot), and `w.licences`, `w.plot`, `w.orderLevel` say how far the player is.
+export const INFINITE_TEXT = {
+    title: 'Your own valley',
+    pitch: 'No campaign, no cannon. License buildings, buy land, fill ever bigger requests and climb the leaderboard.',
+    byline: 'NILE Franchise Programme',
+    ribbon: (plot, plots) => `Infinite · Land ${String(plot + 1).padStart(2, '0')}/${String(plots).padStart(2, '0')}`,
+    licences: 'Licences',
+    land: 'Land',
+    allLand: 'The whole valley is yours.',
+    allLicences: 'Every licence bought.',
+};
+
+const owns = (w, type) => w.licences?.includes(type);
+export const INFINITE = {
+    welcomeBack: () => d('Welcome back to the valley. The market missed you. The market misses everyone.'),
+    BEATS: [
+        {
+            id: 'inf:intro',
+            when: () => true,
+            lines: [
+                nile('INCOMING TRANSMISSION — NILE Franchise Programme. Congratulations on your very own valley.'),
+                d("Hello, Steward. I'm DELTA. This is Infinite: no Moon to save, no cannon, no deadline. Just you, a valley and a market.", 'happy'),
+                d('You start with belts, Extractors and Smelters, a few hundred credits and the fenced land around the Dispatch Pad. Every other building you license, and more land you buy, with what the Pad pays you.'),
+                d('The Pad pays less for anything you flood it with, so a factory that makes many things earns the most. Priority Requests grow every time you fill one.'),
+                d('When your factory hums, send it to the leaderboard. The server rebuilds it and measures what it really earns. No fibbing. I checked.'),
+            ],
+        },
+        {
+            id: 'inf:licence',
+            when: (w) => (w.licences?.length ?? 0) >= 1,
+            lines: [d('Licence acquired. Somewhere a NILE lawyer just smiled, which is rare and slightly alarming.', 'happy')],
+        },
+        {
+            id: 'inf:land',
+            when: (w) => w.plot >= 1,
+            lines: [d('More land. The fence moves out, and so do the flowers.')],
+        },
+        {
+            id: 'inf:sulfur',
+            when: (w) => w.plot >= 3,
+            lines: [d('The whole valley is yours. The new land on the east rim has sulfur in it: the yellow crystals. A Mixer turns sulfur and coal into explosives.')],
+        },
+        {
+            id: 'inf:orders',
+            when: (w) => w.orderLevel >= 10,
+            lines: [d('Ten Priority Requests filled. They keep growing. So, apparently, do you.', 'happy')],
+        },
+        {
+            id: 'inf:all',
+            when: (w) => w.phase >= 4,
+            lines: [d('Every licence NILE sells, bought. You are now, technically, a franchise. Congratulations, or condolences.')],
+        },
+    ],
+    OBJECTIVES: [
+        [
+            { id: 'extractor', text: 'Place an Extractor on iron ore', done: (w) => w.extractorOn.ironOre > 0, focus: 'ironOre',
+                hint: 'Select the Extractor (key 2) and click one of the ringed grey crystals. Extractors only work on ore.' },
+            { id: 'deliver', text: 'Smelt ingots and belt them into the Pad', done: (w) => (w.deliveredTotal.ironIngot ?? 0) + (w.deliveredTotal.copperIngot ?? 0) > 0, focus: 'sink',
+                hint: 'An Extractor, a belt, a Smelter (key 3) and a belt into the Dispatch Pad: that is a factory.' },
+            { id: 'press', text: 'License the Press', done: (w) => owns(w, 'press'),
+                hint: 'Licences are in the console on the left. The Press turns ingots into plates and wire, which sell better.' },
+            { id: 'assembler', text: 'License the Assembler', done: (w) => owns(w, 'assembler'),
+                hint: 'The Assembler makes circuits from a plate and a wire. License it in the console once you can afford it.' },
+        ],
+        [
+            { id: 'circuit', text: 'Assemble a Circuit', done: (w) => w.produced.circuit > 0,
+                hint: 'An Assembler needs one iron plate and one copper wire. Belt both into it, any side works.' },
+            { id: 'land', text: 'Buy more land', done: (w) => w.plot >= 1,
+                hint: 'The Land button in the console moves your fence out. More land, more ore fields.' },
+            { id: 'order', text: 'Fill a Priority Request', done: (w) => w.orderLevel >= 1,
+                hint: 'Priority Requests ask for a number of one product before the clock runs out, and pay a bonus on top.' },
+            { id: 'foundry', text: 'License the Foundry', done: (w) => owns(w, 'foundry'),
+                hint: 'Steel, from iron ingots and coal, is worth a lot more than either. The Foundry makes it.' },
+        ],
+        [
+            { id: 'steel', text: 'Cast Steel', done: (w) => w.produced.steel > 0, focus: 'coalOre',
+                hint: 'A Foundry takes iron ingots on one side and coal on another. Coal is the black crystal field.' },
+            { id: 'generator', text: 'Fuel a Generator', done: (w) => w.fueledGenerators > 0,
+                hint: 'Big factories need power. A Generator burns coal; split your coal belt to feed it.' },
+            { id: 'land2', text: 'Buy a third piece of land', done: (w) => w.plot >= 2,
+                hint: 'The Land button again. Land gets dearer each time, and so do the products you can make on it.' },
+            { id: 'lab', text: 'License the Fabricator and the Lab', done: (w) => owns(w, 'fabricator') && owns(w, 'lab'),
+                hint: 'Data Cartridges from the Fabricator become research in the Lab: faster belts, better circuits, tier 4.' },
+        ],
+        [
+            { id: 'research', text: 'Read a Data Cartridge in a Lab', done: (w) => w.researchEarned > 0,
+                hint: 'A Fabricator makes cartridges from a circuit and a wire. Belt them into a Lab.' },
+            { id: 'tech', text: 'Research a technology', done: (w) => w.techCount >= 1,
+                hint: 'Spend research points in the console. Express Belts move everything twice as fast.' },
+            { id: 'valley', text: 'Buy the whole valley', done: (w) => w.plot >= 3,
+                hint: 'The last piece of land is the dearest, and it has sulfur on the east rim.' },
+            { id: 'mixer', text: 'License the Mixer', done: (w) => owns(w, 'mixer'),
+                hint: 'The Mixer makes explosives from sulfur and coal. The last licence NILE sells.' },
+        ],
+        [
+            { id: 'explosive', text: 'Mix an Explosive', done: (w) => w.produced.explosive > 0, focus: 'sulfurOre',
+                hint: 'Sulfur from the east rim and coal into a Mixer. Handle with something.' },
+            { id: 'orders10', text: 'Fill ten Priority Requests', done: (w) => w.orderLevel >= 10,
+                hint: 'They grow every time. A Splitter in front of the Pad keeps one product flowing for them.' },
+            { id: 'board', text: 'Send your factory to the leaderboard', done: (w) => w.submitted,
+                hint: 'Top bar, Board. The server rebuilds your factory and scores what it earns per minute.' },
+        ],
+    ],
+    AMBIENT: {
+        early: [
+            'Tip: the Production overview in the top bar shows what you make, use and sell per minute. Red means you are short of it.',
+            'The market forgets in about a minute. Spread your sales and every price stays up.',
+            'Upgrading a machine is often cheaper than building a second one. Often.',
+            'A tripped breaker stops everything powered. Generators, Steward. Generators.',
+            'NILE reminds franchisees that the valley remains the property of NILE. You are merely its most enthusiastic tenant.',
+        ],
+        late: [],
+    },
+    REACTIONS,
+};

@@ -6,7 +6,7 @@
 // A key hashes speaker, mood and text, so editing a line (or its mood) makes
 // it a new key: the old clip simply stops matching and the generator records
 // the new one. Lines are enumerated exactly as director.js builds them.
-import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, welcomeBack } from './story.js';
+import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, welcomeBack, INFINITE } from './story.js';
 
 /** Speakers with a voice. Memos are read, not spoken. */
 export const VOICED = new Set(['delta', 'nile', 'boss']);
@@ -55,5 +55,16 @@ export function collectVoiceLines() {
         add(line, prev && prev.who === line.who ? prev.text : null);
         prev = line;
     }
+    // Infinite mode's own script (the same director, its own beats and objectives).
+    add(INFINITE.welcomeBack());
+    for (const beat of INFINITE.BEATS) {
+        let before = null;
+        for (const line of beat.lines) {
+            add(line, before && before.who === line.who ? before.text : null);
+            before = line;
+        }
+    }
+    for (const stage of INFINITE.OBJECTIVES) for (const o of stage) if (o.hint) add(delta(o.hint));
+    for (const text of INFINITE.AMBIENT.early) add(delta(text));
     return [...out.values()];
 }

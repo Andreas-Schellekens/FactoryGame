@@ -10,24 +10,34 @@ import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
+import './menus.css';
 import {
     GRID_WIDTH, GRID_HEIGHT, TICK_RATE, SINK_VALUE, MAX_TIER, PRODUCT_REWARD,
     ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS, ORDER_POOL,
+    LICENCE_COST, PLOTS, INFINITE_ORDER_POOL, ORDER_LEVEL_GROWTH,
 } from './config.js';
 import {
     grid, score, tickCount, order, power, research, project, stats, unlockTech, startOrder,
     initGrid, buildMachine, removeMachine, upgradeMachine, upgradeCost, placeBelt, dirBetween,
     serialize, loadState, isBuildingUnlocked, machineCost, machinePorts, machineIO,
     RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
-    salePrice, flow, UPGRADABLE, SAVE_VERSION, machinesIn, planGroup, applyGroup, removeGroup,
+    salePrice, flow, UPGRADABLE, machinesIn, planGroup, applyGroup, removeGroup,
+    game, isInfinite, visualPhase, newGame, licenceAvailable, buyLicence, nextPlotCost, buyPlot, isLoadableSave, continueAsInfinite,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
-import { BUILDING_NAMES, ITEM_NAMES } from './story.js';
+import { BUILDING_NAMES, ITEM_NAMES, INFINITE } from './story.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
-import { createDirector } from './director.js';
+import { createDirector, STORY_SCRIPT } from './director.js';
 import { createAudio, BUILD_SIZE } from './audio.js';
+import { createSettings } from './settings.js';
+import { createAccount } from './account.js';
+import { createSaves } from './saves.js';
+import { createMenus } from './menus.js';
+import { createSettingsPanel } from './settingsPanel.js';
+import { blueprintThumb } from './blueprint.js';
+import { layoutOf } from './benchmark.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -40,6 +50,14 @@ const unlockAudio = () => {
 };
 window.addEventListener('pointerdown', unlockAudio, true);
 window.addEventListener('keydown', unlockAudio, true);
+
+// --- Settings, account, save slots (iteration 6) ---
+// Settings live in settings.js (locally, and in the account when signed in); the sound
+// engine keeps its volumes too, so the store starts from them on the first run.
+const settings = createSettings({ audioDefaults: audio.settings() });
+audio.setSettings(settings.get().audio);
+const account = createAccount();
+const saves = createSaves({ account, isLoadable: isLoadableSave });
 
 // --- 3D view (loads the Kenney models first; the loader shows progress) ---
 initGrid();
@@ -109,8 +127,14 @@ function snapshot() {
     }
     return {
         tick: tickCount,
-        phase: project.phase,
-        complete: project.complete,
+        // In Infinite the director's "phase" is the stage: licence groups bought (0–4).
+        phase: isInfinite() ? infiniteStage() : project.phase,
+        complete: !isInfinite() && project.complete,
+        mode: game.mode,
+        licences: [...game.licences],
+        plot: game.plot,
+        orderLevel: game.orderLevel,
+        submitted: !!state.submitted,
         money: score,
         throttle: power.throttle,
         delivered: project.delivered,
@@ -136,6 +160,30 @@ function snapshot() {
     };
 }
 
+/** Infinite: how many of the campaign's unlock groups are fully licensed (0–4). */
+function infiniteStage() {
+    let n = 0;
+    for (const p of PHASES) {
+        if (!p.unlocks.length) break;
+        if (!p.unlocks.every((t) => game.licences.includes(t))) break;
+        n++;
+    }
+    return n;
+}
+
+/** Infinite's shop for the console: every licence, owned / buyable now / later. */
+function infiniteInfo() {
+    return {
+        plot: game.plot,
+        plots: PLOTS.length,
+        nextPlotCost: nextPlotCost(),
+        visualPhase: visualPhase(),
+        licences: Object.keys(LICENCE_COST).map((type) => ({
+            type, cost: LICENCE_COST[type], owned: game.licences.includes(type), available: licenceAvailable(type),
+        })),
+    };
+}
+
 // --- The machine panel's data (the HUD renders it; actions come back through callbacks) ---
 function selectedInfo() {
     const sel = state.selected;
@@ -144,7 +192,7 @@ function selectedInfo() {
     const { x, y } = sel;
     if (m.type === 'sink') {
         const items = Object.keys(SINK_VALUE);
-        return { x, y, type: 'sink', sig: `sink@${x},${y}`, market: items.map((item) => ({ item, price: salePrice(item), base: SINK_VALUE[item] })) };
+        return { x, y, type: 'sink', sig: `sink@${x},${y}`, infinite: isInfinite(), market: items.map((item) => ({ item, price: salePrice(item), base: SINK_VALUE[item] })) };
     }
     const recipes = RECIPES[m.type]?.map((r) => ({ ...r, unlocked: recipeUnlocked(r), active: m.recipe === r.id }));
     const rates = machineRates(x, y);
@@ -214,33 +262,52 @@ function sampleFlow() {
     production = { rows, counts };
 }
 
-// --- Persistence (localStorage I/O is orchestration, not simulation) ---
-const SAVE_KEY = 'lifeline.save.v2'; // pre-rename key, kept so existing saves still load
-const hasSave = () => {
-    try {
-        return JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null')?.version === SAVE_VERSION;
-    } catch {
-        return false;
-    }
-};
+// --- Persistence: save slots (saves.js: localStorage first, the account when signed in) ---
+// A game plays in one slot: autosave and Save write to it, "Save as" copies it into a new
+// one. Switching to another slot mid-game reloads the page with a boot intent, so every
+// game starts from a fresh renderer.
+const BOOT_KEY = 'selene.boot';
+let activeSlot = null; // the slot card of the running game
+let playMs = 0;        // real time played in this slot (paused time doesn't count)
 
-function saveGame() {
-    if (!state.started) return false;
+function saveData() {
+    return { ...serialize(), story: director.save(), visual: renderer.saveVisual(), playMs: Math.round(playMs) };
+}
+function slotMeta() {
+    let thumb = null;
     try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ ...serialize(), story: director.save(), visual: renderer.saveVisual() }));
-        return true;
+        thumb = blueprintThumb();
+    } catch { /* no canvas: no picture */ }
+    return {
+        mode: game.mode, world: game.world, phase: project.phase, plot: game.plot, complete: project.complete,
+        playSec: Math.round(playMs / 1000), thumb,
+    };
+}
+
+/** Save the running game into its slot. `push`: 'now' sends it to the account at once. */
+function saveGame(push = 'now') {
+    if (!state.started || !activeSlot) return false;
+    try {
+        const r = saves.write(activeSlot.id, saveData(), slotMeta(), { push });
+        if (!r.ok) ui?.toast(r.error);
+        return r.ok;
     } catch {
         return false;
     }
 }
 
-function loadGame() {
-    let data;
-    try {
-        data = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null');
-    } catch {
-        return false;
-    }
+/** "Save as": the running game into a new slot, which it then plays in. */
+function saveGameAs(name) {
+    if (!saveGame('later')) return false;
+    const copy = saves.duplicate(activeSlot.id, name || null);
+    if (!copy) return false;
+    activeSlot = copy;
+    saves.setActive(copy.id);
+    return true;
+}
+
+/** Restore a save into the live game (only at boot, before anything was played). */
+function applySave(data) {
     const events = loadState(data);
     if (!events) return false; // missing / wrong version
     renderer.reset();
@@ -251,9 +318,19 @@ function loadGame() {
     state.selected = null;
     flowSamples.length = 0;
     nextOrderTick = null; // let the restored order resume cleanly
+    playMs = data.playMs ?? 0;
     director.load(data.story, tickCount, project.phase);
     state.started = true;
     return true;
+}
+
+/** Leave this game for another slot (or a new game): save, then reload into it. */
+function switchTo(intent) {
+    saveGame('later');
+    try {
+        sessionStorage.setItem(BOOT_KEY, JSON.stringify(intent));
+    } catch { /* no session storage: the title screen will offer it */ }
+    location.reload();
 }
 
 // --- Small actions shared by keys and HUD buttons ---
@@ -274,7 +351,7 @@ function changeSpeed(delta) {
 // --- Tools (locked buildings can't be selected) ---
 function selectTool(tool) {
     if (buildableTools.has(tool) && !isBuildingUnlocked(tool)) {
-        ui.toast(`${BUILDING_NAMES[tool]} arrives in Phase ${unlockPhaseOf(tool) + 2}`);
+        ui.toast(isInfinite() ? `License the ${BUILDING_NAMES[tool]} in the console first` : `${BUILDING_NAMES[tool]} arrives in Phase ${unlockPhaseOf(tool) + 2}`);
         audio.cue('deny');
         return;
     }
@@ -362,7 +439,9 @@ const director = createDirector({
     // Late-bound: the UI is created below.
     say: (line) => ui.say(line),
     banner: (i) => ui.showBanner(i),
-    isBusy: () => ui.isBusy(),
+    isBusy: () => ui.isBusy() || menus.isOpen(),
+    script: () => (isInfinite() ? INFINITE : STORY_SCRIPT),
+    hints: () => settings.get().gameplay.hints,
     ending: () => {
         saveGame();
         let machines = 0;
@@ -390,12 +469,8 @@ const director = createDirector({
                 },
             },
             onContinue: () => {},
-            onNewGame: () => {
-                try {
-                    localStorage.removeItem(SAVE_KEY);
-                } catch { /* ignore */ }
-                location.reload();
-            },
+            // A new contract is a new slot; this one stays on file.
+            onNewGame: () => switchTo({ action: 'title' }),
         });
     },
 });
@@ -409,8 +484,27 @@ const ui = createUI({
     onRotate: rotateDir,
     onTogglePause: togglePause,
     onSpeedChange: changeSpeed,
-    onSave: saveGame,
-    onLoad: loadGame,
+    onSave: () => saveGame('now'),
+    onLoad: () => false,
+    onOpenSaves: () => openSaves(),
+    onOpenSettings: () => settingsPanel.open(),
+    onOpenBoard: () => openBoard(),
+    onBuyLicence: (type) => {
+        const cost = LICENCE_COST[type];
+        if (!buyLicence(type)) return false;
+        audio.cue('upgrade');
+        ui.toast(`${BUILDING_NAMES[type]} licensed · CR ${cost}`);
+        return true;
+    },
+    onBuyPlot: () => {
+        const cost = nextPlotCost();
+        if (!buyPlot()) return false;
+        audio.cue('phase', { phase: 0 });
+        ui.toast(`Land ${game.plot + 1}/${PLOTS.length} bought · CR ${cost}`);
+        saveGame('later');
+        return true;
+    },
+    keyMap: settings.get().keys,
     onUnlock: (id) => unlockTech(id),
     onSetRecipe: (id) => {
         const sel = state.selected;
@@ -474,6 +568,8 @@ const ui = createUI({
             } : null,
             research: { points: research.points, unlocked: { ...research.unlocked } },
             project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
+            mode: game.mode,
+            infinite: isInfinite() ? infiniteInfo() : null,
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
             objectives: director.objectives(),
         };
@@ -483,8 +579,31 @@ const ui = createUI({
 // --- Orders (generation/cadence is policy, so it lives here) ---
 // Priority Requests start once the Assembler is unlocked (phase 1 done).
 const randInt = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
+// Infinite: what each product needs licensed (and researched) before it can be asked for.
+const ORDER_NEEDS = {
+    ironPlate: ['press'], circuit: ['press', 'assembler'], steel: ['foundry'],
+    capacitor: ['press', 'foundry', 'assembler'], motor: ['press', 'foundry', 'assembler'],
+    advancedCircuit: ['press', 'foundry', 'assembler'], explosive: ['mixer'],
+};
+function infinitePool() {
+    const pool = INFINITE_ORDER_POOL.filter((item) => (ORDER_NEEDS[item] ?? []).every((t) => game.licences.includes(t))
+        && (item !== 'advancedCircuit' || research.unlocked.advancedProduct)
+        && (item !== 'explosive' || game.plot >= PLOTS.length - 1));
+    return pool.length ? pool : ['ironIngot', 'copperIngot'];
+}
 function issueOrder() {
     // A product the factory can make by now; cheap goods in bigger batches, dear ones in smaller.
+    if (isInfinite()) {
+        // Every request filled makes the next ones bigger (and better paid, with a little more time).
+        const pool = infinitePool();
+        const productType = pool[Math.floor(Math.random() * pool.length)];
+        const worth = Math.sqrt((SINK_VALUE[productType] ?? PRODUCT_REWARD) / PRODUCT_REWARD);
+        const grow = (1 + ORDER_LEVEL_GROWTH) ** game.orderLevel;
+        const target = Math.min(500, Math.max(2, Math.round((randInt(ORDER_TARGET) / worth) * grow)));
+        const ticks = Math.round(randInt(ORDER_TICKS) * Math.sqrt(grow));
+        startOrder({ productType, target, ticks, reward: Math.round(randInt(ORDER_REWARD) * Math.sqrt(worth) * grow) });
+        return;
+    }
     const pool = ORDER_POOL[Math.min(project.phase, ORDER_POOL.length - 1)];
     const productType = pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'circuit';
     const worth = Math.sqrt((SINK_VALUE[productType] ?? PRODUCT_REWARD) / PRODUCT_REWARD);
@@ -494,7 +613,8 @@ function issueOrder() {
 
 let nextOrderTick = null; // tickCount at which to issue the next order, or null
 function tickOrders() {
-    if (project.phase < 1) return;
+    // Story: from phase 2. Infinite: once the factory has delivered something.
+    if (isInfinite() ? !Object.keys(stats.delivered).length : project.phase < 1) return;
     if (order.status === 'none' && nextOrderTick === null) nextOrderTick = tickCount + ORDER_GRACE_TICKS * 4;
     if (!order.active && order.status !== 'none' && nextOrderTick === null) {
         nextOrderTick = tickCount + ORDER_GRACE_TICKS; // grace pause after a result
@@ -507,7 +627,6 @@ function tickOrders() {
 
 // --- Campaign flow: director polling + autosave ---
 const DIRECTOR_EVERY_MS = 200;
-const AUTOSAVE_EVERY_MS = 60_000;
 let directorClock = 0;
 let autosaveClock = 0;
 let lastPhase = project.phase;
@@ -544,15 +663,18 @@ function onFrame(dt) {
             director.update(w);
             state.focus = director.objectives().find((o) => !o.done)?.focus ?? null;
         }
+        if (!state.paused && document.visibilityState === 'visible') playMs += dt;
         autosaveClock += dt;
-        if (autosaveClock >= AUTOSAVE_EVERY_MS || project.phase !== lastPhase) {
+        const every = settings.get().gameplay.autosave * 1000; // 0 = off (phase changes still save)
+        if ((every > 0 && autosaveClock >= every) || project.phase !== lastPhase) {
             autosaveClock = 0;
             lastPhase = project.phase;
-            saveGame();
+            saveGame('auto');
         }
     }
+    const mood = visualPhase();
     audio.update(dt, {
-        mood: project.complete ? 5 : project.phase,
+        mood: !isInfinite() && project.complete ? 5 : Math.min(mood, 5),
         playing: state.started,
         paused: state.paused && state.started,
         throttle: power.throttle,
@@ -567,27 +689,145 @@ function onFrame(dt) {
     ui.update();
 }
 startGameLoop(renderer, state, onFrame, (events) => audio.onEvents(events));
-window.addEventListener('beforeunload', saveGame);
+window.addEventListener('beforeunload', () => saveGame('later'));
 
-ui.showTitle({
-    hasSave: hasSave(),
-    onNew: () => {
-        state.started = true;
-        state.paused = false;
-        lastPhase = project.phase;
-        audio.begin(0, { fresh: true });
-    },
-    onResume: () => {
-        if (!loadGame()) {
-            ui.toast('Saved contract could not be read; starting fresh');
-            state.started = true;
-        }
-        lastPhase = project.phase;
-        state.paused = false;
-        audio.begin(project.complete ? 5 : project.phase);
-        if (director.ended()) ui.toast('Protocol: Selene is complete. Sandbox mode');
-    },
+// --- Menus: title screen, saves, account, leaderboard, settings (menus.js, settingsPanel.js) ---
+const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open() });
+const settingsPanel = createSettingsPanel({ settings, sound: audio, menus, account });
+
+/** Start playing (the title screen is gone): a new game in a new slot, or a slot's save. */
+function beginNew(mode) {
+    if (mode === 'infinite') {
+        renderer.reset();
+        renderer.applyEvents(newGame('infinite'), 0);
+    }
+    activeSlot = saves.create({ mode });
+    playMs = 0;
+    state.started = true;
+    state.paused = false;
+    lastPhase = project.phase;
+    audio.begin(visualPhase(), { fresh: true });
+    saveGame('now');
+}
+/**
+ * The hook for iteration 5's "carry on as your own company": a finished campaign goes on as
+ * Infinite on its own map (the dam, the dry riverbed, the spent cannon stay), in the same slot.
+ */
+function continueAsCompany() {
+    continueAsInfinite();
+    nextOrderTick = null;
+    saveGame('now');
+}
+async function beginSlot(slot) {
+    let data = null;
+    try {
+        data = await saves.read(slot.id);
+    } catch (e) {
+        ui.toast(e.message);
+    }
+    if (!data || !applySave(data)) {
+        ui.toast('That save could not be read; starting a new game');
+        beginNew(slot.mode === 'infinite' ? 'infinite' : 'story');
+        return;
+    }
+    activeSlot = saves.get(slot.id);
+    saves.setActive(slot.id);
+    lastPhase = project.phase;
+    state.paused = false;
+    audio.begin(!isInfinite() && project.complete ? 5 : visualPhase());
+    if (director.ended() && !isInfinite()) ui.toast('Protocol: Selene is complete. Sandbox mode');
+}
+function showTitle() {
+    menus.showTitle({
+        onNew: (mode) => beginNew(mode),
+        onPlay: (slot) => beginSlot(slot),
+        onLeaderboard: () => openBoard(),
+    });
+}
+function openSaves() {
+    menus.openSlots({
+        onPlay: (slot) => switchTo({ action: 'load', slot: slot.id }),
+        inGame: activeSlot ? { activeId: () => activeSlot?.id, onSave: () => saveGame('now'), onSaveAs: (name) => saveGameAs(name) } : null,
+    });
+}
+
+// The leaderboard's test runs on a copy of the simulation in a worker (benchWorker.js).
+let benchWorker = null;
+function previewScore(layout) {
+    benchWorker ??= new Worker(new URL('./benchWorker.js', import.meta.url), { type: 'module' });
+    return new Promise((resolve) => {
+        benchWorker.onmessage = (e) => resolve(e.data);
+        benchWorker.onerror = () => resolve({ ok: false, error: 'The test could not run here' });
+        benchWorker.postMessage(layout);
+    });
+}
+function openBoard() {
+    const playing = state.started;
+    menus.openLeaderboard({
+        submit: !playing ? null : {
+            allowed: isInfinite(),
+            reason: 'Only Infinite factories go on the leaderboard: start or load an Infinite game.',
+            layout: () => {
+                state.submitted = true;
+                return layoutOf();
+            },
+            preview: () => previewScore(layoutOf()),
+        },
+    });
+}
+
+// Settings take effect here, once at start and on every change.
+function applySettings(v) {
+    const motionless = v.access.reducedMotion;
+    renderer.setGraphics({ ...v.graphics, shake: v.graphics.shake && !motionless });
+    renderer.setPortPalette(v.access.colorblind);
+    audio.setSettings({ voiceOff: !v.gameplay.voice });
+    ui.setKeys(v.keys);
+    ui.setTextSpeed(v.gameplay.textSpeed);
+    ui.setUiScale(v.access.uiScale);
+    document.getElementById('hud').style.zoom = String(v.access.uiScale);
+    document.body.classList.toggle('reduced-motion', motionless);
+    document.body.classList.toggle('cb-safe', v.access.colorblind);
+    keyActions = Object.fromEntries(Object.entries(v.keys).map(([action, key]) => [key, action]));
+}
+let keyActions = {};
+applySettings(settings.get());
+settings.onChange((v) => {
+    applySettings(v);
+    if (account.state.user) syncSettingsSoon();
 });
+
+// Signed in: settings go to the account (a moment after the last change) and come back from it.
+let settingsTimer = null;
+function syncSettingsSoon() {
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(() => account.putSettings(settings.get(), settings.updatedAt()).catch(() => {}), 1500);
+}
+let lastUser = null;
+account.onChange(async (st) => {
+    const id = st.user?.id ?? null;
+    if (id === lastUser) return;
+    lastUser = id;
+    if (!id) return;
+    try {
+        const remote = await account.getSettings();
+        if (!settings.adopt(remote.data, remote.updatedAt)) syncSettingsSoon();
+        else audio.setSettings(settings.get().audio);
+    } catch { /* offline: next time */ }
+    saves.sync();
+});
+account.refresh();
+
+// Boot: a slot or a new game asked for before the reload, or the title screen.
+let boot = null;
+try {
+    boot = JSON.parse(sessionStorage.getItem(BOOT_KEY) ?? 'null');
+    sessionStorage.removeItem(BOOT_KEY);
+} catch { /* ignore */ }
+const bootSlot = boot?.action === 'load' ? saves.get(boot.slot) : null;
+if (bootSlot) beginSlot(bootSlot);
+else if (boot?.action === 'new') beginNew(boot.mode);
+else showTitle();
 
 // --- Input: build tools ---
 function actAt(gx, gy, button) {
@@ -633,11 +873,9 @@ function demolish(gx, gy) {
 }
 
 // --- Input: keyboard (tools, rotation, sim speed, camera) ---
-// Buildings in chain order on the number row; routers, upgrade and demolish on letters.
-const keyTools = {
-    1: 'belt', 2: 'extractor', 3: 'smelter', 4: 'press', 5: 'foundry', 6: 'assembler', 7: 'fabricator', 8: 'lab', 9: 'mixer', 0: 'generator',
-    t: 'splitter', y: 'merger', u: 'upgrade', x: 'erase', delete: 'erase', backspace: 'erase', v: 'select',
-};
+// Keys come from Settings → Controls (settings.js DEFAULT_KEYS: buildings in chain order on the
+// number row, routers and tools on letters); `keyActions` maps a key to its action.
+const TOOL_ACTIONS = new Set([...buildableTools, 'upgrade', 'erase', 'select']);
 const PAN_KEYS = {
     w: [0, 1], arrowup: [0, 1], s: [0, -1], arrowdown: [0, -1],
     a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0],
@@ -645,10 +883,16 @@ const PAN_KEYS = {
 const held = new Set();
 const PAN_SPEED = 0.014; // world units per ms at zoom 1
 
+const toggleMute = () => {
+    const muted = audio.toggleMute();
+    settings.set('audio', { muted });
+    ui.toast(muted ? 'Sound off' : 'Sound on');
+};
 window.addEventListener('keydown', (e) => {
-    if (!state.started || e.target.closest?.('textarea, input:not([type="range"])')) return;
+    if (!state.started || menus.isOpen() || e.target.closest?.('textarea, input:not([type="range"])')) return;
+    const act = keyActions[e.key.toLowerCase()];
     if (state.cinematic) {
-        if (e.key.toLowerCase() === 'm') ui.toast(audio.toggleMute() ? 'Sound off · M' : 'Sound on · M');
+        if (act === 'mute') toggleMute();
         return;
     }
     // A focused volume slider keeps its arrow keys; every other game key still works.
@@ -661,7 +905,7 @@ window.addEventListener('keydown', (e) => {
     }
     // A carried group and a selection borrow some keys while they're there.
     if (state.group) {
-        if (k === 'r') {
+        if (act === 'rotate') {
             state.group.rot = (state.group.rot + 1) % 4;
             audio.cue('rotate');
             return;
@@ -669,27 +913,28 @@ window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') return cancelGroup();
     }
     if (state.sel && !state.group) {
-        if (k === 'g') return startGroup('move');
-        if (k === 'c') return startGroup('copy');
-        if (k === 'x' || k === 'delete' || k === 'backspace') return removeSelection();
+        if (act === 'move') return startGroup('move');
+        if (act === 'copy') return startGroup('copy');
+        if (act === 'erase' || k === 'delete' || k === 'backspace') return removeSelection();
         if (e.key === 'Escape') return clearSelection();
     }
-    if (k === 'f') pipette();
-    if (k in keyTools) selectTool(keyTools[k]);
+    if (act === 'pipette') pipette();
+    if (TOOL_ACTIONS.has(act)) selectTool(act);
+    if (k === 'delete' || k === 'backspace') selectTool('erase');
     if (e.key === 'Escape' && state.selected) {
         deselect();
         audio.cue('close');
     }
-    if (k === 'r') rotateDir();
-    if (k === 'q') renderer.rig.rotate(-1);
-    if (k === 'e') renderer.rig.rotate(1);
-    if (e.key === ' ') {
+    if (act === 'rotate') rotateDir();
+    if (act === 'viewLeft') renderer.rig.rotate(-1);
+    if (act === 'viewRight') renderer.rig.rotate(1);
+    if (act === 'pause') {
         e.preventDefault();
         togglePause();
     }
     if (e.key === '+' || e.key === '=') changeSpeed(1);
     if (e.key === '-' || e.key === '_') changeSpeed(-1);
-    if (k === 'm') ui.toast(audio.toggleMute() ? 'Sound off · M' : 'Sound on · M');
+    if (act === 'mute') toggleMute();
 });
 window.addEventListener('keyup', (e) => held.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => held.clear());
@@ -841,6 +1086,11 @@ if (import.meta.env.DEV) {
     window.__audio = audio;
     window.__ui = ui; // e.g. __ui.say({ who: "boss", text }) to preview a line in the comms
     window.__state = state; // the input state: tool, selection, carried group
+    window.__settings = settings; // settings.js store: __settings.set('graphics', { shadows: false })
+    window.__saves = saves;
+    window.__account = account;
+    window.__menus = menus;
+    window.__continueAsCompany = continueAsCompany; // iteration 5's hook, for trying it out
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);
