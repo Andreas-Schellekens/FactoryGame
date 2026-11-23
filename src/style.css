@@ -1865,3 +1865,401 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
   width: 50px;
   height: 42px;
 }
+
+/* ---- Power: overload zone, countdown and the breaker ------------------------------ */
+.gauge span[data-zone="over"] {
+  background: rgba(255, 59, 48, 0.18);
+}
+
+.gauge span[data-zone="over"].ok,
+.gauge span[data-zone="over"].warn {
+  background: var(--mustard);
+}
+
+.tb-power.overload .tb-label {
+  color: var(--alarm);
+  animation: gauge-blink 0.5s steps(2) infinite;
+}
+
+.tb-power.overload .gauge span.bad {
+  animation: gauge-blink 0.35s steps(2) infinite;
+}
+
+.tb-power.tripped .tb-label {
+  color: var(--alarm);
+}
+
+.tb-power.tripped .gauge span {
+  background: var(--console);
+}
+
+.tb-power.tripped .gauge span.bad {
+  background: var(--alarm);
+  opacity: 0.35;
+}
+
+.tb-reset {
+  margin-top: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  background: var(--alarm);
+  color: var(--midnight);
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  animation: gauge-blink 0.9s steps(2) infinite;
+}
+
+.tb-reset.hold {
+  background: var(--console);
+  color: var(--alarm);
+  box-shadow: inset 0 0 0 1px var(--alarm);
+  animation: none;
+}
+
+.tb-reset:hover {
+  filter: brightness(1.1);
+}
+
+/* ---- Machine panel (click a machine) ----------------------------------------------- */
+.mpanel {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  width: 316px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--hair), 3px 3px 0 rgba(5, 10, 20, 0.6);
+}
+
+.mp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.mp-img {
+  width: 54px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 2px rgba(5, 10, 20, 0.45));
+}
+
+.mp-titles {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mp-title {
+  font: 800 22px/1 var(--f-mission);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--paper);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mp-tier {
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.1em;
+  color: var(--mustard);
+}
+
+.mp-status {
+  font: 500 11px var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--paper-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mp-status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+}
+
+.mp-status[data-code="working"]::before { background: var(--teal); }
+.mp-status[data-code="slow"]::before { background: var(--mustard); }
+.mp-status[data-code="blocked"]::before { background: var(--signal); }
+.mp-status[data-code="tripped"]::before,
+.mp-status[data-code="fuel"]::before { background: var(--alarm); }
+.mp-status[data-code="blocked"],
+.mp-status[data-code="tripped"] { color: var(--paper); }
+
+.mp-close {
+  align-self: flex-start;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--hair-2);
+  background: transparent;
+  color: var(--paper-2);
+  font: 400 18px/1 var(--f-mono);
+  cursor: pointer;
+}
+
+.mp-close:hover {
+  color: var(--paper);
+  border-color: var(--paper-2);
+}
+
+.mp-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.mp-recipe {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--hair-2);
+  background: var(--console);
+  color: var(--paper);
+  font: 500 12px var(--f-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mp-recipe:hover {
+  background: var(--console-hover);
+}
+
+.mp-recipe.active {
+  border-color: var(--signal);
+  box-shadow: inset 3px 0 0 var(--signal);
+  cursor: default;
+}
+
+.mp-recipe.locked {
+  color: var(--muted);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.mp-lock {
+  flex: none;
+  font: 600 10px var(--f-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+.mp-recipe.active .mp-lock {
+  color: var(--signal);
+}
+
+.mp-rates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mp-rate {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 8px;
+  font: 500 12px var(--f-mono);
+  color: var(--paper);
+}
+
+.mp-k {
+  color: var(--label);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  align-self: center;
+}
+
+.mp-v {
+  color: var(--mustard);
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-note {
+  margin: 2px 0 0;
+  font: 400 11px/1.45 var(--f-mono);
+  color: var(--label);
+}
+
+.mp-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.mp-btn {
+  flex: 1;
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 0;
+  background: var(--console);
+  box-shadow: inset 0 -3px 0 var(--console-edge);
+  color: var(--paper);
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.mp-btn:hover {
+  background: var(--console-hover);
+}
+
+.mp-up {
+  flex: 1.6;
+  background: var(--signal);
+  color: var(--midnight);
+  box-shadow: inset 0 -3px 0 var(--signal-edge);
+}
+
+.mp-up:hover {
+  background: var(--signal);
+  filter: brightness(1.08);
+}
+
+.mp-up span {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.mp-up.broke {
+  background: var(--console);
+  color: var(--muted);
+  box-shadow: inset 0 -3px 0 var(--console-edge);
+  cursor: not-allowed;
+}
+
+.mp-market {
+  display: grid;
+  grid-template-columns: 1fr 90px 64px;
+  align-items: center;
+  gap: 8px;
+  font: 500 12px var(--f-mono);
+  color: var(--paper);
+}
+
+.mp-mbar {
+  height: 6px;
+  background: var(--console);
+}
+
+.mp-mfill {
+  height: 100%;
+  background: var(--teal);
+  transition: width 0.3s;
+}
+
+.mp-mfill[data-low="1"] {
+  background: var(--sunset);
+}
+
+.mp-market .mp-v {
+  text-align: right;
+}
+
+/* ---- Production overview (top bar → Production) ------------------------------------ */
+.prod-panel {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  width: 340px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+.prod-row {
+  display: grid;
+  grid-template-columns: 1fr 50px 50px 50px;
+  gap: 6px;
+  font: 500 12px var(--f-mono);
+  color: var(--paper);
+  font-variant-numeric: tabular-nums;
+}
+
+.prod-row span:not(.prod-item) {
+  text-align: right;
+}
+
+.prod-head {
+  color: var(--label);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.prod-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.prod-row.short .prod-item {
+  color: var(--alarm);
+}
+
+.prod-row.surplus .prod-item {
+  color: var(--mustard);
+}
+
+.prod-machines {
+  margin: 6px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--hair);
+  font: 500 12px var(--f-mono);
+  color: var(--paper-2);
+}
+
+.prod-note {
+  margin: 0;
+  font: 400 11px/1.45 var(--f-mono);
+  color: var(--label);
+}
+
+/* ---- Nolan Isaac Locke on the comms: a darker, quieter channel ---------------------- */
+.comms.who-boss {
+  background: rgba(8, 9, 14, 0.97);
+  box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.45);
+}
+
+.comms.who-boss .comms-name,
+.lb-who.who-boss,
+.log-line.who-boss b {
+  color: var(--alarm);
+}
+
+.comms.who-boss .comms-text {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}

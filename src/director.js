@@ -84,11 +84,13 @@ export function createDirector({ say, banner, ending, isBusy }) {
     function maybeAmbient(w) {
         if (isBusy() || w.tick - lastAmbient < AMBIENT_EVERY) return;
         lastAmbient = w.tick;
-        const pool = (w.phase >= 4 ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${t}`));
+        // Plain strings are DELTA; a line object (Nolan's memo) speaks as itself.
+        const textOf = (t) => (typeof t === 'string' ? t : t.text);
+        const pool = (w.phase >= 4 ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${textOf(t)}`));
         if (!pool.length) return;
-        const text = pick(pool);
-        flags.add(`amb:${text}`);
-        say({ who: 'delta', text, mood: w.phase >= 4 ? 'sinister' : undefined });
+        const line = pick(pool);
+        flags.add(`amb:${textOf(line)}`);
+        say(typeof line === 'string' ? { who: 'delta', text: line, mood: w.phase >= 4 ? 'sinister' : undefined } : line);
     }
 
     return {

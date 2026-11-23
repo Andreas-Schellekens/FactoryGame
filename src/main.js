@@ -11,16 +11,18 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 import {
-    GRID_WIDTH, GRID_HEIGHT, TICK_RATE,
+    GRID_WIDTH, GRID_HEIGHT, TICK_RATE, SINK_VALUE, MAX_TIER,
     ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS,
 } from './config.js';
 import {
     grid, score, tickCount, order, power, research, project, stats, unlockTech, startOrder,
     initGrid, buildMachine, removeMachine, upgradeMachine, upgradeCost, placeBelt, dirBetween,
     serialize, loadState, isBuildingUnlocked, machineCost, machinePorts, machineIO,
+    RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
+    salePrice, flow, UPGRADABLE, SAVE_VERSION,
 } from './grid.js';
-import { unlockPhaseOf } from './campaign.js';
-import { BUILDING_NAMES } from './story.js';
+import { unlockPhaseOf, PHASES } from './campaign.js';
+import { BUILDING_NAMES, ITEM_NAMES } from './story.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
@@ -60,7 +62,9 @@ const canvas = renderer.canvas;
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // --- Shared UI/input state (kept out of the simulation) ---
-const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'generator', 'lab']);
+const buildableTools = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'fabricator', 'generator', 'lab']);
+// Machines whose cell opens a panel when clicked (conveyors are laid over instead).
+const NO_PANEL = new Set(['belt', 'splitter', 'merger']);
 const rotations = ['right', 'down', 'left', 'up'];
 const nextDir = (dir) => rotations[(rotations.indexOf(dir) + 1) % rotations.length] ?? 'right';
 
@@ -75,7 +79,10 @@ const state = {
     drag: null, // { last: Pos|null, mode: 'lay'|'erase' } while a drag is active
     focus: null, // what the active objective points at ('ironOre', 'sink'…), ringed in 3D
     cinematic: false, // the ending is playing: no input, no 3D overlay
+    selected: null, // { x, y } of the machine whose panel is open
 };
+// The recipe last picked per machine type: new machines of that type start on it.
+const lastRecipe = {};
 
 // --- World snapshot for the story director (and objectives) ---
 function snapshot() {
@@ -84,11 +91,13 @@ function snapshot() {
     let fueledGenerators = 0;
     let upgraded = 0;
     let working = 0;
+    const recipes = {};
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const { machine: m, resource } = grid[x][y];
             if (!m || m.type === 'sink') continue;
             built[m.type] = (built[m.type] || 0) + 1;
+            if (m.recipe) recipes[`${m.type}:${m.recipe}`] = (recipes[`${m.type}:${m.recipe}`] || 0) + 1;
             if (m.type === 'extractor' && resource) extractorOn[resource]++;
             if (m.type === 'generator' && m.fuelTicks > 0) fueledGenerators++;
             if (m.tier > 1) upgraded++;
@@ -112,15 +121,101 @@ function snapshot() {
         fueledGenerators,
         upgraded,
         working,
+        recipes,
+        tripped: power.tripped,
+        phaseProgress: (() => {
+            const req = Object.entries(PHASES[project.phase]?.requires ?? {});
+            const need = req.reduce((a, [, n]) => a + n, 0);
+            return need ? req.reduce((a, [k, n]) => a + Math.min(n, project.delivered[k] ?? 0), 0) / need : 1;
+        })(),
+        minPrice: Math.min(1, ...Object.keys(SINK_VALUE).map((k) => salePrice(k) / SINK_VALUE[k])),
         order: { status: order.status, startTick: order.startTick },
     };
+}
+
+// --- The machine panel's data (the HUD renders it; actions come back through callbacks) ---
+function selectedInfo() {
+    const sel = state.selected;
+    const m = sel ? grid[sel.x]?.[sel.y]?.machine : null;
+    if (!m) return null;
+    const { x, y } = sel;
+    if (m.type === 'sink') {
+        const items = Object.keys(SINK_VALUE);
+        return { x, y, type: 'sink', sig: `sink@${x},${y}`, market: items.map((item) => ({ item, price: salePrice(item), base: SINK_VALUE[item] })) };
+    }
+    const recipes = RECIPES[m.type]?.map((r) => ({ ...r, unlocked: recipeUnlocked(r), active: m.recipe === r.id }));
+    const rates = machineRates(x, y);
+    const cost = upgradeCost(x, y);
+    let upgrade = null;
+    if (cost != null && rates?.next) {
+        const [item, now] = Object.entries(rates.outPerMin)[0] ?? [];
+        const next = item ? rates.next.outPerMin[item] : null;
+        const fmt = (n) => (n >= 10 ? Math.round(n) : n.toFixed(1));
+        upgrade = { cost, gain: item ? `${fmt(now)} → ${fmt(next)}/min` : rates.points ? `${fmt(rates.points)} → ${fmt(rates.next.points)} pts/min` : '' };
+    }
+    const tierCap = UPGRADABLE.has(m.type) && cost == null ? (m.tier >= MAX_TIER ? 'Top tier' : 'Tier 4 needs the Tier 4 research') : null;
+    return {
+        x, y, type: m.type,
+        tier: UPGRADABLE.has(m.type) ? m.tier : null,
+        off: !!m.off,
+        status: machineStatus(x, y),
+        rates,
+        throttle: power.throttle,
+        recipes,
+        buffer: m.buffer,
+        upgrade,
+        tierCap,
+        canToggle: true,
+        sig: [m.type, x, y, m.tier, m.recipe, !!m.off, recipes?.map((r) => (r.unlocked ? 1 : 0)).join(''), cost].join('|'),
+    };
+}
+function selectMachine(x, y) {
+    const same = state.selected && state.selected.x === x && state.selected.y === y;
+    state.selected = same ? null : { x, y };
+    audio.cue(same ? 'close' : 'open');
+}
+function deselect() {
+    state.selected = null;
+}
+
+// --- Production overview: per-minute rates over the last minute of sim time ---
+const flowSamples = [];
+let production = null;
+const ITEM_ORDER = Object.keys(ITEM_NAMES);
+function sampleFlow() {
+    const last = flowSamples[flowSamples.length - 1];
+    if (!last || tickCount > last.tick) flowSamples.push({ tick: tickCount, made: { ...flow.made }, used: { ...flow.used }, sold: { ...flow.sold } });
+    while (flowSamples.length > 2 && tickCount - flowSamples[1].tick >= 60 * TICK_RATE) flowSamples.shift();
+    const a = flowSamples[0];
+    const dt = tickCount - a.tick;
+    const counts = {};
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            const m = grid[x][y].machine;
+            if (!m || NO_PANEL.has(m.type) || m.type === 'sink') continue;
+            const code = machineStatus(x, y).code;
+            counts[code] = (counts[code] || 0) + 1;
+        }
+    }
+    if (dt < 8) {
+        production = null;
+        return;
+    }
+    const per = (60 * TICK_RATE) / dt;
+    const rate = (book, before, item) => Math.round(((book[item] ?? 0) - (before[item] ?? 0)) * per * 10) / 10;
+    const items = new Set([...Object.keys(flow.made), ...Object.keys(flow.used), ...Object.keys(flow.sold)]);
+    const rows = [...items]
+        .map((item) => ({ item, made: rate(flow.made, a.made, item), used: rate(flow.used, a.used, item), sold: rate(flow.sold, a.sold, item) }))
+        .filter((r) => r.made + r.used + r.sold > 0)
+        .sort((p, q) => ITEM_ORDER.indexOf(p.item) - ITEM_ORDER.indexOf(q.item));
+    production = { rows, counts };
 }
 
 // --- Persistence (localStorage I/O is orchestration, not simulation) ---
 const SAVE_KEY = 'lifeline.save.v2'; // pre-rename key, kept so existing saves still load
 const hasSave = () => {
     try {
-        return localStorage.getItem(SAVE_KEY) !== null;
+        return JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null')?.version === SAVE_VERSION;
     } catch {
         return false;
     }
@@ -150,6 +245,8 @@ function loadGame() {
     renderer.applyEvents(events, 0); // recreate in-transit sprites at rest
     state.drag = null;
     state.hovered = { x: -1, y: -1 };
+    state.selected = null;
+    flowSamples.length = 0;
     nextOrderTick = null; // let the restored order resume cleanly
     director.load(data.story, tickCount, project.phase);
     state.started = true;
@@ -237,6 +334,35 @@ const ui = createUI({
     onSave: saveGame,
     onLoad: loadGame,
     onUnlock: (id) => unlockTech(id),
+    onSetRecipe: (id) => {
+        const sel = state.selected;
+        if (!sel || !setRecipe(sel.x, sel.y, id)) return false;
+        lastRecipe[grid[sel.x][sel.y].machine.type] = id;
+        audio.cue('recipe');
+        return true;
+    },
+    onUpgradeSelected: () => {
+        const sel = state.selected;
+        if (!sel) return false;
+        const cost = upgradeCost(sel.x, sel.y);
+        if (!upgradeMachine(sel.x, sel.y)) return false;
+        audio.cue('upgrade');
+        if (cost) renderer.floatAt(sel.x, sel.y, `−${cost}`, SPEND_COLOR);
+        return true;
+    },
+    onToggleSelected: () => {
+        const sel = state.selected;
+        const m = sel && grid[sel.x][sel.y].machine;
+        if (!m || !setMachineOn(sel.x, sel.y, !!m.off)) return false;
+        audio.cue(m.off ? 'pause' : 'resume');
+        return true;
+    },
+    onDeselect: deselect,
+    onResetBreaker: () => {
+        if (!resetBreaker()) return false;
+        audio.cue('reset');
+        return true;
+    },
     getState: () => {
         const onGrid = state.hovered.x >= 0;
         return {
@@ -249,10 +375,12 @@ const ui = createUI({
             hoverY: state.hovered.y,
             hovered: onGrid ? grid[state.hovered.x][state.hovered.y] : null,
             hoverScreen: onGrid && !state.drag ? renderer.projectCell(state.hovered.x, state.hovered.y) : null,
-            hoveredIO: onGrid && grid[state.hovered.x][state.hovered.y].machine ? machineIO(grid[state.hovered.x][state.hovered.y].machine.type) : null,
+            hoveredIO: onGrid && grid[state.hovered.x][state.hovered.y].machine ? machineIO(grid[state.hovered.x][state.hovered.y].machine) : null,
             hoveredPorts: onGrid ? machinePorts(state.hovered.x, state.hovered.y) : null,
             order: { ...order, remaining: Math.max(0, order.deadlineTick - tickCount) },
             power: { ...power },
+            selected: selectedInfo(),
+            production,
             research: { points: research.points, unlocked: { ...research.unlocked } },
             project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
@@ -287,8 +415,18 @@ let directorClock = 0;
 let autosaveClock = 0;
 let lastPhase = project.phase;
 let lastWorking = 0;
+let flowClock = 0;
 
 function onFrame(dt) {
+    if (state.selected) {
+        const m = grid[state.selected.x][state.selected.y].machine;
+        if (!m || NO_PANEL.has(m.type) || state.cinematic) state.selected = null;
+    }
+    flowClock += dt;
+    if (flowClock >= 500) {
+        flowClock = 0;
+        sampleFlow();
+    }
     if (state.started) {
         tickOrders();
         directorClock += dt;
@@ -315,6 +453,8 @@ function onFrame(dt) {
         orderStatus: order.status,
         orderStart: order.startTick,
         techCount: Object.values(research.unlocked).filter(Boolean).length,
+        overload: power.overload,
+        tripped: power.tripped,
     });
     panWithKeys(dt);
     ui.update();
@@ -360,7 +500,7 @@ function actAt(gx, gy, button) {
         return;
     }
     if (buildableTools.has(state.tool)) {
-        if (buildMachine(gx, gy, state.tool, state.dir)) {
+        if (buildMachine(gx, gy, state.tool, state.dir, lastRecipe[state.tool])) {
             state.lastBuildPulseMs = 120;
             audio.cue('build', { size: BUILD_SIZE[state.tool] ?? 1 });
             renderer.floatAt(gx, gy, `−${machineCost(state.tool)}`, SPEND_COLOR);
@@ -409,6 +549,11 @@ window.addEventListener('keydown', (e) => {
         return;
     }
     if (e.key in keyTools) selectTool(keyTools[e.key]);
+    if (k === 'f') selectTool('fabricator');
+    if (e.key === 'Escape' && state.selected) {
+        deselect();
+        audio.cue('close');
+    }
     if (k === 'r') rotateDir();
     if (k === 'q') renderer.rig.rotate(-1);
     if (k === 'e') renderer.rig.rotate(1);
@@ -518,6 +663,12 @@ canvas.addEventListener('pointerdown', (e) => {
         return;
     }
     if (e.button !== 0) return;
+    // A click on a machine opens its panel (the upgrade tool still upgrades in one click).
+    const target = grid[cell.x][cell.y].machine;
+    if (target && !NO_PANEL.has(target.type) && state.tool !== 'upgrade') {
+        selectMachine(cell.x, cell.y);
+        return;
+    }
     if (state.tool === 'belt') {
         state.drag = { last: null, mode: 'lay' };
         dragTo(cell);
@@ -550,6 +701,7 @@ if (import.meta.env.DEV) {
     window.__campaign = await import('./campaign.js');
     window.__renderer = renderer;
     window.__audio = audio;
+    window.__ui = ui; // e.g. __ui.say({ who: "boss", text }) to preview a line in the comms
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);

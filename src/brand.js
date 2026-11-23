@@ -84,6 +84,19 @@ export function broadcastSVG(evil) {
 }
 
 /** Portrait for leaked memos: a folded document with a redaction. */
+/** Nolan Isaac Locke: a backlit executive silhouette, white collar, NIHIL-red tie. */
+export function bossSVG() {
+    return `<svg viewBox="0 0 96 96" class="portrait-svg" role="img" aria-label="Nolan Isaac Locke">
+        <rect x="2" y="2" width="92" height="92" fill="#0a0b10" stroke="${C.alarm}" stroke-opacity="0.7" stroke-width="3" />
+        <circle cx="48" cy="40" r="30" fill="${C.alarm}" fill-opacity="0.16" />
+        <path d="M14 94 C 16 72, 30 64, 48 64 C 66 64, 80 72, 82 94 Z" fill="#1a1d26" />
+        <path d="M40 64 L48 80 L56 64 Z" fill="${C.paper}" />
+        <path d="M46 66 L50 66 L52 86 L48 92 L44 86 Z" fill="${C.alarm}" />
+        <ellipse cx="48" cy="40" rx="13" ry="16" fill="#1a1d26" />
+        <path d="M35 34 C 36 22, 60 22, 61 34 C 56 28, 40 28, 35 34 Z" fill="#2a2f3c" />
+    </svg>`;
+}
+
 export function memoSVG() {
     return `<svg viewBox="0 0 96 96" class="portrait-svg" role="img" aria-label="Intercepted memo">
         <rect x="2" y="2" width="92" height="92" fill="#1c1608" stroke="${C.mustard}" stroke-opacity="0.6" stroke-width="3" />

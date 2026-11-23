@@ -72,6 +72,17 @@ await selectTool('3'); // smelter
 await clickCell(16, 11); // iron smelter
 await clickCell(17, 16); // copper smelter
 
+// A new smelter starts on the iron recipe: open the copper one's panel (click it) and switch it.
+await clickCell(17, 16);
+await page.waitForSelector('.mpanel:not(.hidden)', { timeout: 5000 });
+await page.click('.mp-recipe:has-text("Copper Ore")');
+const copperRecipe = await page.evaluate(() => window.__grid[17][16].machine?.recipe);
+await page.keyboard.press('Escape');
+// The HUD redraws on the next frame, which can take a while under software rendering.
+const panelClosed = await page
+    .waitForFunction(() => document.querySelector('.mpanel')?.classList.contains('hidden'), null, { timeout: 4000 })
+    .then(() => true, () => false);
+
 await selectTool('4'); // assembler (combines ironIngot + copperIngot → circuit)
 await clickCell(17, 13);
 
@@ -130,6 +141,8 @@ const checks = [
     ['copper corner (18,14) turns left', copperDirs[2] === 'left'],
     ['copper belt (17,14) points up into assembler', copperDirs[3] === 'up'],
     ['out belt (19,13) points up into the pad', outDirs[1] === 'up'],
+    ['copper smelter switched to Copper Ingot in its panel', copperRecipe === 'copperIngot'],
+    ['Escape closes the panel', panelClosed === true],
     ['circuits reach the pad and money increases', circuits > 0 && peak > baseline],
     ['no page errors', errors.length === 0],
 ];

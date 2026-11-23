@@ -32,6 +32,10 @@ export const CUE_META = {
     orderFail: { gap: 500, gain: 1.8 },
     tech: { gap: 300, gain: 2.2 },
     brownout: { gap: 2500, gain: 1.6 },
+    overload: { gap: 850, gain: 2.0 },
+    trip: { gap: 1500, gain: 1.4 },
+    reset: { gap: 500, gain: 1.6 },
+    recipe: { gap: 60, gain: 2.6 },
     powerup: { gap: 2500, gain: 1.7 },
     quindarIn: { gap: 200, gain: 1.4 },
     quindarOut: { gap: 200, gain: 1.4 },
@@ -140,6 +144,29 @@ export const CUES = {
     },
     powerup({ ctx, out }, t) {
         sweep(ctx, out, t, 70, 340, 0.6, { gain: 0.06, cutoff: 300, cutoffEnd: 1800 });
+    },
+    /** Overload countdown: a two-tone alarm, once per beat until the breaker trips or the load drops. */
+    overload({ ctx, out }, t) {
+        blip(ctx, out, t, 880, { type: 'square', dur: 0.11, gain: 0.05, cutoff: 2400 });
+        blip(ctx, out, t + 0.14, 660, { type: 'square', dur: 0.11, gain: 0.05, cutoff: 2000 });
+    },
+    /** The breaker trips: a heavy clunk, a spit of sparks, the grid winding down. */
+    trip({ ctx, out, wet }, t) {
+        kick(ctx, out, t, { gain: 0.7, from: 150, to: 38, dur: 0.45 });
+        noise(ctx, out, t, { dur: 0.05, gain: 0.25, freq: 1800, q: 0.8 });
+        noise(ctx, wet, t + 0.02, { dur: 0.35, gain: 0.12, freq: 5200, freqEnd: 2400, q: 1.5 });
+        sweep(ctx, out, t + 0.05, 420, 32, 1.4, { gain: 0.08, cutoff: 1600, cutoffEnd: 120 });
+    },
+    /** Breaker reset: a relay click and the grid spinning back up. */
+    reset({ ctx, out }, t) {
+        noise(ctx, out, t, { dur: 0.015, gain: 0.22, freq: 2400, q: 2 });
+        kick(ctx, out, t + 0.01, { gain: 0.25, from: 200, to: 90, dur: 0.12 });
+        sweep(ctx, out, t + 0.08, 55, 320, 0.7, { gain: 0.06, cutoff: 260, cutoffEnd: 2000 });
+    },
+    /** A machine switched to another recipe: a two-step selector click. */
+    recipe({ ctx, out }, t) {
+        noise(ctx, out, t, { dur: 0.012, gain: 0.12, freq: 2200, q: 2 });
+        blip(ctx, out, t + 0.03, 520, { dur: 0.04, gain: 0.05, glide: 700 });
     },
 
     /** NASA Quindar tones: the beep that opens and closes a CAPCOM transmission. */

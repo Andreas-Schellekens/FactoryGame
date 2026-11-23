@@ -11,18 +11,21 @@
 //   keys      — build tools and edit tools as hardware keys
 //   comms     — DELTA's CAPCOM terminal (message queue + typewriter + log)
 //   tooltip   — the inspector, following the hovered cell
+//   panel     — the machine panel (click a machine): recipe, rates, upgrade,
+//               on/off; the Dispatch Pad's shows the market
+//   production — top bar popover: items made / used / sold per minute
 // Title screen and mission report are overlays on <body>; the ending itself
 // plays in the 3D world (letterbox, the shot, the Moon breaking, Moon+).
 //
 // Sound goes through the optional `sound` object (audio.js): the HUD only
 // tells it what happened (a comms line starts, a panel opens, the ending
 // plays) and reads/writes its settings; it never touches audio itself.
-import { MACHINE_COST, TECH_COST, TICK_RATE } from './config.js';
+import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS } from './config.js';
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
-    AI, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor,
+    AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
 } from './story.js';
-import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG } from './brand.js';
+import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG } from './brand.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -33,6 +36,7 @@ const ICON = {
     merger: 'M4 6l8 6M4 18l8-6M4 12h16',
     generator: 'M13 2L4 14h7l-1 8 9-12h-7z',
     lab: 'M9 3h6M10 3v6L5 19a1 1 0 0 0 1 2h12a1 1 0 0 0 1-2l-5-10V3',
+    fabricator: 'M4 20h16M7 20V12l5-3 5 3v8M12 9V4',
     lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
     upgrade: 'M6 13l6-6 6 6M6 19l6-6 6 6',
     erase: 'M3 21l9-9M14.5 3.5l6 6-4 4-6-6z',
@@ -46,7 +50,7 @@ const ICON = {
 // Build palette order + hotkeys (keys are handled in main.js).
 const BUILD_DEFS = [
     ['belt', '1'], ['extractor', '2'], ['smelter', '3'], ['assembler', '4'],
-    ['splitter', '7'], ['merger', '8'], ['generator', '9'], ['lab', '0'],
+    ['splitter', '7'], ['merger', '8'], ['generator', '9'], ['fabricator', 'F'], ['lab', '0'],
 ];
 
 const SEGMENTS = 15;
@@ -103,7 +107,10 @@ const fmtTime = (secs) => {
  *   sound?: ReturnType<typeof import('./audio.js').createAudio>,
  * }} opts
  */
-export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {} }) {
+export function createUI({
+    root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {},
+    onSetRecipe = () => false, onUpgradeSelected = () => false, onToggleSelected = () => false, onDeselect = () => {}, onResetBreaker = () => false,
+}) {
     root.innerHTML = '';
     const cue = (name) => sound?.cue(name);
     let cinematic = false;   // the ending is playing: HUD hidden, comms held
@@ -133,7 +140,15 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     const powerLabel = el('span', 'tb-label');
     const gauge = el('div', 'gauge');
     const segs = Array.from({ length: SEGMENTS }, () => gauge.appendChild(el('span')));
-    powerCell.append(powerLabel, gauge);
+    // The last segments are the overload zone: past full supply, before the breaker trips.
+    const fullAt = Math.round(SEGMENTS / OVERLOAD_RATIO);
+    segs.forEach((seg, i) => seg.dataset.zone = i >= fullAt ? 'over' : '');
+    const resetBtn = el('button', 'tb-reset hidden', 'Reset breaker');
+    resetBtn.type = 'button';
+    resetBtn.addEventListener('click', () => {
+        if (!onResetBreaker()) cue('deny');
+    });
+    powerCell.append(powerLabel, gauge, resetBtn);
 
     const simCell = el('div', 'tb-cell tb-sim');
     const slowerBtn = el('button', 'sqkey');
@@ -156,10 +171,11 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     /** Open one popover (closing the other), or close it if it's already open. */
     function togglePopover(panel) {
         const opening = panel.classList.contains('hidden');
-        for (const p of [help, soundPanel]) p.classList.add('hidden');
+        for (const p of [help, soundPanel, prodPanel]) p.classList.add('hidden');
         if (opening) {
             panel.classList.remove('hidden');
             if (panel === soundPanel) refreshSoundPanel();
+            onDeselect();
         }
         cue(opening ? 'open' : 'close');
     }
@@ -172,6 +188,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             cue('click');
             toast(onLoad() ? 'Contract restored' : 'No saved contract');
         }),
+        textButton('Production', () => togglePopover(prodPanel)),
         textButton('Sound', () => togglePopover(soundPanel)),
         textButton('Keys', () => togglePopover(help)),
     );
@@ -180,8 +197,9 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
 
     const help = el('div', 'help hidden');
     help.innerHTML = [
-        ['LMB', 'build · drag to lay belts'], ['RMB', 'demolish (refunds cost)'], ['R', 'rotate before placing'],
-        ['1–4 7–0', 'buildings'], ['5 / 6', 'upgrade / demolish tool'], ['WASD', 'move view'], ['Wheel', 'zoom'],
+        ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
+        ['R', 'rotate before placing'], ['1–4 7–0 F', 'buildings'], ['5 / 6', 'upgrade / demolish tool'], ['Esc', 'close panel'],
+        ['WASD', 'move view'], ['Wheel', 'zoom'],
         ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'], ['M', 'sound on / off'],
     ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('')
         // What the arrows on machines mean.
@@ -190,6 +208,44 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             ['lg-off', 'dim: nothing hooked up yet'], ['lg-block', 'red: output blocked'],
         ].map(([c, t]) => `<div><i class="lg ${c}"></i><span>${t}</span></div>`).join('')}</div>`;
     root.appendChild(help);
+
+    // ---- Production overview (top bar → Production) ------------------------------
+    const prodPanel = el('div', 'prod-panel hidden');
+    const prodHead = el('div', 'prod-row prod-head');
+    for (const h of ['Item', 'Made', 'Used', 'Sold']) prodHead.appendChild(el('span', null, h));
+    const prodRows = el('div', 'prod-rows');
+    const prodNote = el('p', 'prod-note');
+    const prodMachines = el('p', 'prod-machines');
+    prodPanel.append(el('span', 'con-label', 'Production · per minute'), prodHead, prodRows, prodMachines, prodNote);
+    root.appendChild(prodPanel);
+    let prodSig = '';
+    const STATUS_WORDS = { working: 'working', input: 'waiting', blocked: 'blocked', slow: 'slowed', tripped: 'no power', fuel: 'no coal', off: 'off', locked: 'locked' };
+    function renderProduction(prod) {
+        if (!prod) {
+            prodRows.textContent = '';
+            prodNote.textContent = 'Measuring…';
+            return;
+        }
+        const sig = JSON.stringify(prod);
+        if (sig === prodSig) return;
+        prodSig = sig;
+        prodRows.innerHTML = '';
+        const fmt = (n) => (n >= 10 ? Math.round(n) : n >= 0.05 ? n.toFixed(1) : '·');
+        for (const r of prod.rows) {
+            const row = el('div', 'prod-row');
+            // Short: more is used or sold than made (buffers and belts are draining).
+            if (r.used + r.sold > r.made * 1.05 + 0.5) row.classList.add('short');
+            else if (r.made > (r.used + r.sold) * 1.25 + 2) row.classList.add('surplus');
+            row.append(el('span', 'prod-item', ITEM_NAMES[r.item] ?? r.item), el('span', null, fmt(r.made)), el('span', null, fmt(r.used)), el('span', null, fmt(r.sold)));
+            prodRows.appendChild(row);
+        }
+        if (!prod.rows.length) prodRows.appendChild(el('p', 'prod-note', 'Nothing made yet.'));
+        prodMachines.textContent = Object.entries(prod.counts)
+            .filter(([, n]) => n > 0)
+            .map(([code, n]) => `${n} ${STATUS_WORDS[code] ?? code}`)
+            .join(' · ') || 'No machines yet';
+        prodNote.textContent = 'Red: more used than made. Mustard: piling up. Measured over the last minute.';
+    }
 
     // ---- Sound panel -------------------------------------------------------------
     const soundPanel = el('div', 'sound-panel hidden');
@@ -341,6 +397,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const evil = brandPhase >= 4;
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
         if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: `not for ${b.player} eyes`, svg: memoSVG() };
+        if (line.who === 'boss') return { name: BOSS.name.toUpperCase(), role: BOSS.title, svg: bossSVG() };
         return { name: `${AI.name} ▸ CAPCOM`, role: `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
     }
 
@@ -444,6 +501,175 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     tip.append(tipTitle, tipBody);
     root.appendChild(tip);
 
+    // ---- Machine panel (click a machine) -------------------------------------------------
+    const mp = el('div', 'mpanel hidden');
+    root.appendChild(mp);
+    let mpSig = null;
+    let mpRefs = {};
+    const itemName = (k) => ITEM_NAMES[k] ?? k;
+    const perMin = (n) => (n >= 10 ? Math.round(n) : Number(n.toFixed(1)));
+    const STATUS_TEXT = {
+        working: 'Working',
+        input: 'Waiting for',
+        blocked: 'Output blocked · nothing takes the product',
+        tripped: 'No power · breaker tripped',
+        slow: 'Slowed by a brownout',
+        fuel: 'No coal',
+        off: 'Switched off',
+        locked: 'Recipe needs research',
+        idle: 'Idle',
+    };
+    const recipeText = (r) => {
+        const ins = Object.entries(r.inputs).map(([k, n]) => `${n}× ${itemName(k)}`).join(' + ');
+        return `${ins} → ${r.output ? itemName(r.output) : RECIPE_NAMES[r.id] ?? r.id}`;
+    };
+    function rateRows(rates, throttle) {
+        const box = el('div', 'mp-rates');
+        const row = (label, name, value) => {
+            const r = el('div', 'mp-rate');
+            r.append(el('span', 'mp-k', label), el('span', 'mp-item', name), el('span', 'mp-v', value));
+            box.appendChild(r);
+        };
+        for (const [k, n] of Object.entries(rates.inPerMin ?? {})) row('In', itemName(k), `${perMin(n)}/min`);
+        for (const [k, n] of Object.entries(rates.outPerMin ?? {})) row('Out', itemName(k), `${perMin(n)}/min`);
+        if (rates.points) row('Out', 'Research points', `${perMin(rates.points)}/min`);
+        if (rates.kw > 0) row('Power', `draws ${rates.kw} kW`, throttle < 0.999 ? `at ${Math.round(throttle * 100)}%` : '');
+        if (rates.kw < 0) row('Power', `supplies ${-rates.kw} kW`, '');
+        return box;
+    }
+    function buildPanel(sel) {
+        mp.innerHTML = '';
+        mpRefs = {};
+        const head = el('div', 'mp-head');
+        if (icons[sel.type]) {
+            const img = el('img', 'mp-img');
+            img.src = icons[sel.type];
+            img.alt = '';
+            head.appendChild(img);
+        }
+        const titles = el('div', 'mp-titles');
+        const name = el('span', 'mp-title', BUILDING_NAMES[sel.type] ?? sel.type);
+        if (sel.tier) name.appendChild(el('span', 'mp-tier', `T${sel.tier}`));
+        const status = el('span', 'mp-status');
+        titles.append(name, status);
+        const close = el('button', 'mp-close', '×');
+        close.type = 'button';
+        close.setAttribute('aria-label', 'Close panel');
+        close.addEventListener('click', () => {
+            cue('close');
+            onDeselect();
+        });
+        head.append(titles, close);
+        mp.appendChild(head);
+        mpRefs.status = status;
+
+        if (sel.type === 'sink') {
+            const sec = el('div', 'mp-sec');
+            sec.appendChild(el('span', 'con-label', 'Market · credits per item'));
+            mpRefs.market = {};
+            for (const m of sel.market) {
+                const r = el('div', 'mp-market');
+                const bar = el('div', 'mp-mbar');
+                const fill = el('div', 'mp-mfill');
+                bar.appendChild(fill);
+                const price = el('span', 'mp-v');
+                r.append(el('span', 'mp-item', itemName(m.item)), bar, price);
+                sec.appendChild(r);
+                mpRefs.market[m.item] = { fill, price };
+            }
+            sec.appendChild(el('p', 'mp-note', 'Every sale lowers that item’s price; prices recover over time. Priority Requests pay their bonus in full.'));
+            mp.appendChild(sec);
+            return;
+        }
+
+        if (sel.recipes?.length) {
+            const sec = el('div', 'mp-sec');
+            sec.appendChild(el('span', 'con-label', 'Recipe'));
+            for (const r of sel.recipes) {
+                const b = el('button', `mp-recipe${r.active ? ' active' : ''}${r.unlocked ? '' : ' locked'}`);
+                b.type = 'button';
+                b.appendChild(el('span', null, recipeText(r)));
+                if (!r.unlocked) b.appendChild(el('span', 'mp-lock', 'Research'));
+                else if (r.active) b.appendChild(el('span', 'mp-lock', 'Active'));
+                b.addEventListener('click', () => {
+                    if (r.active) return;
+                    if (!onSetRecipe(r.id)) cue('deny');
+                });
+                sec.appendChild(b);
+            }
+            mp.appendChild(sec);
+        }
+
+        if (sel.rates) {
+            const sec = el('div', 'mp-sec');
+            sec.appendChild(el('span', 'con-label', 'Per minute · full power'));
+            sec.appendChild(rateRows(sel.rates, sel.throttle));
+            const holds = el('p', 'mp-note');
+            sec.appendChild(holds);
+            mpRefs.holds = holds;
+            mp.appendChild(sec);
+        }
+
+        const actions = el('div', 'mp-actions');
+        if (sel.upgrade) {
+            const up = el('button', 'mp-btn mp-up');
+            up.type = 'button';
+            const gain = sel.upgrade.gain ? ` · ${sel.upgrade.gain}` : '';
+            up.append(el('b', null, `Upgrade → T${sel.tier + 1}`), el('span', null, `CR ${sel.upgrade.cost}${gain}`));
+            up.addEventListener('click', () => {
+                if (!onUpgradeSelected()) cue('deny');
+            });
+            actions.appendChild(up);
+            mpRefs.up = up;
+        } else if (sel.tierCap) {
+            actions.appendChild(el('span', 'mp-note', sel.tierCap));
+        }
+        if (sel.canToggle) {
+            const tg = el('button', 'mp-btn mp-toggle', sel.off ? 'Switch on' : 'Switch off');
+            tg.type = 'button';
+            tg.addEventListener('click', () => onToggleSelected());
+            actions.appendChild(tg);
+        }
+        if (actions.childNodes.length) mp.appendChild(actions);
+    }
+    function updatePanel(sel, money) {
+        if (!sel) {
+            if (!mp.classList.contains('hidden')) mp.classList.add('hidden');
+            mpSig = null;
+            return;
+        }
+        if (mp.classList.contains('hidden')) {
+            for (const pnl of [help, soundPanel, prodPanel]) pnl.classList.add('hidden');
+            mp.classList.remove('hidden');
+        }
+        if (sel.sig !== mpSig) {
+            mpSig = sel.sig;
+            buildPanel(sel);
+        }
+        const st = sel.status ?? { code: 'idle' };
+        let text = STATUS_TEXT[st.code] ?? st.code;
+        if (st.code === 'input') text += ' ' + (st.missing ?? []).map(itemName).join(', ');
+        if (st.code === 'slow') text += ` · ${Math.round((sel.throttle ?? 1) * 100)}%`;
+        if (sel.type === 'sink') text = 'Takes deliveries for the cannon and buys goods';
+        mpRefs.status.textContent = text;
+        mpRefs.status.dataset.code = sel.type === 'sink' ? 'working' : st.code;
+        if (mpRefs.holds) {
+            const buf = Object.entries(sel.buffer ?? {}).filter(([, n]) => n > 0);
+            mpRefs.holds.textContent = buf.length ? 'Holds ' + buf.map(([k, n]) => `${itemName(k)} ×${n}`).join(', ') : 'Holds nothing yet';
+        }
+        if (mpRefs.up) mpRefs.up.classList.toggle('broke', money < sel.upgrade.cost);
+        if (mpRefs.market) {
+            for (const m of sel.market) {
+                const ref = mpRefs.market[m.item];
+                if (!ref) continue;
+                const frac = m.base ? m.price / m.base : 0;
+                ref.fill.style.width = `${Math.round(frac * 100)}%`;
+                ref.fill.dataset.low = frac < 0.5 ? '1' : '';
+                ref.price.textContent = `${m.price >= 10 ? Math.round(m.price) : m.price.toFixed(1)} / ${m.base}`;
+            }
+        }
+    }
+
     const toastEl = el('div', 'toast');
     root.appendChild(toastEl);
     let toastTimer = null;
@@ -521,8 +747,10 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     // ---- The ending: a cinematic in the world, then the mission report --------------------------
     // Timeline (seconds): letterbox and a cut to the cannon (0), countdown and charge (0–3), the
     // shot (3.0), the Moon breaks and the sky turns (3.15), Moon+ switches on (6.0), DELTA's last
-    // lines as subtitles, the mission report (16.5). audio.js plays the score of it on the same times.
-    const END = { fire: 3.0, hit: 3.15, ad: 6.0, report: 16.5, lines: [0.3, 7.0, 10.4, 13.6] };
+    // lines as subtitles, the mission report. audio.js plays the score of it on the same times. The
+    // `lines` times are the earliest each line may start: with voice clips, a line waits for the one
+    // before to finish, and the report waits for the last.
+    const END = { fire: 3.0, hit: 3.15, ad: 6.0, report: 20.0, lines: [0.3, 7.0, 10.4, 13.8, 17.2] };
 
     /**
      * @param {{ stats: any, onContinue: () => void, onNewGame: () => void,
@@ -647,7 +875,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             clock.textContent = ENDING.status.ad;
         }
         function subtitle(line) {
-            subWho.textContent = line.who === 'nile' ? `${BRAND.nihil.name} BROADCAST` : `${AI.name} ▸ CAPCOM`;
+            subWho.textContent = line.who === 'nile' ? `${BRAND.nihil.name} BROADCAST` : line.who === 'boss' ? BOSS.name.toUpperCase() : `${AI.name} ▸ CAPCOM`;
             subWho.className = `lb-who who-${line.who}`;
             subText.textContent = line.text;
             bottom.classList.remove('show');
@@ -687,12 +915,22 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             keep.focus();
         };
 
+        // Space the lines by their voice clips (text-only lines get ~3 s), then the report.
+        const lineAt = [];
+        let free = 0;
+        ENDING.lines.forEach((line, i) => {
+            const ms = sound?.clipMs?.(line);
+            const t = Math.max(END.lines[i] ?? 3 + 3 * i, free);
+            lineAt.push(t);
+            free = t + (ms ? ms / 1000 + 0.35 : 3.2);
+        });
+        const reportAt = Math.max(END.report, free + 0.8);
         at(END.fire, () => fire());
         at(END.hit, () => hit());
         at(END.ad, ad);
-        ENDING.lines.forEach((line, i) => at(END.lines[i] ?? 3 + 3 * i, () => subtitle(line)));
-        at(END.report, showReport);
-        sound?.ending(ENDING.lines, END.lines, END);
+        ENDING.lines.forEach((line, i) => at(lineAt[i], () => subtitle(line)));
+        at(reportAt, showReport);
+        sound?.ending(ENDING.lines, lineAt, { ...END, report: reportAt });
 
         catcher.addEventListener('click', () => {
             if (!report.classList.contains('hidden')) return;
@@ -740,6 +978,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             const m = cell.machine;
             title = BUILDING_NAMES[m.type] ?? m.type;
             if (m.tier && !['sink', 'belt', 'splitter', 'merger'].includes(m.type)) title += `  T${m.tier}`;
+            if (m.off) title += '  · OFF';
             if (m.type === 'extractor' && cell.resource) lines.push(`MAKES ${names([cell.resource])}`);
             if (io?.takes.length) lines.push(`TAKES ${names(io.takes)}`);
             if (io?.makes.length) lines.push(`MAKES ${names(io.makes)}`);
@@ -763,6 +1002,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             lines.push(`NODE ${ITEM_NAMES[cell.resource].toUpperCase()}`);
         }
         if (cell.item) lines.push(`ITEM ${(ITEM_NAMES[cell.item.type] ?? cell.item.type).toUpperCase()}`);
+        if (cell.machine && !['belt', 'splitter', 'merger'].includes(cell.machine.type)) lines.push('CLICK FOR PANEL');
         return title ? { title, body: lines.join('\n') } : null;
     }
 
@@ -889,12 +1129,19 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const gap = s.money - shownMoney;
         shownMoney = Math.abs(gap) < 1 ? s.money : shownMoney + gap * (1 - Math.exp(-dt / 70));
         creditsValue.textContent = credits(Math.round(shownMoney));
-        const { supply, demand, throttle } = s.power;
-        powerLabel.textContent = `Power kW · ${demand}/${supply}`;
-        const lit = supply > 0 ? Math.min(SEGMENTS, Math.ceil((demand / supply) * SEGMENTS)) : SEGMENTS;
-        const tone = throttle >= 1 ? 'ok' : throttle >= 0.5 ? 'warn' : 'bad';
+        const { supply, demand, throttle, overload = 0, tripped = false } = s.power;
+        const ratio = supply > 0 ? demand / supply : 9;
+        if (tripped) powerLabel.textContent = ratio > OVERLOAD_RATIO ? `Tripped · ${demand}/${supply} kW · lower the load` : `Tripped · ${demand}/${supply} kW · ready to reset`;
+        else if (overload > 0.02) powerLabel.textContent = `Overload · trips in ${Math.max(1, Math.ceil(((1 - overload) * OVERLOAD_TICKS) / TICK_RATE))} s`;
+        else powerLabel.textContent = `Power kW · ${demand}/${supply}`;
+        const lit = Math.min(SEGMENTS, Math.ceil((ratio / OVERLOAD_RATIO) * SEGMENTS));
+        const tone = tripped || ratio > OVERLOAD_RATIO ? 'bad' : ratio > 1 ? 'warn' : 'ok';
         segs.forEach((seg, i) => (seg.className = i < lit ? tone : ''));
-        powerCell.classList.toggle('alarm', throttle < 1 && demand > 0);
+        powerCell.classList.toggle('alarm', !tripped && throttle < 1 && demand > 0);
+        powerCell.classList.toggle('overload', !tripped && overload > 0.02);
+        powerCell.classList.toggle('tripped', tripped);
+        resetBtn.classList.toggle('hidden', !tripped);
+        resetBtn.classList.toggle('hold', tripped && ratio > OVERLOAD_RATIO);
         pauseBtn.innerHTML = iconSVG(s.paused ? ICON.play : ICON.pause, 16);
         pauseBtn.setAttribute('aria-label', s.paused ? 'Resume' : 'Pause');
         speedLabel.textContent = `${s.speed.toFixed(2)}×`;
@@ -939,8 +1186,12 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             btn.querySelector('.tech-cost').textContent = unlocked ? 'ONLINE' : `${TECH_COST[id]} RP`;
         }
 
-        // Inspector follows the hovered cell.
-        const info = s.hoverScreen ? describe(s.hovered, s.hoveredIO, s.hoveredPorts) : null;
+        if (!prodPanel.classList.contains('hidden')) renderProduction(s.production);
+        updatePanel(s.selected, s.money);
+
+        // Inspector follows the hovered cell (not over the machine whose panel is open).
+        const overSelected = s.selected && s.hoverX === s.selected.x && s.hoverY === s.selected.y;
+        const info = s.hoverScreen && !overSelected ? describe(s.hovered, s.hoveredIO, s.hoveredPorts) : null;
         tip.classList.toggle('hidden', !info);
         if (info) {
             tipTitle.textContent = info.title;

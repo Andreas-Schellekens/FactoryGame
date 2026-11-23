@@ -31,6 +31,7 @@ const MANIFEST = {
     assembler: { file: 'factory/machine', fit: 0.9 },
     cog: { file: 'factory/cog-a', fit: 0.34 },
     lab: { file: 'factory/machine-window', fit: 0.9 },
+    fabBed: { file: 'factory/machine-bed', fit: 0.92 },
     dish: { file: 'space/satelliteDish', fit: 0.42 },
     generator: { file: 'city/chimney-large', fit: 0.86 },
     pad: { file: 'space/platform_large', fit: 0.98 },
@@ -254,7 +255,7 @@ export async function loadAssets(onProgress) {
 // ---- Procedural item meshes ------------------------------------------------
 // Items are small and numerous, so they're simple shared-geometry meshes
 // with a clear silhouette per family: ore chunks, ingot bars, circuit
-// boards, research flasks.
+// boards, data cartridges.
 
 function mat(color, opts = {}) {
     return new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.1, ...opts });
@@ -287,6 +288,21 @@ const G = {
         g.translate(0, 0.22, 0);
         return g;
     })(),
+    cartridge: (() => {
+        const g = new THREE.BoxGeometry(0.24, 0.07, 0.17);
+        g.translate(0, 0.035, 0);
+        return g;
+    })(),
+    label: (() => {
+        const g = new THREE.BoxGeometry(0.14, 0.012, 0.12);
+        g.translate(-0.02, 0.076, 0);
+        return g;
+    })(),
+    led: (() => {
+        const g = new THREE.BoxGeometry(0.03, 0.02, 0.13);
+        g.translate(0.095, 0.075, 0);
+        return g;
+    })(),
 };
 
 const M = {
@@ -301,6 +317,9 @@ const M = {
     chipGold: mat(0xf2c65a, { metalness: 0.8, roughness: 0.3, emissive: 0x4a3200, emissiveIntensity: 0.4 }),
     flask: mat(0xb07cf0, { emissive: 0x7a3cf0, emissiveIntensity: 0.9, roughness: 0.2, transparent: true, opacity: 0.92 }),
     glass: mat(0xdde6ff, { roughness: 0.1, transparent: true, opacity: 0.6 }),
+    cartridge: mat(0x2a3140, { roughness: 0.45 }),
+    label: mat(0xf2e8d5, { roughness: 0.7 }),
+    led: mat(0x3cc8b4, { emissive: 0x3cc8b4, emissiveIntensity: 1.4 }),
 };
 
 /** A new mesh group for an item type, sitting on y = 0. */
@@ -333,9 +352,10 @@ export function createItemMesh(type) {
             add(G.board, M.chipGold);
             add(G.chip, M.chipDark);
             break;
-        case 'research':
-            add(G.flask, M.flask);
-            add(G.neck, M.glass);
+        case 'dataCartridge':
+            add(G.cartridge, M.cartridge);
+            add(G.label, M.label);
+            add(G.led, M.led);
             break;
         default:
             add(G.chunk, mat(0xffffff));

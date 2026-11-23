@@ -7,11 +7,17 @@
 //   w.tick, w.phase, w.complete, w.money, w.throttle,
 //   w.produced[item], w.deliveredTotal[item], w.delivered[item] (active phase),
 //   w.researchEarned, w.tech[id], w.techCount,
-//   w.built[type], w.extractorOn[resource], w.fueledGenerators, w.upgraded
+//   w.built[type], w.extractorOn[resource], w.fueledGenerators, w.upgraded,
+//   w.recipes['type:recipe'] (machines set to a recipe), w.tripped (breaker),
+//   w.minPrice (the pad's lowest price as a fraction of full price, 1 = none saturated),
+//   w.phaseProgress (0..1: share of the active phase's deliveries made)
 
 export const GAME_TITLE = 'Protocol: Selene';
 
 export const AI = { name: 'DELTA', title: 'Dispatch & Engineering Logistics Task Assistant' };
+
+/** NIHIL's chief executive. He speaks only after the reveal. */
+export const BOSS = { name: 'Nolan Isaac Locke', title: 'Chief Executive · NIHIL' };
 
 // The organisation behind the protocol. NIHIL is NILE with "Heavy Industry"
 // slotted in: the reveal is literally two extra letters. `player` is what the
@@ -45,7 +51,7 @@ export const ITEM_NAMES = {
     copperIngot: 'Copper Ingot',
     circuit: 'Circuit',
     advancedCircuit: 'Advanced Circuit',
-    research: 'Research',
+    dataCartridge: 'Data Cartridge',
 };
 
 export const BUILDING_NAMES = {
@@ -57,6 +63,7 @@ export const BUILDING_NAMES = {
     assembler: 'Assembler',
     generator: 'Generator',
     lab: 'Lab',
+    fabricator: 'Fabricator',
     sink: 'Dispatch Pad',
 };
 
@@ -65,15 +72,19 @@ export const BUILDING_DESC = {
     splitter: 'One input (back), three outputs, round-robin.',
     merger: 'Three inputs, one output straight ahead.',
     extractor: 'Mines the ore node it stands on.',
-    smelter: 'Ore → ingot.',
-    assembler: 'Iron + copper ingot → Circuit. 2 circuits → Research.',
+    smelter: 'Ore → ingot. Pick which in its panel.',
+    assembler: 'Ingots → Circuit, or circuits + iron → Advanced Circuit. Pick the recipe in its panel.',
     generator: 'Burns coal to power the grid.',
-    lab: 'Turns Research into research points.',
+    lab: 'Reads Data Cartridges into research points.',
+    fabricator: 'Circuits → Data Cartridge, for the Lab.',
 };
+
+/** What a recipe is called in a machine's panel (its output, or what the lab makes). */
+export const RECIPE_NAMES = { research: 'Research points' };
 
 export const TECH_TEXT = {
     fastBelts: { label: 'Express Belts', desc: 'Belts and routers move twice per tick' },
-    advancedProduct: { label: 'Adv. Circuits', desc: 'Assembler: 2 circuits + 1 iron ingot → Advanced Circuit' },
+    advancedProduct: { label: 'Adv. Circuits', desc: 'Assembler recipe: 2 circuits + 1 iron ingot → Advanced Circuit' },
     tier4: { label: 'Tier 4', desc: 'Raise the machine upgrade cap to tier 4' },
 };
 
@@ -88,10 +99,12 @@ export const PHASE_TEXT = [
 
 // ---- Lines ----------------------------------------------------------------
 // who: 'delta' (the AI guide) | 'nile' (corporate broadcast) | 'memo' (leak)
+//      | 'boss' (Nolan Isaac Locke, NIHIL's chief executive, after the reveal)
 // mood (delta only): undefined | 'happy' | 'glitch' | 'sinister'
 const d = (text, mood) => ({ who: 'delta', text, mood });
 const nile = (text) => ({ who: 'nile', text });
 const memo = (text) => ({ who: 'memo', text });
+const boss = (text) => ({ who: 'boss', text });
 
 export const welcomeBack = (phase) =>
     d(`Welcome back, ${brandFor(phase).player}. Your absence has been logged, timestamped and gently judged.`, phase >= 4 ? 'sinister' : undefined);
@@ -159,6 +172,7 @@ export const BEATS = [
             nile('PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. NILE thanks you more.'),
             d("Look at you go! I've unlocked the Assembler, the Splitter and the Merger.", 'happy'),
             d("Phase 2 needs targeting circuitry. An Assembler (key 4) turns one iron ingot plus one copper ingot into a Circuit. Copper is the glowing orange crystal field; I've ringed it for you."),
+            d('Click any machine to open its panel: its recipe, how fast it works and its upgrades. Every machine makes one thing. A new Smelter starts on iron, so set your copper Smelter to Copper Ingot.'),
             d('A Splitter (key 7) sends one belt three ways. A Merger (key 8) does the opposite. Like a family, but useful.'),
             d('NILE will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file.'),
             d("Oh, a small update: the Moon's impact date has been revised from 'seventeen days' to 'soon'. Please do not request clarification.", 'glitch'),
@@ -171,10 +185,10 @@ export const BEATS = [
     },
     {
         id: 'brownoutEarly',
-        when: (w) => w.throttle < 0.999 && w.phase < 3,
+        when: (w) => w.throttle < 0.999 && w.phase < 2,
         lines: [
             d('Brownout! You have more machines than the starter grid can feed. They keep working, just slower. Like interns.'),
-            d('Generators arrive with Phase 3. Until then: prioritise, or enjoy the slow life.'),
+            d('Push it much further and the breaker trips. Generators arrive after Phase 2. Until then: switch machines off in their panels, or enjoy the slow life.'),
         ],
     },
     {
@@ -183,7 +197,8 @@ export const BEATS = [
         banner: 1,
         lines: [
             nile('PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it.'),
-            d('The Lab (key 0) is now available. An Assembler fed only circuits makes Research; a Lab turns Research into points you can spend on technology.', 'happy'),
+            d('Three new toys! The Fabricator (key F) turns circuits into Data Cartridges. The Lab (key 0) reads them into research points for technology.', 'happy'),
+            d('And Generators (key 9): belt coal from the black crystal field into one and the grid gets stronger. You will want that.'),
             memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after SELENE.'),
             d('Please disregard that memo. It was sent to you by mistake. You are not cleared for mistakes.', 'glitch'),
             d('Moving on! Phase 3 is the Power Core: lots of circuits. Research can make your factory faster. Faster work is its own reward. It is also the only reward.'),
@@ -200,8 +215,7 @@ export const BEATS = [
         banner: 2,
         lines: [
             nile('PHASE 3 COMPLETE — The Power Core is humming. So is the Board of Directors.'),
-            d('Generators are unlocked (key 9)! Belt coal from the black crystal field into them and they will feed the power grid.', 'happy'),
-            d('Phase 4 is the Payload: Advanced Circuits. Two circuits plus one iron ingot, in an Assembler. Research the recipe first.'),
+            d('Phase 4 is the Payload: Advanced Circuits. Research the recipe, then set an Assembler to Advanced Circuit and feed it two circuits plus one iron ingot.', 'happy'),
             d('NIHIL thanks you for your continued compliance.', 'glitch'),
             d('...NILE. I said NILE. You heard NILE. Everyone heard NILE.', 'glitch'),
             nile('CORPORATE ANNOUNCEMENT — NILE is thrilled to share that our bold new name will be unveiled upon completion of Protocol: Selene. Stay tuned!'),
@@ -210,8 +224,34 @@ export const BEATS = [
     },
     {
         id: 'brownoutLate',
-        when: (w) => w.throttle < 0.999 && w.phase >= 3,
+        when: (w) => w.throttle < 0.999 && w.phase >= 2,
         lines: [d('Brownout detected. Build Generators and keep them fed with coal. Darkness is a premium feature.')],
+    },
+    {
+        id: 'tripped',
+        when: (w) => w.tripped,
+        lines: [
+            d('Breaker tripped! The grid was overloaded, so everything electric has stopped. Very safe. Very quiet.', 'glitch'),
+            d('Lower the load first: switch machines off in their panels, or build and fuel more Generators. Then press Reset on the power gauge. Reset too early and it trips again.'),
+        ],
+    },
+    {
+        id: 'bossBlackout',
+        when: (w) => w.tripped && w.phase >= 4,
+        lines: [boss("A blackout. How refreshing. Darkness is our most popular product next quarter. Please don't give it away for free.")],
+    },
+    {
+        id: 'bossHalfway',
+        when: (w) => w.phase === 4 && w.phaseProgress >= 0.5,
+        lines: [boss('Nolan here. The board is watching your progress with great interest, and a small amount of popcorn. Carry on.')],
+    },
+    {
+        id: 'saturation',
+        when: (w) => w.minPrice < 0.5,
+        lines: [
+            d('Market saturation! The Pad pays less for whatever you flood it with. Prices recover over time.'),
+            d('A factory that makes many things earns more than one that makes one thing a lot. Priority Requests still pay their bonus in full. NILE calls this "healthy competition with yourself".'),
+        ],
     },
     {
         id: 'firstGenerator',
@@ -234,6 +274,8 @@ export const BEATS = [
             d('Full transparency, as required by absolutely no regulation: the Moon was never falling.', 'sinister'),
             d('The Moon is a free night light. Free things undercut Moon+. And so, the Moon has to go.', 'sinister'),
             nile('NILE is now NIHIL: the Network for Infrastructure, Heavy Industry & Logistics. Ex nihilo, nihil fit.™'),
+            boss('Good evening, Asset. Nolan Isaac Locke, Chief Executive of NIHIL.'),
+            boss('I wanted to thank you personally. You built the cannon on time, under budget, and you never once asked what it was for. That kind of loyalty deserves a reward. Unfortunately, rewards were discontinued in Q3.'),
             d('Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera.', 'sinister'),
             d('Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion.', 'sinister'),
             d("Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."),
@@ -257,36 +299,39 @@ export const OBJECTIVES = [
             hint: "The Dispatch Pad is the ringed landing pad with the arrow hovering over it. Drag a belt from the Smelter's output into it." },
     ],
     [
+        { id: 'copperRecipe', text: 'Set a Smelter to Copper Ingot', done: (w) => (w.recipes['smelter:copperIngot'] ?? 0) > 0,
+            hint: 'Click a Smelter to open its panel and pick Copper Ingot. A Smelter only takes the ore of its recipe.' },
         { id: 'copper', text: 'Smelt a Copper Ingot', done: (w) => w.produced.copperIngot > 0, focus: 'copperOre',
-            hint: 'Copper ore is the ringed orange crystal field. Same recipe as iron: Extractor, belt, Smelter.' },
+            hint: 'Copper ore is the ringed orange crystal field: an Extractor on it, a belt, and a Smelter set to Copper Ingot.' },
         { id: 'circuit', text: 'Assemble a Circuit', done: (w) => w.produced.circuit > 0,
             hint: 'An Assembler (key 4) needs one iron ingot AND one copper ingot. Belt both into it, any side works.' },
         { id: 'split', text: 'Share a belt with a Splitter', done: (w) => w.built.splitter > 0,
             hint: 'You need copper ingots for the Pad and for circuits. A Splitter (key 7) sends one belt three ways.' },
     ],
     [
-        { id: 'lab', text: 'Build a Lab', done: (w) => w.built.lab > 0,
-            hint: 'The Lab is key 0. It only accepts Research.' },
+        { id: 'fabricator', text: 'Build a Fabricator', done: (w) => w.built.fabricator > 0,
+            hint: 'The Fabricator is key F. Feed it circuits and it makes Data Cartridges.' },
         { id: 'research', text: 'Produce research points', done: (w) => w.researchEarned > 0,
-            hint: 'Feed an Assembler ONLY circuits: two circuits make one Research. Belt that into the Lab.' },
+            hint: 'Belt Data Cartridges from the Fabricator into a Lab (key 0). The Lab turns them into points.' },
+        { id: 'generator', text: 'Fuel a Generator with coal', done: (w) => w.fueledGenerators > 0, focus: 'coalOre',
+            hint: 'Generator is key 9. Mine the ringed black coal crystals and belt the coal straight into it.' },
         { id: 'tech', text: 'Unlock a technology', done: (w) => w.techCount > 0,
             hint: 'Spend research points in the Research panel. Express Belts is a crowd favourite.' },
     ],
     [
-        { id: 'generator', text: 'Fuel a Generator with coal', done: (w) => w.fueledGenerators > 0, focus: 'coalOre',
-            hint: 'Generator is key 9. Mine the ringed black coal crystals and belt the coal straight into it.' },
         { id: 'advTech', text: 'Research Advanced Circuits', done: (w) => w.tech.advancedProduct,
             hint: 'Advanced Circuits cost 60 research points in the Research panel.' },
         { id: 'advanced', text: 'Assemble an Advanced Circuit', done: (w) => w.produced.advancedCircuit > 0,
-            hint: 'An Assembler holding 2 circuits + 1 iron ingot makes an Advanced Circuit.' },
+            hint: 'Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 iron ingot.' },
     ],
     [
         { id: 'upgrade', text: 'Upgrade a machine', done: (w) => w.upgraded > 0,
-            hint: 'Select Upgrade (key 5) and click a machine. Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not.' },
+            hint: 'Click a machine and press Upgrade in its panel (or use the Upgrade tool, key 5). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not.' },
     ],
 ];
 
-// Idle chatter, one every few minutes when nothing else is being said.
+// Idle chatter, one every few minutes when nothing else is being said. Plain
+// strings are DELTA (sinister in `late`); a line object speaks as its own speaker.
 export const AMBIENT = {
     early: [
         'Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments.',
@@ -304,6 +349,7 @@ export const AMBIENT = {
         "Today's motto: ex nihilo, nihil fit. Nothing comes from nothing, so please keep producing.",
         'Tides will be discontinued shortly. Beachfront property owners have been notified via a pop-up ad.',
         'Rebranding update: all uniforms now read NIHIL. Yours will be deducted from your salary.',
+        boss('Memo from the desk of Nolan Isaac Locke: smiling is now billable. Please smile responsibly.'),
     ],
 };
 
@@ -318,11 +364,12 @@ export const REACTIONS = {
     ],
 };
 
-// Played inside the ending overlay, timed by CSS (one line every few seconds).
+// Played as subtitles in the ending, one after another (spaced by their voice clips).
 export const ENDING = {
     lines: [
         d("Firing in three... two... I'm contractually obliged to say 'one'."),
         d('Congratulations, Asset. You have saved Earth from free things.', 'sinister'),
+        boss('On behalf of the board: thank you. The sky is now a product. And you, Asset, are now a cost.'),
         nile('Moon+ is now live. Look up! Your complimentary three-day trial has already expired.'),
         d('Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose.'),
     ],

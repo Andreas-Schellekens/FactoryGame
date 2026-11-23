@@ -12,6 +12,11 @@ import {
     POWER_PER_GENERATOR,
     GENERATOR_FUEL_TICKS,
     POWER_DRAW,
+    OVERLOAD_RATIO,
+    OVERLOAD_TICKS,
+    MARKET_SATURATION,
+    MARKET_HALF_LIFE_TICKS,
+    TICK_RATE,
     RESEARCH_PER_ITEM,
     TECH_COST,
     PAD_POS,
@@ -25,11 +30,13 @@ export let score = STARTING_MONEY;
 
 /**
  * @typedef {{ id: number, type: string }} Item
- * @typedef {{ type: string, dir: 'right'|'down'|'left'|'up', tier: number, buffer: Record<string, number>, pendingOutput: string|null, progress: number, produces?: string }} Machine
+ * @typedef {{ type: string, dir: 'right'|'down'|'left'|'up', tier: number, buffer: Record<string, number>, pendingOutput: string|null, progress: number, produces?: string, recipe?: string, off?: boolean }} Machine
+ *   (`recipe`: the chosen recipe id for machines that have RECIPES; `off`: switched off by the player)
  * @typedef {{ machine: Machine | null, item: Item | null, resource: string | null, blocked?: boolean }} Cell
  *   (`blocked` = the reserved Selene construction site; terrain, never saved)
  * @typedef {{ x: number, y: number }} Pos
- * @typedef {{ kind: 'move', item: Item, from: Pos, to: Pos } | { kind: 'spawn', item: Item, at: Pos } | { kind: 'consume', item: Item, at: Pos }} FactoryEvent
+ * @typedef {{ kind: 'move', item: Item, from: Pos, to: Pos } | { kind: 'spawn', item: Item, at: Pos } | { kind: 'consume', item: Item, at: Pos, paid?: number }} FactoryEvent
+ *   (`paid`: credits the Dispatch Pad paid for a delivery, at the market price)
  */
 
 let nextItemId = 1;
@@ -58,12 +65,43 @@ export const PRODUCT_TYPE = 'circuit';
 // other modules read each frame). Recomputed every tick from generators and
 // the demand of powered machines that want to work; never saved. `throttle`
 // scales powered processors' progress, so an undersupplied factory slows
-// down smoothly instead of stalling.
+// down smoothly — until demand stays above OVERLOAD_RATIO × supply for
+// OVERLOAD_TICKS: then the breaker trips (`tripped`), every powered machine
+// stops, and only resetBreaker() brings the grid back. `overload` (0..1) is
+// how close the countdown is to tripping.
 export const power = {
     supply: BASE_POWER_SUPPLY,
     demand: 0,
     throttle: 1,
+    overload: 0,
+    tripped: false,
 };
+let overloadTicks = 0;
+
+/** Flip the breaker back on. A grid that is still overloaded trips again within a second. */
+export function resetBreaker() {
+    if (!power.tripped) return false;
+    power.tripped = false;
+    overloadTicks = Math.max(0, OVERLOAD_TICKS - 4);
+    power.overload = overloadTicks / OVERLOAD_TICKS;
+    return true;
+}
+
+// The Dispatch Pad's market (mutated in place). `pressure[type]` counts recent
+// sales of that item and decays every tick; it pushes the price down (see
+// config.js MARKET_*). Saved, so reloading can't reset prices.
+export const market = { pressure: {} };
+const MARKET_DECAY = Math.pow(0.5, 1 / MARKET_HALF_LIFE_TICKS);
+
+/** What the pad pays for one `type` right now (0 for items it only takes for the cannon). */
+export function salePrice(type) {
+    const base = SINK_VALUE[type] ?? 0;
+    return base / (1 + (market.pressure[type] ?? 0) / MARKET_SATURATION);
+}
+
+// Running totals of items made, used up and sold, per type (never saved; the
+// HUD samples them for its per-minute production overview).
+export const flow = { made: {}, used: {}, sold: {} };
 
 // Research state (mutated in place, like `order`). Labs add to `points`;
 // `unlockTech` spends them on the permanent unlock flags below, which gate
@@ -198,42 +236,60 @@ function outputsToward(m, fx, fy, tx, ty) {
     return d.dx === wantDx && d.dy === wantDy;
 }
 
-// Recipes. Smelter turns one ore into its matching ingot; the assembler runs
-// the first recipe in ASSEMBLE whose tech (if any) is unlocked and whose
-// inputs its buffer satisfies — so what the player routes in steers which
-// product comes out. The lab "recipe" has no item output: completing it adds
+// Recipes, per machine type. Every machine runs ONE chosen recipe
+// (`machine.recipe`, set in its menu; a new machine gets the caller's choice
+// or the first unlocked one) and only accepts that recipe's inputs. `time`
+// multiplies the machine's PROCESS_TICKS for slow recipes; `tech` gates a
+// recipe behind research. The lab's output is null: completing it adds
 // RESEARCH_PER_ITEM points instead (special-cased in the processor phase).
-const SMELT = { ironOre: 'ironIngot', copperOre: 'copperIngot' };
-const ASSEMBLE = [
-    { inputs: { ironIngot: 1, copperIngot: 1 }, output: PRODUCT_TYPE },
-    { inputs: { circuit: 2, ironIngot: 1 }, output: 'advancedCircuit', tech: 'advancedProduct' },
-    { inputs: { circuit: 2 }, output: 'research' },
-];
-const LAB_RECIPE = { inputs: { research: 1 }, output: null };
+export const RECIPES = {
+    smelter: [
+        { id: 'ironIngot', inputs: { ironOre: 1 }, output: 'ironIngot' },
+        { id: 'copperIngot', inputs: { copperOre: 1 }, output: 'copperIngot' },
+    ],
+    assembler: [
+        { id: 'circuit', inputs: { ironIngot: 1, copperIngot: 1 }, output: PRODUCT_TYPE },
+        { id: 'advancedCircuit', inputs: { circuit: 2, ironIngot: 1 }, output: 'advancedCircuit', tech: 'advancedProduct', time: 1.5 },
+    ],
+    fabricator: [
+        { id: 'dataCartridge', inputs: { circuit: 2 }, output: 'dataCartridge' },
+    ],
+    lab: [
+        { id: 'research', inputs: { dataCartridge: 1 }, output: null },
+    ],
+};
 
-// Assembler recipes whose tech gate (if any) is currently unlocked.
-function assemblerRecipes() {
-    return ASSEMBLE.filter((r) => !r.tech || research.unlocked[r.tech]);
+/** Is this recipe available (its tech, if any, researched)? */
+export const recipeUnlocked = (r) => !r.tech || research.unlocked[r.tech];
+
+/** The recipe a machine is set to (null for machines without recipes). */
+export function machineRecipe(m) {
+    const list = RECIPES[m?.type];
+    if (!list) return null;
+    return list.find((r) => r.id === m.recipe) ?? list[0];
 }
 
 // Machines that absorb the item in their input slot into a buffer. The
 // generator is one of them (it eats coalOre as fuel) even though it never
 // runs a recipe — its burn happens in the power phase.
-const PROCESSORS = new Set(['smelter', 'assembler', 'generator', 'lab']);
-export const UPGRADABLE = new Set(['extractor', 'smelter', 'assembler', 'lab']);
+const PROCESSORS = new Set(['smelter', 'assembler', 'fabricator', 'generator', 'lab']);
+export const UPGRADABLE = new Set(['extractor', 'smelter', 'assembler', 'fabricator', 'lab']);
 
 function inBounds(x, y) {
     return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
 }
 
 function makeMachine(type, dir = 'right', extra = {}) {
-    return { type, dir, tier: 1, buffer: {}, pendingOutput: null, progress: 0, ...extra };
+    const m = { type, dir, tier: 1, buffer: {}, pendingOutput: null, progress: 0, ...extra };
+    if (RECIPES[type] && !m.recipe) m.recipe = RECIPES[type][0].id;
+    return m;
 }
 
-function processInterval(machine) {
+/** Ticks per operation at a tier (the machine's own tier by default), for its current recipe. */
+function processInterval(machine, tier = machine.tier) {
     const ticks = PROCESS_TICKS[machine.type];
     if (!ticks) return 1;
-    return ticks[Math.min(machine.tier - 1, ticks.length - 1)];
+    return ticks[Math.min(tier - 1, ticks.length - 1)] * (machineRecipe(machine)?.time ?? 1);
 }
 
 export function machineProgressFraction(machine) {
@@ -289,7 +345,8 @@ export function machineCost(type) {
 
 // ---- Save / load --------------------------------------------------------
 // v2: campaign (project/stats) added; v1 sandbox saves are not loaded.
-const SAVE_VERSION = 2;
+// v3: recipes chosen per machine, the Fabricator and Data Cartridges, the market.
+export const SAVE_VERSION = 3;
 
 /**
  * Snapshot the simulation as a plain, JSON-serializable object. Terrain
@@ -317,6 +374,7 @@ export function serialize() {
         research: { points: research.points, unlocked: { ...research.unlocked } },
         project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
         stats: structuredClone(stats),
+        market: { pressure: { ...market.pressure } },
         cells,
     };
 }
@@ -345,6 +403,9 @@ export function loadState(data) {
             // Overlay saved fields onto fresh defaults so a save missing a newer
             // field (e.g. toggle) still loads cleanly.
             cell.machine = { ...makeMachine(entry.machine.type, entry.machine.dir), ...entry.machine };
+            if (RECIPES[cell.machine.type] && !RECIPES[cell.machine.type].some((r) => r.id === cell.machine.recipe)) {
+                cell.machine.recipe = RECIPES[cell.machine.type][0].id; // a recipe that no longer exists
+            }
         }
         if (entry.item) {
             const item = { id: nextItemId++, type: entry.item.type };
@@ -367,6 +428,9 @@ export function loadState(data) {
     stats.produced = { ...(data.stats?.produced ?? {}) };
     stats.delivered = { ...(data.stats?.delivered ?? {}) };
     stats.researchEarned = data.stats?.researchEarned ?? 0;
+    market.pressure = { ...(data.market?.pressure ?? {}) };
+    power.tripped = false;
+    overloadTicks = 0;
 
     return events;
 }
@@ -381,7 +445,7 @@ export function canBuildMachine(x, y, type) {
     return score >= MACHINE_COST[type];
 }
 
-export function buildMachine(x, y, type, dir = 'right') {
+export function buildMachine(x, y, type, dir = 'right', recipe = null) {
     if (!canBuildMachine(x, y, type)) return false;
     const cell = grid[x][y];
     score -= MACHINE_COST[type];
@@ -389,7 +453,34 @@ export function buildMachine(x, y, type, dir = 'right') {
         : (type === 'splitter' || type === 'merger') ? { toggle: 0 }
         : type === 'generator' ? { fuelTicks: 0 }
         : {};
+    const r = RECIPES[type]?.find((q) => q.id === recipe && recipeUnlocked(q))
+        ?? RECIPES[type]?.find(recipeUnlocked);
+    if (r) extra.recipe = r.id;
     cell.machine = makeMachine(type, dir, extra);
+    return true;
+}
+
+/**
+ * Switch a machine to another of its recipes. Buffered inputs the new recipe
+ * doesn't use are scrapped and the operation in progress restarts; a finished
+ * product waiting to leave still leaves. @returns {boolean} changed
+ */
+export function setRecipe(x, y, id) {
+    const m = inBounds(x, y) ? grid[x][y].machine : null;
+    const r = RECIPES[m?.type]?.find((q) => q.id === id);
+    if (!r || !recipeUnlocked(r) || m.recipe === id) return false;
+    m.recipe = id;
+    for (const k of Object.keys(m.buffer)) if (!(k in r.inputs)) delete m.buffer[k];
+    m.progress = 0;
+    return true;
+}
+
+/** Switch a machine on or off (off: no work, no power draw; it still takes deliveries until full). */
+export function setMachineOn(x, y, on) {
+    const m = inBounds(x, y) ? grid[x][y].machine : null;
+    if (!m || m.type === 'sink' || m.type === 'belt') return false;
+    if (on) delete m.off;
+    else m.off = true;
     return true;
 }
 
@@ -481,12 +572,12 @@ function cellAccepts(cell, itemType) {
         case 'sink':
             return sinkAccepts(itemType);
         case 'smelter':
-            return itemType in SMELT && (m.buffer[itemType] || 0) < BUFFER_CAP;
         case 'assembler':
-            return assemblerRecipes().some((r) => itemType in r.inputs)
-                && (m.buffer[itemType] || 0) < BUFFER_CAP;
-        case 'lab':
-            return itemType === 'research' && (m.buffer.research || 0) < BUFFER_CAP;
+        case 'fabricator':
+        case 'lab': {
+            const r = machineRecipe(m);
+            return !!r && recipeUnlocked(r) && itemType in r.inputs && (m.buffer[itemType] || 0) < BUFFER_CAP;
+        }
         case 'generator':
             return itemType === 'coalOre' && (m.buffer.coalOre || 0) < BUFFER_CAP;
         default:
@@ -494,28 +585,12 @@ function cellAccepts(cell, itemType) {
     }
 }
 
-// What recipe (if any) the machine can run given its current buffer.
+// The machine's recipe if its buffer holds everything for one operation, else null.
 function recipeFor(machine) {
-    if (machine.type === 'smelter') {
-        for (const ore in SMELT) {
-            if ((machine.buffer[ore] || 0) > 0) return { inputs: { [ore]: 1 }, output: SMELT[ore] };
-        }
-        return null;
-    }
-    if (machine.type === 'assembler') {
-        for (const recipe of assemblerRecipes()) {
-            let ok = true;
-            for (const k in recipe.inputs) {
-                if ((machine.buffer[k] || 0) < recipe.inputs[k]) { ok = false; break; }
-            }
-            if (ok) return recipe;
-        }
-        return null;
-    }
-    if (machine.type === 'lab') {
-        return (machine.buffer.research || 0) > 0 ? LAB_RECIPE : null;
-    }
-    return null;
+    const r = machineRecipe(machine);
+    if (!r || !recipeUnlocked(r)) return null;
+    for (const k in r.inputs) if ((machine.buffer[k] || 0) < r.inputs[k]) return null;
+    return r;
 }
 
 // ---- Ports: where items go in and out ---------------------------------------------
@@ -533,7 +608,8 @@ export function portsFor(type, dir) {
     switch (type) {
         case 'extractor': return { in: [], out: [dir] };
         case 'smelter':
-        case 'assembler': return { in: [OPPOSITE[dir], ...PERP[dir]], out: [dir] };
+        case 'assembler':
+        case 'fabricator': return { in: [OPPOSITE[dir], ...PERP[dir]], out: [dir] };
         case 'generator':
         case 'lab':
         case 'sink': return { in: ALL_SIDES, out: [] };
@@ -590,19 +666,76 @@ export function machinePorts(x, y, type = null, dir = null) {
     return ports;
 }
 
-/** What a machine type takes in and makes (item types), for the inspector. */
-export function machineIO(type) {
+/**
+ * What a machine takes in and makes (item types), for the inspector: the
+ * chosen recipe of a placed machine (pass the machine), or everything a
+ * machine type can make (pass the type).
+ */
+export function machineIO(machineOrType) {
+    const m = typeof machineOrType === 'string' ? null : machineOrType;
+    const type = m ? m.type : machineOrType;
+    if (RECIPES[type]) {
+        const rs = m ? [machineRecipe(m)] : RECIPES[type];
+        return { takes: [...new Set(rs.flatMap((r) => Object.keys(r.inputs)))], makes: rs.map((r) => r.output).filter(Boolean) };
+    }
     switch (type) {
-        case 'smelter': return { takes: Object.keys(SMELT), makes: Object.values(SMELT) };
-        case 'assembler': {
-            const rs = assemblerRecipes();
-            return { takes: [...new Set(rs.flatMap((r) => Object.keys(r.inputs)))], makes: rs.map((r) => r.output) };
-        }
-        case 'lab': return { takes: Object.keys(LAB_RECIPE.inputs), makes: [] };
         case 'generator': return { takes: ['coalOre'], makes: [] };
         case 'sink': return { takes: [...new Set([...Object.keys(SINK_VALUE), ...Object.keys(currentPhase()?.requires ?? {})])], makes: [] };
         default: return { takes: [], makes: [] };
     }
+}
+
+const perMinute = (ticks) => (60 * TICK_RATE) / ticks;
+
+/**
+ * Why a machine is (not) working, for its menu and the status icons:
+ * 'off' | 'tripped' (breaker) | 'blocked' (product can't leave) | 'fuel'
+ * (generator without coal) | 'input' (waiting; `missing` lists what) |
+ * 'locked' (recipe needs research) | 'slow' (brownout) | 'working' | 'idle'.
+ */
+export function machineStatus(x, y) {
+    const m = inBounds(x, y) ? grid[x][y].machine : null;
+    if (!m) return { code: 'idle' };
+    if (m.off) return { code: 'off' };
+    if (m.type === 'extractor') return m.progress >= processInterval(m) ? { code: 'blocked' } : { code: 'working' };
+    if (m.type === 'generator') return m.fuelTicks > 0 ? { code: power.tripped ? 'tripped' : 'working' } : { code: 'fuel' };
+    if (!RECIPES[m.type]) return { code: 'idle' };
+    if (m.pendingOutput) return { code: 'blocked' };
+    const r = machineRecipe(m);
+    if (!recipeUnlocked(r)) return { code: 'locked' };
+    const missing = Object.keys(r.inputs).filter((k) => (m.buffer[k] || 0) < r.inputs[k]);
+    if (missing.length && m.progress <= 0) return { code: 'input', missing };
+    if (POWER_DRAW[m.type] && power.tripped) return { code: 'tripped' };
+    if (POWER_DRAW[m.type] && power.throttle < 0.999) return { code: 'slow' };
+    return { code: 'working' };
+}
+
+/**
+ * Throughput of a machine per minute of sim time, at its tier and at full
+ * power: { inPerMin, outPerMin, points?, kw, next } — `next` is the same for
+ * the next tier (null at the cap or for machines without tiers). `kw` is its
+ * draw (negative = supply).
+ */
+export function machineRates(x, y) {
+    const m = inBounds(x, y) ? grid[x][y].machine : null;
+    if (!m) return null;
+    const at = (tier) => {
+        const per = perMinute(processInterval(m, tier));
+        if (m.type === 'extractor') return { inPerMin: {}, outPerMin: m.produces ? { [m.produces]: per } : {} };
+        const r = machineRecipe(m);
+        if (!r) return null;
+        const inPerMin = Object.fromEntries(Object.entries(r.inputs).map(([k, n]) => [k, n * per]));
+        return r.output
+            ? { inPerMin, outPerMin: { [r.output]: per } }
+            : { inPerMin, outPerMin: {}, points: RESEARCH_PER_ITEM * per };
+    };
+    if (m.type === 'generator') {
+        return { inPerMin: { coalOre: perMinute(GENERATOR_FUEL_TICKS) }, outPerMin: {}, kw: -POWER_PER_GENERATOR, next: null };
+    }
+    const now = at(m.tier);
+    if (!now) return null;
+    const cap = research.unlocked.tier4 ? MAX_TIER : MAX_TIER - 1;
+    return { ...now, kw: POWER_DRAW[m.type] ?? 0, next: UPGRADABLE.has(m.type) && m.tier < cap ? at(m.tier + 1) : null };
 }
 
 // Try to push a freshly produced item into the cell this machine points at.
@@ -633,16 +766,23 @@ export function updateFactoryLogic() {
             const cell = grid[x][y];
             if (cell.machine?.type === 'sink' && cell.item) {
                 const type = cell.item.type;
-                events.push({ kind: 'consume', item: cell.item, at: { x, y } });
+                const paid = salePrice(type);
+                events.push({ kind: 'consume', item: cell.item, at: { x, y }, paid });
                 if (order.active && type === order.productType) order.delivered++;
                 if (currentPhase()?.requires[type]) bump(project.delivered, type);
                 bump(stats.delivered, type);
-                score += SINK_VALUE[type] ?? 0;
+                bump(flow.sold, type);
+                score += paid;
+                if (SINK_VALUE[type]) bump(market.pressure, type);
                 cell.item = null;
             }
         }
     }
     checkPhaseComplete();
+    for (const k in market.pressure) {
+        market.pressure[k] *= MARKET_DECAY;
+        if (market.pressure[k] < 0.01) delete market.pressure[k];
+    }
 
     // Resolve the order the same tick its final product is sunk: complete (and
     // pay the bonus) on reaching the target, else fail when the deadline passes.
@@ -773,27 +913,44 @@ export function updateFactoryLogic() {
     // powered machine that wants to work adds its draw to demand. The ratio
     // becomes this tick's throttle for phase 4. Computed after movers so
     // freshly delivered coal counts the tick it arrives in the buffer.
+    // While the breaker is tripped, generators idle (no burn) but still count
+    // as available supply, and demand is what would run on a reset, so the
+    // HUD can show whether a reset will hold.
     power.supply = BASE_POWER_SUPPLY;
     power.demand = 0;
     for (let x = 0; x < GRID_WIDTH; x++) {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const m = grid[x][y].machine;
-            if (!m) continue;
+            if (!m || m.off) continue;
             if (m.type === 'generator') {
+                if (power.tripped) {
+                    if (m.fuelTicks > 0 || (m.buffer.coalOre || 0) > 0) power.supply += POWER_PER_GENERATOR;
+                    continue;
+                }
                 if (m.fuelTicks <= 0 && (m.buffer.coalOre || 0) > 0) {
                     m.buffer.coalOre--;
                     m.fuelTicks = GENERATOR_FUEL_TICKS;
+                    bump(flow.used, 'coalOre');
                 }
                 if (m.fuelTicks > 0) {
                     m.fuelTicks--;
                     power.supply += POWER_PER_GENERATOR;
                 }
-            } else if (POWER_DRAW[m.type] && recipeFor(m)) {
+            } else if (POWER_DRAW[m.type] && !m.pendingOutput && recipeFor(m)) {
                 power.demand += POWER_DRAW[m.type];
             }
         }
     }
-    power.throttle = power.demand > 0 ? Math.min(1, power.supply / power.demand) : 1;
+    if (!power.tripped) {
+        if (power.demand > power.supply * OVERLOAD_RATIO) overloadTicks++;
+        else overloadTicks = Math.max(0, overloadTicks - 2);
+        if (overloadTicks >= OVERLOAD_TICKS) {
+            power.tripped = true;
+            overloadTicks = 0;
+        }
+    }
+    power.overload = power.tripped ? 1 : overloadTicks / OVERLOAD_TICKS;
+    power.throttle = power.tripped ? 0 : power.demand > 0 ? Math.min(1, power.supply / power.demand) : 1;
 
     // 4) Processors run their recipe over time, then eject the result.
     for (let x = 0; x < GRID_WIDTH; x++) {
@@ -806,6 +963,7 @@ export function updateFactoryLogic() {
                 if (tryEject(m, x, y, m.pendingOutput, events)) m.pendingOutput = null;
                 else continue; // output is blocked; stall until it can leave
             }
+            if (m.off) continue;
 
             const recipe = recipeFor(m);
             if (!recipe) {
@@ -816,7 +974,10 @@ export function updateFactoryLogic() {
             // be fractional); unpowered processors run at full speed.
             m.progress += POWER_DRAW[m.type] ? power.throttle : 1;
             if (m.progress >= processInterval(m)) {
-                for (const k in recipe.inputs) m.buffer[k] -= recipe.inputs[k];
+                for (const k in recipe.inputs) {
+                    m.buffer[k] -= recipe.inputs[k];
+                    bump(flow.used, k, recipe.inputs[k]);
+                }
                 m.progress = 0;
                 if (recipe.output === null) {
                     // Lab: the "product" is research points, not an item.
@@ -825,6 +986,7 @@ export function updateFactoryLogic() {
                 } else {
                     // Counted when crafted, even if the output is still blocked.
                     bump(stats.produced, recipe.output);
+                    bump(flow.made, recipe.output);
                     m.pendingOutput = recipe.output;
                     if (tryEject(m, x, y, m.pendingOutput, events)) m.pendingOutput = null;
                 }
@@ -837,12 +999,13 @@ export function updateFactoryLogic() {
         for (let y = 0; y < GRID_HEIGHT; y++) {
             const cell = grid[x][y];
             const m = cell.machine;
-            if (m?.type !== 'extractor' || !m.produces) continue;
+            if (m?.type !== 'extractor' || !m.produces || m.off) continue;
             m.progress++;
             if (m.progress >= processInterval(m)) {
                 if (tryEject(m, x, y, m.produces, events)) {
                     m.progress = 0;
                     bump(stats.produced, m.produces);
+                    bump(flow.made, m.produces);
                 } else {
                     m.progress = processInterval(m); // output blocked; hold at full
                 }

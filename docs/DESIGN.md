@@ -52,9 +52,13 @@ in the worst way. Portrait is an oscilloscope badge whose trace follows its
 mood (teal → bright sine when happy → magenta noise on a glitch → a red
 flatline when sinister) and bounces while it speaks.
 
-**Nolan Isaac Locke** — NIHIL's big boss (his initials spell N.I.L.). Not in the
-game yet; planned for after the reveal. He has his own ElevenLabs voice ready
-(`NIHIL_BOSS_VOICE_ID` in `.env`, not used by `scripts/voice.mjs` yet).
+**Nolan Isaac Locke** — NIHIL's chief executive (his initials spell N.I.L.).
+He only speaks after the reveal, on a darker comms channel with his own
+portrait (a backlit silhouette, NIHIL-red tie) and voice (ElevenLabs,
+unhurried and low, a little boardroom room): he introduces himself and
+thanks the Asset at the reveal, drops in halfway through Ignition, comments
+on a blackout, leaves a memo in the late chatter, and thanks the Asset once
+more in the ending ("you, Asset, are now a cost").
 
 **Protocol: Selene** — the cannon. Built in five phases by delivering goods to
 the **Dispatch Pad**:
@@ -177,8 +181,36 @@ Each iteration should be playable on its own before the next one starts.
             the Moon breaks, the Moon+ billboard switches on in its place and
             stays in the sandbox sky, DELTA's last lines as subtitles, and a
             mission report in the console style.
-- [ ] **Iteration 4 — content & balance.** New resources and intermediate
-      products (steel, wire, plates, motors, explosives…), phases rebalanced
-      into a 45–90 minute campaign.
+- [ ] **Iteration 4 — content & balance**, in three playable parts. Goal: a
+      45–90 minute campaign where the whole production loop has to be built
+      (no winning by spamming one product).
+      - [ ] **4a — systems.**
+        - [x] A panel per machine (click it): the recipe (chosen, not
+              guessed from the inputs; new machines start on the last
+              choice), rates per minute, what it holds, upgrade with the
+              speed gain, switch on/off. The Dispatch Pad's panel is the
+              market.
+        - [x] The Fabricator: circuits → Data Cartridges, which the Lab
+              reads into research (replaces the assembler's hidden
+              "2 circuits → research").
+        - [x] Power overload: a brownout still only slows things, but
+              demand above 125% of supply for 5 s trips the breaker; reset
+              it on the power gauge once the load is down.
+        - [x] Market saturation at the Dispatch Pad: each sale lowers that
+              item's price, prices recover over a minute or so; Priority
+              Requests pay in full. Spamming one product stops paying.
+        - [x] Status bubbles over machines (waiting, blocked, no power,
+              off) and a production overview (made / used / sold per
+              minute, machines by status).
+        - [ ] Record DELTA's new and changed tutorial lines.
+      - [ ] **4b — content.** Press (plates, wire), Foundry (steel), Mixer
+            (explosives), new products (plates, wire, steel, capacitors,
+            motors, explosives, the Selene Shell) and the five phases
+            rebalanced so every chain is needed; balanced with a headless
+            reference-factory simulation.
+      - [ ] **4c — world & tidiness.** A small fenced plot that grows every
+            phase (NILE "acquires" the neighbouring land); the pond becomes
+            a river that NIHIL dams at the reveal, exposing sulfur; select /
+            move / copy groups of machines; a pipette.
 - [ ] **Iteration 5 — finale & polish.** Ending choice, credits, save slots,
       settings. (The firing cinematic was done in 3b.)

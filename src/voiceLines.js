@@ -9,7 +9,7 @@
 import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, welcomeBack } from './story.js';
 
 /** Speakers with a voice. Memos are read, not spoken. */
-export const VOICED = new Set(['delta', 'nile']);
+export const VOICED = new Set(['delta', 'nile', 'boss']);
 
 function fnv1a(str) {
     let h = 0x811c9dc5;
@@ -48,7 +48,7 @@ export function collectVoiceLines() {
     }
     for (const phase of OBJECTIVES) for (const o of phase) if (o.hint) add(delta(o.hint));
     for (const text of AMBIENT.early) add(delta(text));
-    for (const text of AMBIENT.late) add(delta(text, 'sinister'));
+    for (const t of AMBIENT.late) add(typeof t === 'string' ? delta(t, 'sinister') : t);
     for (const text of [...REACTIONS.orderCompleted, ...REACTIONS.orderFailed]) add(delta(text));
     let prev = null;
     for (const line of ENDING.lines) {

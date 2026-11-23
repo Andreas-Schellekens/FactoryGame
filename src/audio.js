@@ -48,7 +48,7 @@ export function createAudio() {
     const lastCue = new Map();
     let combo = 0;
     let comboUntil = 0;
-    const seen = { init: false, orderStart: null, orderStatus: 'none', techCount: 0, brownout: false, paused: false };
+    const seen = { init: false, orderStart: null, orderStatus: 'none', techCount: 0, brownout: false, paused: false, tripped: false, overload: 0 };
     const devLog = import.meta.env?.DEV ? [] : null;
 
     // ---- Voice manifest (clips are optional: without them DELTA is text-only) ----
@@ -169,13 +169,23 @@ export function createAudio() {
         return manifest?.lines?.[voiceKey(line)] ?? null;
     }
 
-    /** DELTA: a touch of presence. NILE broadcasts: a narrow PA-system band with a little room. */
+    /**
+     * DELTA: a touch of presence. NILE broadcasts: a narrow PA-system band with a little room.
+     * Nolan: a warm low end and the room of a large, quiet boardroom.
+     */
     function voiceChain(line) {
         const hp = ctx.createBiquadFilter();
         hp.type = 'highpass';
-        hp.frequency.value = line.who === 'nile' ? 280 : 90;
+        hp.frequency.value = line.who === 'nile' ? 280 : line.who === 'boss' ? 70 : 90;
         const eq = ctx.createBiquadFilter();
-        if (line.who === 'nile') {
+        if (line.who === 'boss') {
+            eq.type = 'lowshelf';
+            eq.frequency.value = 220;
+            eq.gain.value = 2.5;
+            const send = ctx.createGain();
+            send.gain.value = 0.2;
+            eq.connect(send).connect(n.sfxWet);
+        } else if (line.who === 'nile') {
             eq.type = 'lowpass';
             eq.frequency.value = 3600;
             const send = ctx.createGain();
@@ -281,7 +291,8 @@ export function createAudio() {
 
         /**
          * Per-frame world snapshot: { mood, paused, throttle, working, orderStatus,
-         * orderStart, techCount, playing }. Detects transitions and cues them.
+         * orderStart, techCount, playing, overload, tripped }. Detects transitions
+         * and cues them.
          */
         update(dt, w) {
             if (!ctx) return;
@@ -307,7 +318,14 @@ export function createAudio() {
             seen.orderStatus = w.orderStatus;
             if (w.techCount > seen.techCount) cue('tech');
             seen.techCount = w.techCount;
-            if (!seen.brownout && w.throttle < 0.95) {
+            // The breaker: alarm beeps while the overload countdown climbs, a clunk when it trips.
+            if (w.tripped && !seen.tripped) cue('trip');
+            else if (!w.tripped && w.overload > seen.overload && w.overload > 0.05 && !w.paused) cue('overload');
+            seen.tripped = !!w.tripped;
+            seen.overload = w.overload ?? 0;
+            if (w.tripped) {
+                seen.brownout = true; // the trip is its own sound; powerup plays once the grid is back
+            } else if (!seen.brownout && w.throttle < 0.95) {
                 seen.brownout = true;
                 cue('brownout');
             } else if (seen.brownout && w.throttle >= 0.999) {
@@ -387,6 +405,8 @@ export function createAudio() {
         },
         /** How many voice clips are installed (0 = DELTA is text-only). */
         voiceLines: () => Object.keys(manifest?.lines ?? {}).length,
+        /** Length of a line's recorded clip in ms, or null (text only). */
+        clipMs: (line) => clipFor(line)?.ms ?? null,
 
         // ---- Dev / tests ----
         get context() { return ctx; },

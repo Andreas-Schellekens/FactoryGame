@@ -10,10 +10,11 @@
 // "down" (+y) is world +z. Model forward is +z, so dir → yaw via YAW.
 import * as THREE from 'three';
 import {
-    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, SINK_VALUE,
+    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA,
 } from './config.js';
 import {
     grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
+    machineStatus,
 } from './grid.js';
 import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
 import { buildEnvironment } from './environment.js';
@@ -146,6 +147,49 @@ function dotTexture() {
     return new THREE.CanvasTexture(c);
 }
 
+/**
+ * Status bubbles over machines, one texture per machineStatus() code that
+ * means "look here": a coloured disc with a dark rim and a white glyph.
+ */
+function statusTextures() {
+    const make = (fill, glyph) => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 64;
+        const g = c.getContext('2d');
+        g.fillStyle = 'rgba(8,14,26,0.85)';
+        g.beginPath();
+        g.arc(32, 32, 30, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = fill;
+        g.beginPath();
+        g.arc(32, 32, 25, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = '#fff';
+        g.strokeStyle = '#fff';
+        g.lineWidth = 5;
+        g.lineCap = 'round';
+        g.lineJoin = 'round';
+        glyph(g);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    };
+    const dots = (g) => [20, 32, 44].forEach((x) => { g.beginPath(); g.arc(x, 33, 4, 0, Math.PI * 2); g.fill(); });
+    const bang = (g) => { g.fillRect(29, 15, 6, 22); g.beginPath(); g.arc(32, 46, 3.6, 0, Math.PI * 2); g.fill(); };
+    const bolt = (g) => { g.beginPath(); g.moveTo(36, 12); g.lineTo(22, 35); g.lineTo(32, 35); g.lineTo(28, 52); g.lineTo(43, 28); g.lineTo(33, 28); g.closePath(); g.fill(); };
+    const powerOff = (g) => { g.beginPath(); g.arc(32, 34, 13, -Math.PI * 0.3, Math.PI * 1.3); g.stroke(); g.beginPath(); g.moveTo(32, 15); g.lineTo(32, 31); g.stroke(); };
+    const lock = (g) => { g.fillRect(21, 30, 22, 17); g.beginPath(); g.arc(32, 29, 8, Math.PI, 0); g.stroke(); };
+    return {
+        input: make('#5d6b80', dots),     // waiting for an ingredient
+        blocked: make('#e8761c', bang),   // finished product can't leave
+        tripped: make('#e2483d', bolt),   // breaker tripped
+        slow: make('#d9a43a', bolt),      // brownout
+        fuel: make('#5d6b80', bolt),      // generator without coal
+        off: make('#3c4656', powerOff),   // switched off
+        locked: make('#3c4656', lock),    // recipe needs research
+    };
+}
+
 function beamTexture() {
     const c = document.createElement('canvas');
     c.width = 4;
@@ -252,6 +296,63 @@ export async function createRenderer(container, { onProgress } = {}) {
         dim: new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }),
     };
     const dotTex = dotTexture();
+    // The Fabricator's own parts: an articulated arm in machine colours.
+    const fabScreenMat = new THREE.MeshStandardMaterial({ color: 0x0b1524, emissive: 0x3cc8b4, emissiveIntensity: 0.9, roughness: 0.4 });
+    const armMats = {
+        yellow: new THREE.MeshStandardMaterial({ color: 0xf3b23c, roughness: 0.5, flatShading: true }),
+        steel: new THREE.MeshStandardMaterial({ color: 0x5c6470, roughness: 0.4, metalness: 0.3, flatShading: true }),
+        dark: new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.5, flatShading: true }),
+    };
+    const armGeo = {
+        turntable: new THREE.CylinderGeometry(0.1, 0.12, 0.06, 12),
+        joint: new THREE.SphereGeometry(0.05, 10, 8),
+        upper: new THREE.BoxGeometry(0.07, 0.3, 0.07),
+        fore: new THREE.BoxGeometry(0.06, 0.24, 0.06),
+        wrist: new THREE.BoxGeometry(0.1, 0.04, 0.06),
+        finger: new THREE.BoxGeometry(0.02, 0.07, 0.04),
+    };
+    /** { root, base, shoulder, elbow }: base turns, shoulder and elbow bend (rotation.z). */
+    function robotArm() {
+        const mesh = (geo, m) => {
+            const o = new THREE.Mesh(geo, m);
+            o.castShadow = true;
+            return o;
+        };
+        const root = new THREE.Group();
+        const base = new THREE.Group();
+        root.add(base);
+        const table = mesh(armGeo.turntable, armMats.steel);
+        table.position.y = 0.03;
+        base.add(table);
+        const shoulder = new THREE.Group();
+        shoulder.position.y = 0.08;
+        base.add(shoulder);
+        shoulder.add(mesh(armGeo.joint, armMats.dark));
+        const upper = mesh(armGeo.upper, armMats.yellow);
+        upper.position.y = 0.15;
+        shoulder.add(upper);
+        const elbow = new THREE.Group();
+        elbow.position.y = 0.3;
+        shoulder.add(elbow);
+        elbow.add(mesh(armGeo.joint, armMats.dark));
+        const fore = mesh(armGeo.fore, armMats.yellow);
+        fore.position.y = 0.12;
+        elbow.add(fore);
+        const wrist = mesh(armGeo.wrist, armMats.steel);
+        wrist.position.y = 0.25;
+        elbow.add(wrist);
+        for (const sx of [-0.035, 0.035]) {
+            const f = mesh(armGeo.finger, armMats.dark);
+            f.position.set(sx, 0.3, 0);
+            elbow.add(f);
+        }
+        shoulder.rotation.z = -0.55;
+        elbow.rotation.z = 1.7;
+        base.rotation.y = -0.6;
+        return { root, base, shoulder, elbow };
+    }
+    const STATUS_TEX = statusTextures();
+    let statusShown = true; // off during the ending
     const tierMat = new THREE.SpriteMaterial({ map: dotTex, color: 0xffd54a, depthTest: false });
     const barBgMat = new THREE.SpriteMaterial({ color: 0x000000, opacity: 0.55, transparent: true, depthTest: false });
     const barFillMat = new THREE.SpriteMaterial({ color: 0x6ee7b7, depthTest: false });
@@ -434,6 +535,21 @@ export async function createRenderer(container, { onProgress } = {}) {
                 addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
                 break;
             }
+            case 'fabricator': {
+                // A yellow robot arm on a machine bed, writing data cartridges at a teal reader.
+                const bed = assets.get('fabBed');
+                facing.add(bed);
+                const arm = robotArm();
+                arm.root.position.set(-0.08, bed.userData.height - 0.03, -0.08);
+                arm.root.scale.setScalar(1.45);
+                facing.add(arm.root);
+                parts.arm = arm;
+                const screen = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.14), fabScreenMat);
+                screen.position.set(0.17, bed.userData.height - 0.01, 0.13);
+                facing.add(screen);
+                addArrow(facing, 'down', arrowMats.out, false, 0.02, 0.47);
+                break;
+            }
             case 'lab': {
                 const body = assets.get('lab');
                 facing.add(body);
@@ -499,7 +615,8 @@ export async function createRenderer(container, { onProgress } = {}) {
                 break;
         }
 
-        // Status cluster above processors: progress bar, tier dots, power pip.
+        // Status cluster above processors: progress bar, tier dots, and a status
+        // bubble when something is wrong (waiting, blocked, no power, off…).
         if (!ghost && (UPGRADABLE.has(m.type) || m.type === 'generator')) {
             const top = 1.05;
             const bg = new THREE.Sprite(barBgMat);
@@ -509,16 +626,16 @@ export async function createRenderer(container, { onProgress } = {}) {
             fill.center.set(0, 0.5);
             fill.scale.set(0.001, 0.06, 1);
             fill.position.set(-0.25, top, 0);
-            const pip = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex, color: 0xe74c3c, depthTest: false }));
-            pip.scale.set(0.14, 0.14, 1);
-            pip.position.set(0.34, top, 0);
-            for (const s of [bg, fill, pip]) {
+            const badge = new THREE.Sprite(new THREE.SpriteMaterial({ map: STATUS_TEX.input, depthTest: false, transparent: true }));
+            badge.scale.set(0.3, 0.3, 1);
+            badge.position.set(0, top + 0.3, 0);
+            for (const s of [bg, fill, badge]) {
                 s.renderOrder = 10;
                 s.visible = false;
                 obj.add(s);
             }
             parts.bar = { bg, fill };
-            parts.pip = pip;
+            parts.badge = badge;
             parts.tier = [];
             for (let i = 0; i < MAX_TIER; i++) {
                 const d = new THREE.Sprite(tierMat);
@@ -580,7 +697,7 @@ export async function createRenderer(container, { onProgress } = {}) {
                 if (v) removeView(key, false); // reshaped (corner) or replaced: swap silently
                 const built = buildView(m, x, y, shape);
                 machineLayer.add(built.obj);
-                const view = { sig, machine: m, tier: m.tier, pop: null, smoke: 0, ...built };
+                const view = { sig, machine: m, tier: m.tier, pop: null, smoke: 0, x, y, ...built };
                 views.set(key, view);
                 if (CONVEYORS.has(m.type)) {
                     env.coverCell(x, y, true);
@@ -651,6 +768,13 @@ export async function createRenderer(container, { onProgress } = {}) {
             }
             if (p.piston) p.piston.position.y = p.piston.userData.baseY - Math.sin(frac * Math.PI) * 0.09;
             if (p.cog && working) p.cog.rotation.y += dtSim * 0.004 * (POWER_DRAW[m.type] ? th : 1);
+            if (p.arm) {
+                // Swing from the inputs to the reader and back once per operation.
+                const go = working && th > 0 ? Math.sin(frac * Math.PI) : 0;
+                p.arm.base.rotation.y = -0.6 + go * 1.9;
+                p.arm.shoulder.rotation.z = -0.55 - go * 0.3;
+                p.arm.elbow.rotation.z = 1.7 + go * 0.35;
+            }
             if (p.dish && working) p.dish.rotation.y += dtSim * 0.0012 * th;
             if (p.mouth) {
                 const flicker = working ? 0.25 * Math.sin(animMs / 60 + v.obj.position.x) : 0;
@@ -674,13 +798,18 @@ export async function createRenderer(container, { onProgress } = {}) {
                 p.bar.bg.visible = p.bar.fill.visible = show;
                 if (show) p.bar.fill.scale.x = 0.5 * frac;
                 p.tier.forEach((d, i) => (d.visible = m.tier > 1 && i < m.tier));
-                // Power pip: red when starved (or an empty generator), amber in a brownout.
-                const starved = m.type === 'generator' ? m.fuelTicks <= 0 : POWER_DRAW[m.type] && working && th <= 0.02;
-                const brown = POWER_DRAW[m.type] && working && th < 1 && th > 0.02;
-                p.pip.visible = !!(starved || brown);
-                if (p.pip.visible) {
-                    p.pip.material.color.setHex(starved ? 0xe74c3c : 0xf0b64a);
-                    p.pip.material.opacity = starved ? 0.55 + 0.45 * Math.sin(animMs / 160) : 1;
+                // Status bubble: nothing while it works; otherwise what's wrong.
+                const code = statusShown ? machineStatus(v.x, v.y).code : 'working';
+                const tex = STATUS_TEX[code];
+                p.badge.visible = !!tex;
+                if (tex) {
+                    if (p.badge.material.map !== tex) {
+                        p.badge.material.map = tex;
+                        p.badge.material.needsUpdate = true;
+                    }
+                    const urgent = code === 'tripped' || code === 'blocked';
+                    p.badge.material.opacity = urgent ? 0.6 + 0.4 * Math.sin(animMs / 150) : 0.95;
+                    p.badge.position.y = 1.35 + 0.03 * Math.sin(animMs / 300 + v.x);
                 }
             }
         }
@@ -776,7 +905,7 @@ export async function createRenderer(container, { onProgress } = {}) {
             } else if (ev.kind === 'consume') {
                 removeItem(ev.item.id);
                 // Consumed on the pad = delivered (the pad can't be demolished).
-                if (ev.at.x === PAD_POS.x && ev.at.y === PAD_POS.y) padCredits += SINK_VALUE[ev.item.type] ?? 0;
+                if (ev.at.x === PAD_POS.x && ev.at.y === PAD_POS.y) padCredits += ev.paid ?? 0;
             }
         }
     }
@@ -807,6 +936,17 @@ export async function createRenderer(container, { onProgress } = {}) {
     );
     cursor.position.y = 0.03;
     overlay.add(cursor);
+    // The machine whose menu is open: a signal-orange frame that breathes.
+    const selectBox = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-0.55, 0, -0.55), new THREE.Vector3(0.55, 0, -0.55),
+            new THREE.Vector3(0.55, 0, 0.55), new THREE.Vector3(-0.55, 0, 0.55),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xff6a13, transparent: true, opacity: 0.95, depthTest: false }),
+    );
+    selectBox.renderOrder = 32;
+    selectBox.visible = false;
+    overlay.add(selectBox);
     const tintBox = new THREE.Mesh(
         new THREE.BoxGeometry(0.96, 0.7, 0.96),
         new THREE.MeshBasicMaterial({ color: 0xe74c3c, transparent: true, opacity: 0.22, depthWrite: false }),
@@ -896,6 +1036,12 @@ export async function createRenderer(container, { onProgress } = {}) {
         ghostFx.pop = Math.min(1, ghostFx.pop + dt / 170);
         ghostFx.yaw *= Math.exp(-dt / 55);
         ghostFx.wiggle = Math.max(0, ghostFx.wiggle - dt / 320);
+        const sel = state.selected;
+        selectBox.visible = !!sel && !state.cinematic;
+        if (selectBox.visible) {
+            selectBox.position.set(sel.x + 0.5, 0.04, sel.y + 0.5);
+            selectBox.scale.setScalar(1 + 0.04 * Math.sin(performance.now() / 260));
+        }
         cursor.visible = on;
         tintBox.visible = false;
         if (ghostShown) ghostShown.visible = false;
@@ -934,7 +1080,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     // arrow is bright when something is hooked up to it and dim when not; an output and
     // the input next to it line up into a little chain across the shared edge.
     const PORT_MAX = 1200;
-    const PORT_TOOLS = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'generator', 'lab']);
+    const PORT_TOOLS = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'fabricator', 'generator', 'lab']);
     const SIDE = { right: [1, 0], down: [0, 1], left: [-1, 0], up: [0, -1] };
     const INWARD = { right: 'left', left: 'right', up: 'down', down: 'up' };
     const portArrowGeo = (() => {
@@ -1293,11 +1439,12 @@ export async function createRenderer(container, { onProgress } = {}) {
         }
         return out;
     }
-    const icons = renderIcons(['belt', 'extractor', 'smelter', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'upgrade', 'erase', 'rotate']);
+    const icons = renderIcons(['belt', 'extractor', 'smelter', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'fabricator', 'upgrade', 'erase', 'rotate']);
 
     // ---- Frame ---------------------------------------------------------------------------
     let shownPhase = -1;
     function draw(state, dt) {
+        statusShown = !state.cinematic;
         const dtSim = state.paused ? 0 : dt * state.speed;
         animMs += dtSim;
         rig.update(dt);
@@ -1323,7 +1470,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         const now = performance.now();
         if (padCredits > 0 && now - lastFloat > 450) {
             lastFloat = now;
-            effects.floatText(new THREE.Vector3(PAD_POS.x + 0.5, 1.1, PAD_POS.y + 0.5), `+${padCredits}`);
+            if (padCredits >= 0.5) effects.floatText(new THREE.Vector3(PAD_POS.x + 0.5, 1.1, PAD_POS.y + 0.5), `+${Math.round(padCredits)}`);
             padCredits = 0;
         }
         updateOverlay(state, dt);

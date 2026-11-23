@@ -48,13 +48,14 @@ export const MACHINE_COST = {
     assembler: 30,
     generator: 30,
     lab: 25,
+    fabricator: 30,
 };
 
 // Power network: a global (wireless) grid, not items on belts. Each tick
 // supply vs demand yields a throttle in [0,1] that scales every powered
 // machine's progress — a brownout slows the whole factory instead of
 // stalling it.
-export const BASE_POWER_SUPPLY = 20;    // free "starter grid"; covers a small factory
+export const BASE_POWER_SUPPLY = 30;    // free "starter grid"; covers a small factory
 export const POWER_PER_GENERATOR = 10;  // supply added per fueled generator, per tick
 export const GENERATOR_FUEL_TICKS = 20; // ticks one coalOre keeps a generator burning
 // Per-tick draw of machines that need power to make progress. Extractors are
@@ -62,14 +63,21 @@ export const GENERATOR_FUEL_TICKS = 20; // ticks one coalOre keeps a generator b
 export const POWER_DRAW = {
     smelter: 4,
     assembler: 6,
+    fabricator: 5,
     lab: 3,
 };
+// Overload: a brownout (demand above supply) only slows the factory, but
+// demand above OVERLOAD_RATIO × supply for OVERLOAD_TICKS in a row trips the
+// breaker: every powered machine stops until the player resets it (and a
+// reset while still overloaded trips again within a second).
+export const OVERLOAD_RATIO = 1.25;
+export const OVERLOAD_TICKS = 20; // 5 s of warning at TICK_RATE 4
 
 // Research: labs convert `research` items (assembled from circuits) into
 // points; points buy permanent tech-tree unlocks. Costs are keyed by the
 // node ids in grid.js's `research.unlocked`. (Buildings — generator, lab… —
 // are unlocked by campaign phases instead; see campaign.js.)
-export const RESEARCH_PER_ITEM = 5;
+export const RESEARCH_PER_ITEM = 5; // points per Data Cartridge read by a lab
 export const TECH_COST = {
     fastBelts: 40,       // belts (and routers) move twice per tick
     advancedProduct: 60, // unlocks the advancedCircuit recipe
@@ -89,7 +97,16 @@ export const PROCESS_TICKS = {
     smelter: [4, 3, 2, 1],
     assembler: [6, 4, 3, 2],
     lab: [6, 4, 3, 2],
+    fabricator: [8, 6, 4, 3],
 };
+
+// The Dispatch Pad's market: every sale pushes that item's price down, and
+// prices recover over time. price = SINK_VALUE / (1 + pressure / MARKET_SATURATION),
+// where pressure is the number of recent sales, halving every
+// MARKET_HALF_LIFE_TICKS. So a flood of one product earns less and less, and
+// a factory that makes many things (and fills Priority Requests) earns more.
+export const MARKET_SATURATION = 20;      // recent sales that halve a price
+export const MARKET_HALF_LIFE_TICKS = 240; // one minute of sim time
 
 // Max units of each input type a processor will hold in its buffer.
 export const BUFFER_CAP = 4;

@@ -15,6 +15,8 @@
 //   npm run voice -- --only delta|nile     limit to one speaker
 //   npm run voice -- --limit 5             at most 5 lines this run (try a few first)
 //   npm run voice -- prune                 delete clips whose line no longer exists
+//   npm run voice -- listen                write voice-takes/listen.html: every game clip with its
+//                                          text in play order, the newest recordings on top
 //   npm run voice -- try <who> "<text>"    hear any text in a voice (delta | nile | boss), saved to
 //                                          voice-takes/try/ only, never added to the game; --mood sinister etc.
 //
@@ -22,7 +24,7 @@
 //   ELEVENLABS_API_KEY=...
 //   DELTA_VOICE_ID=...        the voice made in ElevenLabs Voice Design
 //   NILE_VOICE_ID=...         optional: the corporate announcer (NILE lines are skipped without it)
-//   NIHIL_BOSS_VOICE_ID=...   optional: Nolan Isaac Locke, NIHIL's boss (only used by `try` so far)
+//   NIHIL_BOSS_VOICE_ID=...   optional: Nolan Isaac Locke, NIHIL's chief executive (his lines are skipped without it)
 //   ELEVENLABS_MODEL=...      optional, default eleven_multilingual_v2
 import fs from 'node:fs';
 import path from 'node:path';
@@ -144,6 +146,7 @@ function selectLines(manifest) {
     const limit = Number(opt('limit') ?? Infinity);
     let todo = lines.filter((l) => !only || l.who === only);
     if (!env.NILE_VOICE_ID) todo = todo.filter((l) => l.who !== 'nile');
+    if (!env.NIHIL_BOSS_VOICE_ID) todo = todo.filter((l) => l.who !== 'boss');
     if (redo) todo = todo.filter((l) => l.text.toLowerCase().includes(redo.toLowerCase()));
     else if (!flag('force')) {
         todo = todo.filter((l) => !manifest.lines[l.key] || !fs.existsSync(path.join(VOICE_DIR, manifest.lines[l.key].file)));
@@ -296,6 +299,51 @@ async function tryLine() {
     console.log(`Saved ${path.relative(ROOT, file)} (${(clipMs(buf) / 1000).toFixed(1)} s)`);
 }
 
+function writeListen() {
+    const manifest = readManifest();
+    const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const entries = lines
+        .filter((l) => manifest.lines[l.key] && fs.existsSync(path.join(VOICE_DIR, manifest.lines[l.key].file)))
+        .map((l) => ({ l, e: manifest.lines[l.key], at: fs.statSync(path.join(VOICE_DIR, manifest.lines[l.key].file)).mtimeMs }));
+    if (!entries.length) throw new Error('No recorded clips yet');
+    // The newest batch: clips recorded within half an hour of the latest one.
+    const newest = Math.max(...entries.map((x) => x.at));
+    const fresh = entries.filter((x) => newest - x.at < 30 * 60 * 1000);
+    const row = ({ l, e }) => `<section><audio controls preload="none" data-file="${e.file}"></audio>
+<p><b>${esc(l.text)}</b><br><small>${l.who}${l.mood ? ` · ${l.mood}` : ''} · ${(e.ms / 1000).toFixed(1)} s · ${l.key}</small></p></section>`;
+    fs.mkdirSync(TAKES_DIR, { recursive: true });
+    const file = path.join(TAKES_DIR, 'listen.html');
+    fs.writeFileSync(file, `<!doctype html><meta charset="utf-8"><title>DELTA · recorded lines</title>
+<style>
+body{font:14px system-ui;background:#0e1a2c;color:#f2e8d5;max-width:920px;margin:24px auto;padding:0 16px}
+h2{font:600 12px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8d9bb0;margin:28px 0 8px}
+section{display:flex;gap:14px;align-items:center;border-bottom:1px solid #2b3d56;padding:10px 0}
+section.playing{background:#14243a}audio{height:32px;flex:none}p{margin:0}small{color:#8d9bb0}
+button{background:#ff6a13;color:#0e1a2c;border:0;padding:7px 14px;font-weight:700;cursor:pointer}
+</style>
+<h1>DELTA · recorded lines</h1>
+<p><button id="all">Play the newest ${fresh.length} in a row</button></p>
+<h2>Newest · ${fresh.length}</h2>
+<div id="fresh">${fresh.map(row).join('\n')}</div>
+<h2>Every line in the game · ${entries.length}</h2>
+${entries.map(row).join('\n')}
+<script>
+// Served by the dev server (npm run dev) the clips live at /assets/voice/; opened as a file, next door in public/.
+const base = location.protocol.startsWith('http') ? '/assets/voice/' : '../public/assets/voice/';
+document.querySelectorAll('audio[data-file]').forEach((a) => (a.src = base + a.dataset.file));
+document.addEventListener('play', (e) => {
+  for (const a of document.querySelectorAll('audio')) if (a !== e.target) a.pause();
+  document.querySelectorAll('section').forEach((s) => s.classList.toggle('playing', s.contains(e.target)));
+}, true);
+document.getElementById('all').onclick = () => {
+  const list = [...document.querySelectorAll('#fresh audio')];
+  const next = (i) => { if (i >= list.length) return; list[i].currentTime = 0; list[i].play(); list[i].onended = () => setTimeout(() => next(i + 1), 500); };
+  next(0);
+};
+</script>`);
+    console.log(`Wrote ${path.relative(ROOT, file)}: ${fresh.length} newest, ${entries.length} in all`);
+}
+
 function prune() {
     const manifest = readManifest();
     let removed = 0;
@@ -313,6 +361,7 @@ try {
     if (command === 'pick') pick();
     else if (command === 'pick-all') pickAll();
     else if (command === 'prune') prune();
+    else if (command === 'listen') writeListen();
     else if (command === 'try') await tryLine();
     else if (command === 'review') writeReview();
     else await generate();

@@ -9,8 +9,8 @@ export const STARTING_BUILDINGS = ['belt', 'extractor', 'smelter'];
 // count while that phase is active; completing it unlocks `unlocks` for good.
 export const PHASES = [
     { id: 'groundbreaking', requires: { ironIngot: 20 }, unlocks: ['assembler', 'splitter', 'merger'] },
-    { id: 'targeting', requires: { copperIngot: 15, circuit: 25 }, unlocks: ['lab'] },
-    { id: 'powercore', requires: { circuit: 60 }, unlocks: ['generator'] },
+    { id: 'targeting', requires: { copperIngot: 15, circuit: 25 }, unlocks: ['fabricator', 'lab', 'generator'] },
+    { id: 'powercore', requires: { circuit: 60 }, unlocks: [] },
     { id: 'payload', requires: { advancedCircuit: 20 }, unlocks: [] },
     { id: 'ignition', requires: { circuit: 80, advancedCircuit: 40 }, unlocks: [] },
 ];
