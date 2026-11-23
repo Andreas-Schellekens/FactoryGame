@@ -52,6 +52,10 @@ in the worst way. Portrait is an oscilloscope badge whose trace follows its
 mood (teal → bright sine when happy → magenta noise on a glitch → a red
 flatline when sinister) and bounces while it speaks.
 
+**Nolan Isaac Locke** — NIHIL's big boss (his initials spell N.I.L.). Not in the
+game yet; planned for after the reveal. He has his own ElevenLabs voice ready
+(`NIHIL_BOSS_VOICE_ID` in `.env`, not used by `scripts/voice.mjs` yet).
+
 **Protocol: Selene** — the cannon. Built in five phases by delivering goods to
 the **Dispatch Pad**:
 
@@ -61,8 +65,9 @@ the **Dispatch Pad**:
 4. **Payload** — advanced circuits → the reveal
 5. **Ignition** — circuits + advanced circuits → the ending
 
-**Ending (current):** the cannon fires, the Moon shatters, *Moon+* (an
-ad-supported orbital billboard) goes live. "Congratulations, Asset. You have
+**Ending (current):** played in the valley itself: the cannon swivels to the
+Moon and fires, the Moon shatters, *Moon+* (an ad-supported orbital billboard)
+switches on where it hung and stays there for the rest of the sandbox. "Congratulations, Asset. You have
 saved Earth from free things."
 *Planned:* an ending choice (fire at the Moon, or retarget NIHIL HQ).
 
@@ -142,10 +147,38 @@ Each iteration should be playable on its own before the next one starts.
       - [ ] Record DELTA's voice (Voice Design: a calm, slow woman in her
             late twenties) and, optionally, a NILE announcer; listen to the
             whole sound design and tune it.
-      - [ ] More juice (screen shake on phase completion, smoother tool
-            switching).
+      - [x] Juice: camera shake (phase completion, builds, demolitions,
+            the shot) and a zoom punch, pan momentum, a build ghost that pops
+            in, turns smoothly and shakes when refused, cost and refund
+            floats, a counting and flashing credits readout, requirement and
+            objective pops, a phase flash at the screen edges.
+      - [x] Build keys show the real machines: icons rendered at startup from
+            the 3D models (locked ones greyed with a lock); upgrade /
+            demolish / rotate get small 3D props in the same style (gold
+            chevrons over a machine, a sledgehammer on a crate, an arrow
+            round a belt).
+      - [x] The cannon redesigned as one artillery turret (turntable, cheek
+            plates, breech, railed barrel with bands and a muzzle brake),
+            with a tracking dish and a capacitor bank cabled into it; the
+            Dispatch Pad's tall light beam replaced by a compact drop-zone
+            marker (short cone, bobbing arrow, pulsing ring).
+      - [x] The cannon's construction site: blueprint holograms with a scan
+            line, real scaffolding around the part being built, a painted
+            launch deck (hazard border, NILE mark, red NIHIL repaint after
+            the reveal), cones and tape around the dig, crates, a crane and
+            beacons, cleared away when the cannon stands.
+      - [x] Port arrows on machines (teal in, orange out; dim when nothing
+            is hooked up, red when the output is blocked), on the build
+            ghost too, and an inspector that says what a machine takes,
+            makes and holds and how it is hooked up.
+      - [x] The ending rebuilt in the world, in the HUD's style: letterbox,
+            the camera cuts to the cannon, the turret swivels to the Moon
+            during the countdown, the shot (beam, recoil, flash, shockwave),
+            the Moon breaks, the Moon+ billboard switches on in its place and
+            stays in the sandbox sky, DELTA's last lines as subtitles, and a
+            mission report in the console style.
 - [ ] **Iteration 4 — content & balance.** New resources and intermediate
       products (steel, wire, plates, motors, explosives…), phases rebalanced
       into a 45–90 minute campaign.
-- [ ] **Iteration 5 — finale & polish.** Firing cinematic, ending choice,
-      credits, save slots, settings.
+- [ ] **Iteration 5 — finale & polish.** Ending choice, credits, save slots,
+      settings. (The firing cinematic was done in 3b.)

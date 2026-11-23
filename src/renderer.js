@@ -13,7 +13,7 @@ import {
     GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, SINK_VALUE,
 } from './config.js';
 import {
-    grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash,
+    grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
 } from './grid.js';
 import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
 import { buildEnvironment } from './environment.js';
@@ -157,6 +157,29 @@ function beamTexture() {
     g.fillStyle = grad;
     g.fillRect(0, 0, 4, 128);
     return new THREE.CanvasTexture(c);
+}
+
+/** Two stacked downward chevrons, white on a dark outline (tinted by the sprite's colour). */
+function dropChevronTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (const [w, style] of [[22, 'rgba(11,21,36,0.75)'], [11, '#ffffff']]) {
+        g.lineWidth = w;
+        g.strokeStyle = style;
+        for (const y of [30, 70]) {
+            g.beginPath();
+            g.moveTo(28, y);
+            g.lineTo(64, y + 30);
+            g.lineTo(100, y);
+            g.stroke();
+        }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
 }
 
 // -----------------------------------------------------------------------------
@@ -443,14 +466,24 @@ export async function createRenderer(container, { onProgress } = {}) {
                 break;
             }
             case 'sink': {
+                // A drop zone, not a lighthouse: a short soft light cone, a bobbing chevron pointing
+                // down at the pad, and a ring pulsing outward. Compact, so it never crosses the cannon.
                 obj.add(assets.get('pad'));
                 const beamMat = new THREE.MeshBasicMaterial({
-                    color: BRAND_BLUE, alphaMap: beamTexture(), transparent: true, opacity: 0.5,
+                    color: BRAND_BLUE, alphaMap: beamTexture(), transparent: true, opacity: 0.35,
                     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
                 });
-                const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.3, 7, 20, 1, true), beamMat);
-                beam.position.y = 3.5;
+                const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.36, 1.05, 20, 1, true), beamMat);
+                beam.position.y = PAD_TOP + 0.52;
                 obj.add(beam);
+                const chevron = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: dropChevronTexture(), color: BRAND_BLUE, transparent: true, depthWrite: false,
+                }));
+                chevron.scale.set(0.42, 0.42, 1);
+                chevron.position.y = 1.3;
+                chevron.renderOrder = 4;
+                obj.add(chevron);
+                parts.chevron = chevron;
                 const ringMat = new THREE.MeshBasicMaterial({
                     color: BRAND_BLUE, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
                 });
@@ -518,8 +551,9 @@ export async function createRenderer(container, { onProgress } = {}) {
             return;
         }
         dying.push({ obj: v.obj, t: 0 });
-        const small = v.machine.type === 'belt';
+        const small = CONVEYORS.has(v.machine.type);
         effects.puff(v.obj.position, { count: small ? 5 : 10, size: small ? 0.2 : 0.32, spread: small ? 0.3 : 0.5 });
+        if (!small) rig.shake(0.12);
     }
 
     function syncMachines() {
@@ -557,8 +591,9 @@ export async function createRenderer(container, { onProgress } = {}) {
                 if (isNew && !quiet && m.type !== 'sink') {
                     view.pop = 0;
                     built.obj.scale.setScalar(0.01);
-                    const small = m.type === 'belt';
+                    const small = CONVEYORS.has(m.type);
                     effects.puff(built.obj.position, { count: small ? 4 : 10, size: small ? 0.18 : 0.32, spread: small ? 0.25 : 0.5 });
+                    if (!small) rig.shake(0.16); // the thud of something heavy set down
                 }
                 // An extractor sits over its ore: shrink the rock under the frame.
                 const ore = oreViews.get(key);
@@ -629,7 +664,8 @@ export async function createRenderer(container, { onProgress } = {}) {
             }
             if (p.beam) {
                 const pulse = (animMs % 1800) / 1800;
-                p.beam.material.opacity = (0.22 + 0.12 * Math.sin(animMs / 400)) * (project.phase >= 3 ? 1 : 0.4); // subtle by day
+                p.beam.material.opacity = (0.3 + 0.12 * Math.sin(animMs / 400)) * (project.phase >= 3 ? 1 : 0.6); // subtle by day
+                p.chevron.position.y = 1.28 + 0.09 * Math.sin(animMs / 330);
                 p.ring.scale.setScalar(1 + pulse * 1.4);
                 p.ring.material.opacity = 0.9 * (1 - pulse);
             }
@@ -680,6 +716,7 @@ export async function createRenderer(container, { onProgress } = {}) {
             if (v.parts.beam) {
                 v.parts.beam.material.color.setHex(evil ? BRAND_RED : BRAND_BLUE);
                 v.parts.ring.material.color.setHex(evil ? BRAND_RED : BRAND_BLUE);
+                v.parts.chevron.material.color.setHex(evil ? BRAND_RED : BRAND_BLUE);
             }
         }
     }
@@ -779,6 +816,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     const ghostMat = new THREE.MeshBasicMaterial({ color: 0x2ecc71, transparent: true, opacity: 0.45, depthWrite: false });
     const ghosts = new Map();
     let ghostShown = null;
+    const ghostFx = { tool: null, dir: null, pop: 1, yaw: 0, wiggle: 0 };
 
     function ghostFor(tool, dir) {
         const key = `${tool}|${dir}`;
@@ -792,9 +830,16 @@ export async function createRenderer(container, { onProgress } = {}) {
                 }
             });
             obj.position.set(0, 0, 0);
-            ghosts.set(key, obj);
+            const wrap = new THREE.Group(); // animated (pop, turn, wiggle) without touching the view itself
+            wrap.add(obj);
+            ghosts.set(key, wrap);
         }
         return ghosts.get(key);
+    }
+
+    /** The build was refused: the ghost shakes its head. */
+    function nudgeGhost() {
+        ghostFx.wiggle = 1;
     }
 
     const focusGroup = new THREE.Group();
@@ -834,9 +879,23 @@ export async function createRenderer(container, { onProgress } = {}) {
         focusGroup.children.forEach((r) => r.scale.setScalar(1 + 0.08 * pulse));
     }
 
-    function updateOverlay(state) {
+    function updateOverlay(state, dt) {
         const { hovered, tool, dir } = state;
-        const on = hovered.x >= 0;
+        const on = hovered.x >= 0 && !state.cinematic;
+        // Ghost juice: pop in on a tool change, turn from the old direction on R.
+        if (tool !== ghostFx.tool) {
+            ghostFx.tool = tool;
+            ghostFx.pop = 0;
+            ghostFx.yaw = 0;
+        } else if (dir !== ghostFx.dir && ghostFx.dir) {
+            ghostFx.yaw = (YAW[ghostFx.dir] ?? 0) - (YAW[dir] ?? 0);
+            while (ghostFx.yaw > Math.PI) ghostFx.yaw -= Math.PI * 2;
+            while (ghostFx.yaw < -Math.PI) ghostFx.yaw += Math.PI * 2;
+        }
+        ghostFx.dir = dir;
+        ghostFx.pop = Math.min(1, ghostFx.pop + dt / 170);
+        ghostFx.yaw *= Math.exp(-dt / 55);
+        ghostFx.wiggle = Math.max(0, ghostFx.wiggle - dt / 320);
         cursor.visible = on;
         tintBox.visible = false;
         if (ghostShown) ghostShown.visible = false;
@@ -859,10 +918,117 @@ export async function createRenderer(container, { onProgress } = {}) {
             const ghost = ghostFor(tool, dir);
             if (!ghost.parent) overlay.add(ghost);
             ghost.visible = !grid[hovered.x][hovered.y].machine || tool === 'belt';
-            ghost.position.set(cx, 0.002, cz);
+            const wig = Math.sin(ghostFx.wiggle * Math.PI * 6) * 0.09 * ghostFx.wiggle;
+            ghost.position.set(cx + wig, 0.002, cz - wig);
+            ghost.scale.setScalar(Math.max(0.01, easeOutBack(ghostFx.pop)));
+            ghost.rotation.y = ghostFx.yaw;
             ghostMat.color.setHex(canBuildMachine(hovered.x, hovered.y, tool) ? 0x2ecc71 : 0xe74c3c);
             ghostShown = ghost;
         }
+    }
+
+    // ---- Ports: where items go in (teal) and out (orange) -----------------------------------
+    // Flat arrows at a machine's edges, drawn over the world like an overlay. Shown for
+    // every machine while a build tool is held, always for the hovered machine and the
+    // build ghost, and always (red, pulsing) for an output whose product is stuck. An
+    // arrow is bright when something is hooked up to it and dim when not; an output and
+    // the input next to it line up into a little chain across the shared edge.
+    const PORT_MAX = 1200;
+    const PORT_TOOLS = new Set(['belt', 'splitter', 'merger', 'extractor', 'smelter', 'assembler', 'generator', 'lab']);
+    const SIDE = { right: [1, 0], down: [0, 1], left: [-1, 0], up: [0, -1] };
+    const INWARD = { right: 'left', left: 'right', up: 'down', down: 'up' };
+    const portArrowGeo = (() => {
+        const sh = new THREE.Shape();
+        sh.moveTo(-0.05, -0.11);
+        sh.lineTo(0.05, -0.11);
+        sh.lineTo(0.05, 0.0);
+        sh.lineTo(0.12, 0.0);
+        sh.lineTo(0, 0.13);
+        sh.lineTo(-0.12, 0.0);
+        sh.lineTo(-0.05, 0.0);
+        sh.closePath();
+        const g = new THREE.ShapeGeometry(sh);
+        g.rotateX(-Math.PI / 2); // flat, pointing toward -z
+        g.rotateY(Math.PI);      // pointing toward +z, the models' forward (so YAW applies)
+        return g;
+    })();
+    const portMat = (color, opacity) => new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    });
+    const PORT_STYLE = {
+        inOn: portMat(0x3cc8b4, 0.95), inOff: portMat(0x3cc8b4, 0.4),
+        outOn: portMat(0xff7a2a, 0.95), outOff: portMat(0xff7a2a, 0.42),
+        blocked: portMat(0xff3b30, 1),
+    };
+    const portMeshes = {};
+    for (const [k, mat] of Object.entries(PORT_STYLE)) {
+        const im = new THREE.InstancedMesh(portArrowGeo, mat, PORT_MAX);
+        im.count = 0;
+        im.renderOrder = 31;
+        im.frustumCulled = false;
+        overlay.add(im);
+        portMeshes[k] = im;
+    }
+    const portOutline = new THREE.InstancedMesh(portArrowGeo.clone().scale(1.55, 1, 1.55), portMat(0x0b1524, 0.55), PORT_MAX);
+    portOutline.count = 0;
+    portOutline.renderOrder = 30;
+    portOutline.frustumCulled = false;
+    overlay.add(portOutline);
+    const portTmp = new THREE.Object3D();
+    let portsAt = 0;
+    let portsKey = '';
+
+    function collectPorts(state) {
+        const list = [];
+        if (state.cinematic) return list;
+        const { hovered, tool, dir } = state;
+        const all = PORT_TOOLS.has(tool);
+        const hx = hovered.x;
+        const hy = hovered.y;
+        for (let x = 0; x < W; x++) {
+            for (let y = 0; y < H; y++) {
+                const m = grid[x][y].machine;
+                if (!m || m.type === 'belt') continue;
+                const isHover = x === hx && y === hy;
+                if (all || isHover) {
+                    for (const p of machinePorts(x, y)) list.push({ x, y, ...p, scale: isHover ? 1.25 : 1 });
+                } else if (m.pendingOutput) {
+                    for (const p of machinePorts(x, y)) if (p.blocked) list.push({ x, y, ...p, scale: 1 });
+                }
+            }
+        }
+        // The build ghost shows the ports it would have, hooked up to what's already there.
+        if (hx >= 0 && PORT_TOOLS.has(tool) && tool !== 'belt' && !grid[hx][hy].machine) {
+            for (const p of machinePorts(hx, hy, tool, dir)) list.push({ x: hx, y: hy, ...p, scale: 1.15 });
+        }
+        return list;
+    }
+
+    function updatePorts(state, now) {
+        PORT_STYLE.blocked.opacity = 0.55 + 0.45 * Math.sin(now / 160);
+        const key = `${state.tool}|${state.dir}|${state.hovered.x},${state.hovered.y}|${state.cinematic ? 1 : 0}`;
+        if (now - portsAt < 120 && key === portsKey) return;
+        portsAt = now;
+        portsKey = key;
+        const counts = { inOn: 0, inOff: 0, outOn: 0, outOff: 0, blocked: 0 };
+        let outlines = 0;
+        for (const p of collectPorts(state)) {
+            const style = p.blocked ? 'blocked' : `${p.kind}${p.connected ? 'On' : 'Off'}`;
+            if (counts[style] >= PORT_MAX) continue;
+            const [dx, dz] = SIDE[p.side];
+            portTmp.position.set(p.x + 0.5 + dx * 0.38, 0.06, p.y + 0.5 + dz * 0.38);
+            portTmp.rotation.set(0, YAW[p.kind === 'out' ? p.side : INWARD[p.side]], 0);
+            portTmp.scale.setScalar(p.scale * (p.blocked ? 1.2 : 1));
+            portTmp.updateMatrix();
+            portMeshes[style].setMatrixAt(counts[style]++, portTmp.matrix);
+            if (outlines < PORT_MAX) portOutline.setMatrixAt(outlines++, portTmp.matrix);
+        }
+        for (const [k, im] of Object.entries(portMeshes)) {
+            im.count = counts[k];
+            im.instanceMatrix.needsUpdate = true;
+        }
+        portOutline.count = outlines;
+        portOutline.instanceMatrix.needsUpdate = true;
     }
 
     // ---- Picking + sizing --------------------------------------------------------------
@@ -891,6 +1057,244 @@ export async function createRenderer(container, { onProgress } = {}) {
     new ResizeObserver(resize).observe(container);
     resize();
 
+    // ---- Edit-tool props: small 3D scenes for the upgrade / demolish / rotate keys ---------
+    // Built from the same models and flat-shaded materials as the world, so their pictures
+    // match the machines'. Only ever rendered into icons.
+    const propMat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, flatShading: true, ...opts });
+    const PROP_FACE = Math.PI / 4; // the icon camera's azimuth: yaw a flat shape by this to face it
+    function chevronGeo() {
+        const sh = new THREE.Shape();
+        sh.moveTo(-0.36, -0.06);
+        sh.lineTo(0, 0.28);
+        sh.lineTo(0.36, -0.06);
+        sh.lineTo(0.36, -0.27);
+        sh.lineTo(0, 0.07);
+        sh.lineTo(-0.36, -0.27);
+        sh.closePath();
+        const g = new THREE.ExtrudeGeometry(sh, { depth: 0.12, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.025, bevelSegments: 1 });
+        g.center();
+        return g;
+    }
+    const TOOL_PROPS = {
+        /** A machine with two gold chevrons rising out of it. */
+        upgrade() {
+            const g = new THREE.Group();
+            const body = assets.get('assembler');
+            body.scale.multiplyScalar(0.86);
+            g.add(body);
+            const top = new THREE.Box3().setFromObject(body).max.y;
+            const gold = propMat(0xe0900a, { roughness: 0.45 });
+            const geo = chevronGeo();
+            for (const [i, y] of [[0, 0.22], [1, 0.47]]) {
+                const c = new THREE.Mesh(geo, gold);
+                c.position.set(0, top + y, 0);
+                c.rotation.y = PROP_FACE - 0.62;
+                c.scale.setScalar(0.78 - i * 0.08);
+                c.castShadow = true;
+                g.add(c);
+            }
+            return g;
+        },
+        /** A sledgehammer coming down on a crate that is already breaking up. */
+        erase() {
+            const g = new THREE.Group();
+            const crate = assets.get('siteCrate');
+            crate.scale.multiplyScalar(1.5);
+            crate.rotation.set(0.1, 0.45, -0.12);
+            g.add(crate);
+            const crateTop = new THREE.Box3().setFromObject(crate).max.y;
+            const rubble = propMat(0xc9a36a);
+            const dark = propMat(0x8a6a42);
+            for (const [x, y, z, s, m] of [
+                [0.36, 0.05, 0.26, 0.1, rubble], [0.12, 0.04, 0.46, 0.08, dark], [-0.38, 0.04, 0.3, 0.09, rubble],
+                [-0.42, 0.78, 0.2, 0.065, dark], [-0.22, 0.98, 0.34, 0.055, rubble], [0.3, 0.86, 0.42, 0.05, dark],
+            ]) {
+                const chunk = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), m);
+                chunk.position.set(x, y, z);
+                chunk.rotation.set(x * 7, z * 5, y * 3);
+                g.add(chunk);
+            }
+            const hammer = new THREE.Group();
+            const wood = propMat(0xb57c43);
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.86, 8), wood);
+            handle.position.y = 0.42;
+            hammer.add(handle);
+            const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.066, 0.26, 8), propMat(0xe2483d));
+            grip.position.y = 0.74;
+            hammer.add(grip);
+            const steel = propMat(0x5c6470, { roughness: 0.35, metalness: 0.35 });
+            const face = propMat(0xaab2bc, { roughness: 0.3, metalness: 0.4 });
+            const head = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.5, 8), steel);
+            head.rotation.z = Math.PI / 2;
+            hammer.add(head);
+            for (const side of [-1, 1]) {
+                const end = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.15, 0.07, 8), face);
+                end.rotation.z = -side * Math.PI / 2;
+                end.position.x = side * 0.28;
+                hammer.add(end);
+            }
+            // In the picture plane: the head lands on the crate, the handle sweeps up to the right.
+            const lean = new THREE.Group();
+            lean.rotation.y = PROP_FACE;
+            hammer.rotation.z = -0.72;
+            hammer.scale.setScalar(1.15);
+            hammer.position.set(0.12, crateTop + 0.12, 0);
+            lean.add(hammer);
+            g.add(lean);
+            return g;
+        },
+        /** A belt with a curved arrow going round it, clockwise as R turns things. */
+        rotate() {
+            const g = new THREE.Group();
+            const { obj } = buildView({ type: 'belt', dir: 'right', tier: 1, progress: 0, pendingOutput: null, buffer: {} }, 0, 0, 'straight', true);
+            obj.scale.setScalar(0.9);
+            g.add(obj);
+            const r = 0.74;
+            const y = 0.38;
+            // Clockwise seen from above (grid right -> down), with the gap at the back.
+            const a0 = -Math.PI * 0.95;
+            const a1 = a0 + Math.PI * 1.45;
+            class Arc extends THREE.Curve {
+                getPoint(t, target = new THREE.Vector3()) {
+                    const a = a0 + (a1 - a0) * t;
+                    return target.set(Math.cos(a) * r, y, Math.sin(a) * r);
+                }
+            }
+            const teal = propMat(0x3cc8b4, { roughness: 0.4, emissive: 0x0a3a34, emissiveIntensity: 0.4 });
+            g.add(new THREE.Mesh(new THREE.TubeGeometry(new Arc(), 40, 0.085, 8, false), teal));
+            const tip = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.4, 10), teal);
+            tip.position.set(Math.cos(a1) * r, y, Math.sin(a1) * r);
+            tip.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-Math.sin(a1), 0, Math.cos(a1)));
+            tip.position.addScaledVector(new THREE.Vector3(-Math.sin(a1), 0, Math.cos(a1)), 0.12);
+            g.add(tip);
+            const tail = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), teal);
+            tail.position.set(Math.cos(a0) * r, y, Math.sin(a0) * r);
+            g.add(tail);
+            return g;
+        },
+    };
+
+    // ---- Build-menu icons: the real machine views, photographed once -------------------------
+    /**
+     * PNG data URLs of each machine, posed as in the world (from the game's camera angle, output
+     * toward the lower right) on a transparent background. Rendered by the main renderer into a
+     * corner of its own canvas before the first frame and copied out in the same task, so there
+     * is no second WebGL context and the look (tone mapping, colour space) is exactly the game's.
+     * The belt carries some ore; the extractor stands on its crystal. {} on failure.
+     */
+    function renderIcons(types, size = 128) {
+        const out = {};
+        const canvasEl = renderer.domElement;
+        const pr = renderer.getPixelRatio();
+        const px = Math.round(size * pr);
+        if (canvasEl.width < px || canvasEl.height < px) return out;
+        const copy = document.createElement('canvas');
+        copy.width = copy.height = size;
+        const ctx2d = copy.getContext('2d');
+        const iconScene = new THREE.Scene();
+        iconScene.environment = scene.environment;
+        iconScene.environmentIntensity = 0.6;
+        iconScene.add(new THREE.HemisphereLight(0xfff4e0, 0x55607a, 1.5));
+        const keyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+        keyLight.position.set(-3, 6, 5);
+        iconScene.add(keyLight);
+        const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+        const elev = THREE.MathUtils.degToRad(34);
+        const az = Math.PI / 4;
+        const box = new THREE.Box3();
+        const sphere = new THREE.Sphere();
+        const clear = new THREE.Color();
+        renderer.getClearColor(clear);
+        const clearAlpha = renderer.getClearAlpha();
+        const exposure = renderer.toneMappingExposure;
+        renderer.toneMappingExposure = 1.05;
+        renderer.setClearColor(0x000000, 0);
+        renderer.setScissorTest(true);
+        renderer.setViewport(0, 0, size, size);
+        renderer.setScissor(0, 0, size, size);
+        try {
+            for (const type of types) {
+                const holder = new THREE.Group();
+                if (TOOL_PROPS[type]) {
+                    holder.add(TOOL_PROPS[type]());
+                } else {
+                    const { obj } = buildView({ type, dir: 'right', tier: 1, progress: 0, pendingOutput: null, buffer: {} }, 0, 0, 'straight', true);
+                    obj.position.set(0, 0, 0);
+                    holder.add(obj);
+                }
+                if (type === 'extractor') {
+                    const rock = oreTemplates.ironOre[0].clone();
+                    rock.scale.multiplyScalar(0.75);
+                    holder.add(rock);
+                }
+                if (type === 'belt') {
+                    for (const [x, item] of [[-0.24, 'ironOre'], [0.18, 'copperOre']]) {
+                        const it = createItemMesh(item);
+                        it.position.set(x, BELT_TOP + 0.05, 0);
+                        holder.add(it);
+                    }
+                }
+                iconScene.add(holder);
+                holder.updateMatrixWorld(true);
+                box.setFromObject(holder).getBoundingSphere(sphere);
+                cam.position.set(
+                    sphere.center.x + Math.sin(az) * Math.cos(elev) * 20,
+                    sphere.center.y + Math.sin(elev) * 20,
+                    sphere.center.z + Math.cos(az) * Math.cos(elev) * 20,
+                );
+                cam.lookAt(sphere.center);
+                if (TOOL_PROPS[type]) {
+                    // Props are spindly (a hammer, an arc): frame their actual silhouette, not their
+                    // bounding sphere, so they fill the key like the chunky machines do.
+                    cam.updateMatrixWorld();
+                    const v = new THREE.Vector3();
+                    const lo = new THREE.Vector2(Infinity, Infinity);
+                    const hi = new THREE.Vector2(-Infinity, -Infinity);
+                    holder.traverse((o) => {
+                        const pos = o.isMesh && o.geometry.attributes.position;
+                        if (!pos) return;
+                        for (let i = 0; i < pos.count; i++) {
+                            v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).applyMatrix4(cam.matrixWorldInverse);
+                            lo.min(v);
+                            hi.max(v);
+                        }
+                    });
+                    const half = Math.max(hi.x - lo.x, hi.y - lo.y) * 0.5 * 1.1;
+                    const cx = (lo.x + hi.x) / 2;
+                    const cy = (lo.y + hi.y) / 2;
+                    cam.left = cx - half;
+                    cam.right = cx + half;
+                    cam.top = cy + half;
+                    cam.bottom = cy - half;
+                } else {
+                    const half = sphere.radius * 1.0; // the whole model fits, nothing touches the edge
+                    cam.left = -half;
+                    cam.right = half;
+                    cam.top = half;
+                    cam.bottom = -half;
+                }
+                cam.updateProjectionMatrix();
+                renderer.clear();
+                renderer.render(iconScene, cam);
+                // GL's viewport origin is bottom-left: the icon sits in the canvas's bottom-left corner.
+                ctx2d.clearRect(0, 0, size, size);
+                ctx2d.drawImage(canvasEl, 0, canvasEl.height - px, px, px, 0, 0, size, size);
+                out[type] = copy.toDataURL('image/png');
+                iconScene.remove(holder);
+            }
+        } catch (err) {
+            console.warn('build icons could not be rendered', err);
+        } finally {
+            renderer.setScissorTest(false);
+            renderer.setViewport(0, 0, canvasEl.clientWidth, canvasEl.clientHeight);
+            renderer.setClearColor(clear, clearAlpha);
+            renderer.toneMappingExposure = exposure;
+            renderer.clear();
+        }
+        return out;
+    }
+    const icons = renderIcons(['belt', 'extractor', 'smelter', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'upgrade', 'erase', 'rotate']);
+
     // ---- Frame ---------------------------------------------------------------------------
     let shownPhase = -1;
     function draw(state, dt) {
@@ -904,6 +1308,10 @@ export async function createRenderer(container, { onProgress } = {}) {
         if (phase !== shownPhase) {
             env.setPhase(phase, instant);
             cannon.setPhase(phase, instant);
+            if (!instant) {
+                rig.shake(0.45);
+                rig.punch(0.06);
+            }
         }
         applyMood(dt, phase !== shownPhase && instant);
         shownPhase = phase;
@@ -918,20 +1326,128 @@ export async function createRenderer(container, { onProgress } = {}) {
             effects.floatText(new THREE.Vector3(PAD_POS.x + 0.5, 1.1, PAD_POS.y + 0.5), `+${padCredits}`);
             padCredits = 0;
         }
-        updateOverlay(state);
+        updateOverlay(state, dt);
+        updatePorts(state, now);
+        focusGroup.visible = !state.cinematic;
         updateFocus(state.focus ?? null);
         renderer.render(scene, rig.camera);
     }
 
-    /** Client (page) coordinates of a cell's centre — for tests and tooltips. */
-    function projectCell(x, y) {
-        const v = new THREE.Vector3(x + 0.5, 0, y + 0.5).project(rig.camera);
+    /** Client (page) coordinates of a world point. */
+    function toPage(p) {
+        const v = p.clone().project(rig.camera);
         const r = renderer.domElement.getBoundingClientRect();
         return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    }
+    /** Client (page) coordinates of a cell's centre — for tests and tooltips. */
+    function projectCell(x, y) {
+        return toPage(new THREE.Vector3(x + 0.5, 0, y + 0.5));
+    }
+
+    // ---- The ending, in the world ------------------------------------------------------
+    /** Is there world geometry (not sky) under this page point? */
+    const skyRay = new THREE.Raycaster();
+    function hitsWorld(p, targets) {
+        const r = renderer.domElement.getBoundingClientRect();
+        ndc.set(((p.x - r.left) / r.width) * 2 - 1, -((p.y - r.top) / r.height) * 2 + 1);
+        skyRay.setFromCamera(ndc, rig.camera);
+        return skyRay.intersectObjects(targets, true).some((h) => h.object.isMesh);
+    }
+
+    /**
+     * Cut to the cannon (default view direction) and set up the shot. In this
+     * view the sky only shows beyond the far edge of the valley, so look for a
+     * patch of clear sky in the upper part of the frame (raycasting against the
+     * world) for the Moon; the HUD moves the CSS Moon there under the cut, and
+     * the turret swivels to aim at it during the countdown. Zooms out until a
+     * patch is found. `radius` is the Moon's in px, `top` the highest y it may
+     * sit at (below the letterbox). Returns the Moon's page point, or null.
+     */
+    function frameCannon({ radius, top }) {
+        const cx = CANNON_AREA.x + CANNON_AREA.w / 2;
+        const cz = CANNON_AREA.y + CANNON_AREA.h / 2;
+        const r = renderer.domElement.getBoundingClientRect();
+        const targets = scene.children.filter((o) => o !== overlay && o.name !== 'cannon' && !o.isLight);
+        const clear = (p, rad) => {
+            if (hitsWorld(p, targets)) return false;
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                if (hitsWorld({ x: p.x + Math.cos(a) * rad, y: p.y + Math.sin(a) * rad }, targets)) return false;
+            }
+            return true;
+        };
+        let zoom = 0.95;
+        for (let attempt = 0; attempt < 6; attempt++, zoom *= 0.88) {
+            rig.snap({ x: cx, z: cz, zoom });
+            // The cannon's foot low and left of centre; the sky is up to the right.
+            const foot = toPage(new THREE.Vector3(cx, 0, cz));
+            rig.shiftPixels(r.left + r.width * 0.4 - foot.x, r.top + r.height * 0.74 - foot.y, r.height, { snap: true });
+            const ideal = { x: r.left + r.width * 0.76, y: top + radius * 0.4 };
+            const cands = [];
+            const step = radius * 0.7;
+            for (let y = top; y <= r.top + r.height * 0.55; y += step) {
+                for (let x = r.left + r.width * 0.45; x <= r.right - radius * 2.2; x += step) {
+                    cands.push({ x, y, d: Math.hypot(x - ideal.x, (y - ideal.y) * 1.6) });
+                }
+            }
+            cands.sort((p, q) => p.d - q.d);
+            for (const c of cands) {
+                if (!clear(c, radius * 1.2)) continue;
+                aimAt(c, false);
+                return { x: c.x, y: c.y };
+            }
+        }
+        return null; // no clear sky: the HUD keeps the Moon where it is
+    }
+
+    /** Swivel the turret so the barrel's on-screen line runs from its pivot through `p`. */
+    function aimAt(p, instant) {
+        const pv = cannon.pivot();
+        const P = toPage(pv);
+        const want = Math.atan2(p.y - P.y, p.x - P.x);
+        let best = 0;
+        let bestErr = Infinity;
+        for (let i = 0; i < 720; i++) {
+            const y = (i / 720) * Math.PI * 2 - Math.PI;
+            const T = toPage(pv.clone().addScaledVector(cannon.directionAt(y), 3));
+            let err = Math.abs(Math.atan2(T.y - P.y, T.x - P.x) - want);
+            if (err > Math.PI) err = Math.PI * 2 - err;
+            if (err < bestErr - 1e-6 || (Math.abs(err - bestErr) < 1e-3 && Math.abs(y) < Math.abs(best))) {
+                bestErr = err;
+                best = y;
+            }
+        }
+        cannon.aim(best, instant);
+    }
+
+    /** Page coordinates of the barrel at `along` (1 = the muzzle), for the beam. */
+    function muzzlePage(along = 1) {
+        return toPage(cannon.muzzle(along).pos);
+    }
+    function chargeCannon(level) {
+        cannon.charge(level);
+        rig.shake(level * 0.05);
+    }
+    function fireCannon() {
+        cannon.fire();
+        rig.shake(1);
+        rig.punch(0.1);
+    }
+    /** After the ending: ease back out to a wider view of the valley. */
+    function releaseCinematic() {
+        rig.zoomBy(0.8);
+    }
+
+    /** Floating text over a cell (e.g. a build's cost). */
+    function floatAt(x, y, text, color) {
+        effects.floatText(new THREE.Vector3(x + 0.5, 0.9, y + 0.5), text, color);
     }
 
     return {
         canvas: renderer.domElement, rig, applyEvents, tweenItems, draw, reset, pickCell, projectCell,
+        /** Build-menu icons: { [machineType]: PNG data URL } rendered from the real models. */
+        icons,
+        nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic,
         /** Render cost of the last frame (draw calls, triangles) — for profiling. */
         stats: () => ({ ...renderer.info.render }),
         /** Visual state worth keeping in a save: the concrete scars. */

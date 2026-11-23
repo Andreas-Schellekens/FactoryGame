@@ -344,7 +344,8 @@ export function createAudio() {
         },
 
         // ---- Ending ----
-        ending(lines, delaysSec) {
+        /** The ending: its sound on the cinematic's timeline ({ fire, ad, report } in seconds), then DELTA's lines. */
+        ending(lines, delaysSec, times = {}) {
             unlock();
             awaitingEnding = false;
             music.silence(1.2);
@@ -354,7 +355,7 @@ export function createAudio() {
             bus.connect(n.sfx);
             wetBus.connect(n.sfxWet);
             n.ending = [bus, wetBus];
-            cue('ending', { bus, wetBus });
+            cue('ending', { bus, wetBus, fireAt: times.fire, adAt: times.ad, finalAt: times.report });
             speakSequence(lines, delaysSec);
         },
         endingSkip() {

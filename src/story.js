@@ -120,14 +120,14 @@ export const BEATS = [
         when: (w) => w.phase === 0 && w.extractorOn.ironOre > 0 && !w.built.smelter,
         lines: [
             d('Beautiful. Your very first Extractor. NILE Legal has already trademarked it.', 'happy'),
-            d('Machines push their output in the direction of their arrow. Press R to rotate before placing; the ghost shows which way it faces. Now build a Smelter (key 3) a couple of tiles away, in line with that arrow.'),
+            d('See the orange arrow on it? That is where a machine sends things out; teal arrows are where it takes things in. Press R to rotate before placing; the ghost shows its arrows too. Now build a Smelter (key 3) a couple of tiles away, in line with that orange arrow.'),
         ],
     },
     {
         id: 'firstSmelter',
         when: (w) => w.phase === 0 && w.built.smelter > 0 && !w.produced.ironIngot,
         lines: [
-            d('Now connect them. Select Belt (key 1) and drag from the Extractor to the Smelter. Belts follow your mouse, corners included.'),
+            d("Now connect them. Select Belt (key 1) and drag from the Extractor's orange arrow to one of the Smelter's teal ones. Belts follow your mouse, corners included. An arrow lights up once something is hooked up to it."),
         ],
     },
     {
@@ -135,7 +135,7 @@ export const BEATS = [
         when: (w) => w.phase === 0 && w.produced.ironIngot > 0 && !w.deliveredTotal.ironIngot,
         lines: [
             d("An iron ingot! Humanity's odds of survival just rose by 0.0001 percent.", 'happy'),
-            d('Belt the ingots into the Dispatch Pad, the landing pad with the light beam. Everything you deliver goes straight into Protocol: Selene, the construction site right next to it, and NILE pays you per delivery. Generously-ish.'),
+            d('Belt the ingots into the Dispatch Pad, the landing pad with the arrow hovering over it. Everything you deliver goes straight into Protocol: Selene, the construction site right next to it, and NILE pays you per delivery. Generously-ish.'),
         ],
     },
     {
@@ -254,7 +254,7 @@ export const OBJECTIVES = [
         { id: 'ingot', text: 'Belt the ore into the Smelter', done: (w) => w.produced.ironIngot > 0,
             hint: "Select Belt (key 1) and drag from just after the Extractor's arrow into the Smelter. Items follow the arrows." },
         { id: 'deliver', text: 'Belt ingots into the Dispatch Pad', done: (w) => w.deliveredTotal.ironIngot > 0, focus: 'sink',
-            hint: "The Dispatch Pad is the ringed landing pad with the light beam. Drag a belt from the Smelter's output into it." },
+            hint: "The Dispatch Pad is the ringed landing pad with the arrow hovering over it. Drag a belt from the Smelter's output into it." },
     ],
     [
         { id: 'copper', text: 'Smelt a Copper Ingot', done: (w) => w.produced.copperIngot > 0, focus: 'copperOre',
@@ -326,4 +326,21 @@ export const ENDING = {
         nile('Moon+ is now live. Look up! Your complimentary three-day trial has already expired.'),
         d('Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose.'),
     ],
+    // The cinematic: the letterbox caption and the status readout as the shot plays out.
+    caption: 'Protocol: Selene · ignition sequence · click to skip',
+    status: { fire: 'Ignition', hit: 'Target · Moon', ad: 'Status · monetised' },
+    // What hangs in the sky where the Moon used to be.
+    billboard: { name: 'MOON+', tag: 'Now with ads · 49.99/mo' },
+    report: {
+        kicker: 'Mission report · filed by DELTA',
+        title: 'The end',
+        labels: {
+            seconds: 'Contract length', delivered: 'Items delivered', machines: 'Machines built',
+            moons: 'Moons removed', subscribers: 'Moon+ subscribers',
+        },
+        subscribers: '8 billion · auto-enrolled',
+        note: 'The sky is now a subscription. Your factory is still yours. Keep building, if you like.',
+        keep: 'Keep building',
+        fresh: 'New contract',
+    },
 };

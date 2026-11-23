@@ -25,6 +25,7 @@ export const CUE_META = {
     belt: { gap: 35, gain: 2.6 },
     demolish: { gap: 40, gain: 1.1 },
     upgrade: { gap: 80, gain: 0.9 },
+    check: { gap: 300, gain: 1.4 },
     deliver: { gap: 110, gain: 0.75 },
     orderStart: { gap: 500, gain: 3.2 },
     orderDone: { gap: 500, gain: 0.9 },
@@ -103,6 +104,11 @@ export const CUES = {
         [0, 2, 4, 7].forEach((deg, i) => tine(ctx, out, t + i * 0.055, degreeFreq(mood, deg, 1), { vel: 0.55 + i * 0.08, decay: 0.7, bright: 1.3 }));
         bell(ctx, wet, t + 0.22, degreeFreq(mood, 7, 1), { vel: 0.35, decay: 1.6 });
         noise(ctx, out, t + 0.05, { dur: 0.35, gain: 0.035, type: 'highpass', freq: 5000, freqEnd: 11000 });
+    },
+    /** An objective ticked off in the flight plan. */
+    check({ ctx, out, mood }, t) {
+        tine(ctx, out, t, degreeFreq(mood, 4, 1), { vel: 0.5, decay: 0.5, bright: 1.2 });
+        tine(ctx, out, t + 0.08, degreeFreq(mood, 7, 1), { vel: 0.6, decay: 0.8, bright: 1.2 });
     },
     /** Credits at the Dispatch Pad; `combo` climbs the scale for quick successive deliveries. */
     deliver({ ctx, out, wet, mood }, t, { combo = 0 } = {}) {
@@ -189,18 +195,21 @@ export const CUES = {
     },
 
     /**
-     * The ending, timed to the CSS animation in style.css: charge (0–2.6 s),
-     * beam (2.6), flash + boom (3.2), debris, the Moon+ billboard flickering
-     * on (6.0) with its ad jingle, and the closing chord with "The end" (18).
+     * The ending, on the cinematic's timeline (ui.js END): the charge builds
+     * until the shot (fireAt, 3.0 s), the beam, the impact a beat later with
+     * the Moon breaking, debris, the Moon+ billboard flickering on (adAt, 6 s)
+     * with its ad jingle, and the closing chord under the report (finalAt).
      */
-    ending(kit, t) {
+    ending(kit, t, { fireAt = 3.0, adAt = 6.0, finalAt = 16.5 } = {}) {
         const { ctx, out, wet } = kit;
-        sweep(ctx, out, t, 45, 62, 3.2, { type: 'sine', gain: 0.16, cutoff: 300, attack: 1.5 });
-        sweep(ctx, out, t + 0.3, 70, 1100, 2.3, { gain: 0.05, cutoff: 600, cutoffEnd: 5000, attack: 1.2 });
-        noise(ctx, out, t + 0.6, { dur: 2.0, gain: 0.05, type: 'highpass', freq: 800, freqEnd: 7000, attack: 1.8 });
-        sweep(ctx, out, t + 2.6, 2200, 180, 0.55, { type: 'square', gain: 0.06, cutoff: 5000 });
-        noise(ctx, out, t + 2.6, { dur: 0.5, gain: 0.12, type: 'highpass', freq: 3000 });
-        const boom = t + 3.2;
+        const shot = t + fireAt;
+        sweep(ctx, out, t, 45, 62, fireAt + 0.2, { type: 'sine', gain: 0.16, cutoff: 300, attack: fireAt * 0.5 });
+        sweep(ctx, out, t + 0.3, 70, 1100, fireAt - 0.3, { gain: 0.05, cutoff: 600, cutoffEnd: 5000, attack: fireAt * 0.4 });
+        noise(ctx, out, t + 0.6, { dur: fireAt - 0.6, gain: 0.05, type: 'highpass', freq: 800, freqEnd: 7000, attack: fireAt * 0.6 });
+        kick(ctx, out, shot, { gain: 0.6, from: 140, to: 40, dur: 0.5 });
+        sweep(ctx, out, shot, 2200, 180, 0.55, { type: 'square', gain: 0.06, cutoff: 5000 });
+        noise(ctx, out, shot, { dur: 0.5, gain: 0.12, type: 'highpass', freq: 3000 });
+        const boom = shot + 0.15;
         kick(ctx, out, boom, { gain: 0.95, from: 70, to: 22, dur: 3 });
         noise(ctx, out, boom, { dur: 3.6, gain: 0.32, type: 'lowpass', freq: 1400, freqEnd: 70, attack: 0.01 });
         noise(ctx, wet, boom, { dur: 4.5, gain: 0.2, type: 'lowpass', freq: 600, freqEnd: 60 });
@@ -209,16 +218,16 @@ export const CUES = {
             metal(ctx, wet, boom + 0.3 + Math.random() * 2.3, 600 + Math.random() * 2200, { vel: 0.18, decay: 0.3, pan: (Math.random() - 0.5) * 1.6 });
         }
         // Moon+ switches on: a flicker of glitches, then a relentlessly cheerful ad jingle.
-        const ad = t + 6.0;
+        const ad = t + adAt;
         for (let i = 0; i < 4; i++) CUES.glitch(kit, ad + i * 0.16);
         [0, 2, 4, 7, 4, 7].forEach((deg, i) => {
             blip(ctx, out, ad + 0.8 + i * 0.13, degreeFreq(0, deg, 1), { type: 'square', dur: 0.11, gain: 0.04, cutoff: 3200 });
             tine(ctx, out, ad + 0.8 + i * 0.13, degreeFreq(0, deg, 1), { vel: 0.4, decay: 0.4 });
         });
         bell(ctx, wet, ad + 1.65, degreeFreq(0, 14, 0), { vel: 0.6, decay: 2.5 });
-        CUES.endingFinal(kit, t + 18);
+        CUES.endingFinal(kit, t + finalAt);
     },
-    /** The closing chord under "The end" (also played on its own when the ending is skipped). */
+    /** The closing chord under the mission report (also played on its own when the ending is skipped). */
     endingFinal({ ctx, out, wet }, t) {
         // A hollow open fifth: no third, so neither triumphant nor sad. Just over.
         pad(ctx, out, t, [degreeFreq(4, 0, -1), degreeFreq(4, 4, -1), degreeFreq(4, 0, 0)], 4.5, { type: 'sawtooth', cutoff: 700, gain: 0.05, attack: 1.5, release: 4 });

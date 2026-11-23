@@ -518,6 +518,93 @@ function recipeFor(machine) {
     return null;
 }
 
+// ---- Ports: where items go in and out ---------------------------------------------
+// Read-only queries for the renderer's port markers and the inspector; they
+// mirror the transfer rules above. Processors and the pad accept from any
+// side (their front is their output, so in practice: back and sides), they
+// only ever send out the front; splitters take from the back and send out
+// three ways; mergers pull from back and sides, only from neighbours aimed at
+// them. Belts show their own direction and have no ports.
+const ALL_SIDES = ['right', 'down', 'left', 'up'];
+const NO_OUTPUT = new Set(['generator', 'lab', 'sink']);
+
+/** The sides a machine of `type` facing `dir` takes items in from and sends them out to. */
+export function portsFor(type, dir) {
+    switch (type) {
+        case 'extractor': return { in: [], out: [dir] };
+        case 'smelter':
+        case 'assembler': return { in: [OPPOSITE[dir], ...PERP[dir]], out: [dir] };
+        case 'generator':
+        case 'lab':
+        case 'sink': return { in: ALL_SIDES, out: [] };
+        case 'splitter': return { in: [OPPOSITE[dir]], out: splitterOutputs(dir) };
+        case 'merger': return { in: mergerInputs(dir), out: [dir] };
+        default: return { in: [], out: [] };
+    }
+}
+
+// Would an item sent out of (x,y) on `side` find a taker next door?
+function sideFeeds(x, y, side) {
+    const { dx, dy } = DIRS[side];
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!inBounds(nx, ny)) return false;
+    const n = grid[nx][ny].machine;
+    if (!n) return false;
+    const from = OPPOSITE[side]; // the neighbour's side that faces us
+    switch (n.type) {
+        case 'belt':
+        case 'splitter': return n.dir !== from; // anything but pointing straight back at us
+        case 'merger': return mergerInputs(n.dir).includes(from);
+        case 'extractor': return false;
+        default: return true; // processors and the pad take items from any side
+    }
+}
+
+// Does the neighbour on `side` of (x,y) send items into (x,y)?
+function sideFedFrom(x, y, side) {
+    const { dx, dy } = DIRS[side];
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!inBounds(nx, ny)) return false;
+    const n = grid[nx][ny].machine;
+    if (!n || NO_OUTPUT.has(n.type)) return false;
+    return outputsToward(n, nx, ny, x, y);
+}
+
+/**
+ * The ports of the machine at (x,y), or of a machine of `type`/`dir` that
+ * would be placed there (build preview): [{ side, kind: 'in'|'out',
+ * connected, blocked }]. `blocked`: a finished product is stuck in it.
+ */
+export function machinePorts(x, y, type = null, dir = null) {
+    const m = grid[x]?.[y]?.machine;
+    const t = type ?? m?.type;
+    if (!t) return [];
+    const d = dir ?? m.dir;
+    const p = portsFor(t, d);
+    const stuck = !type && !!m?.pendingOutput;
+    const ports = [];
+    for (const side of p.out) ports.push({ side, kind: 'out', connected: sideFeeds(x, y, side), blocked: stuck && side === d });
+    for (const side of p.in) ports.push({ side, kind: 'in', connected: sideFedFrom(x, y, side), blocked: false });
+    return ports;
+}
+
+/** What a machine type takes in and makes (item types), for the inspector. */
+export function machineIO(type) {
+    switch (type) {
+        case 'smelter': return { takes: Object.keys(SMELT), makes: Object.values(SMELT) };
+        case 'assembler': {
+            const rs = assemblerRecipes();
+            return { takes: [...new Set(rs.flatMap((r) => Object.keys(r.inputs)))], makes: rs.map((r) => r.output) };
+        }
+        case 'lab': return { takes: Object.keys(LAB_RECIPE.inputs), makes: [] };
+        case 'generator': return { takes: ['coalOre'], makes: [] };
+        case 'sink': return { takes: [...new Set([...Object.keys(SINK_VALUE), ...Object.keys(currentPhase()?.requires ?? {})])], makes: [] };
+        default: return { takes: [], makes: [] };
+    }
+}
+
 // Try to push a freshly produced item into the cell this machine points at.
 function tryEject(machine, x, y, type, events) {
     const d = DIRS[machine.dir];

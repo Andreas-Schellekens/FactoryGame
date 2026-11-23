@@ -16,8 +16,8 @@ import {
 } from './config.js';
 import {
     grid, score, tickCount, order, power, research, project, stats, unlockTech, startOrder,
-    initGrid, buildMachine, removeMachine, upgradeMachine, placeBelt, dirBetween,
-    serialize, loadState, isBuildingUnlocked,
+    initGrid, buildMachine, removeMachine, upgradeMachine, upgradeCost, placeBelt, dirBetween,
+    serialize, loadState, isBuildingUnlocked, machineCost, machinePorts, machineIO,
 } from './grid.js';
 import { unlockPhaseOf } from './campaign.js';
 import { BUILDING_NAMES } from './story.js';
@@ -74,6 +74,7 @@ const state = {
     lastBuildPulseMs: 0,
     drag: null, // { last: Pos|null, mode: 'lay'|'erase' } while a drag is active
     focus: null, // what the active objective points at ('ironOre', 'sink'…), ringed in 3D
+    cinematic: false, // the ending is playing: no input, no 3D overlay
 };
 
 // --- World snapshot for the story director (and objectives) ---
@@ -197,6 +198,22 @@ const director = createDirector({
                 delivered: Object.values(stats.delivered).reduce((a, b) => a + b, 0),
                 machines,
             },
+            // The ending plays in the world: the HUD drives these at its timeline's beats.
+            stage: {
+                start(opts) {
+                    state.cinematic = true;
+                    state.drag = null;
+                    held.clear();
+                    return renderer.frameCannon(opts);
+                },
+                charge: (level) => renderer.chargeCannon(level),
+                fire: () => renderer.fireCannon(),
+                muzzle: () => renderer.muzzlePage(),
+                end() {
+                    state.cinematic = false;
+                    renderer.releaseCinematic();
+                },
+            },
             onContinue: () => {},
             onNewGame: () => {
                 try {
@@ -212,6 +229,7 @@ const director = createDirector({
 const ui = createUI({
     root: document.getElementById('hud'),
     sound: audio,
+    icons: renderer.icons,
     onToolChange: selectTool,
     onRotate: rotateDir,
     onTogglePause: togglePause,
@@ -231,6 +249,8 @@ const ui = createUI({
             hoverY: state.hovered.y,
             hovered: onGrid ? grid[state.hovered.x][state.hovered.y] : null,
             hoverScreen: onGrid && !state.drag ? renderer.projectCell(state.hovered.x, state.hovered.y) : null,
+            hoveredIO: onGrid && grid[state.hovered.x][state.hovered.y].machine ? machineIO(grid[state.hovered.x][state.hovered.y].machine.type) : null,
+            hoveredPorts: onGrid ? machinePorts(state.hovered.x, state.hovered.y) : null,
             order: { ...order, remaining: Math.max(0, order.deadlineTick - tickCount) },
             power: { ...power },
             research: { points: research.points, unlocked: { ...research.unlocked } },
@@ -331,9 +351,11 @@ function actAt(gx, gy, button) {
         return;
     }
     if (state.tool === 'upgrade') {
+        const cost = upgradeCost(gx, gy);
         if (upgradeMachine(gx, gy)) {
             state.lastBuildPulseMs = 120;
             audio.cue('upgrade');
+            if (cost) renderer.floatAt(gx, gy, `−${cost}`, SPEND_COLOR);
         } else audio.cue('deny');
         return;
     }
@@ -341,14 +363,26 @@ function actAt(gx, gy, button) {
         if (buildMachine(gx, gy, state.tool, state.dir)) {
             state.lastBuildPulseMs = 120;
             audio.cue('build', { size: BUILD_SIZE[state.tool] ?? 1 });
-        } else audio.cue('deny');
+            renderer.floatAt(gx, gy, `−${machineCost(state.tool)}`, SPEND_COLOR);
+        } else {
+            audio.cue('deny');
+            renderer.nudgeGhost();
+        }
     }
 }
 
+const SPEND_COLOR = '#ff9d7e';
+const REFUND_COLOR = '#8ff0de';
+const CONVEYOR_TOOLS = new Set(['belt', 'splitter', 'merger']);
+
 function demolish(gx, gy) {
-    const had = !!grid[gx][gy].machine;
+    const type = grid[gx][gy].machine?.type;
     renderer.applyEvents(removeMachine(gx, gy), 0);
-    if (had && !grid[gx][gy].machine) audio.cue('demolish');
+    if (type && !grid[gx][gy].machine) {
+        audio.cue('demolish');
+        // Refunds show for real machines; conveyors are torn up by the dozen.
+        if (!CONVEYOR_TOOLS.has(type)) renderer.floatAt(gx, gy, `+${machineCost(type)}`, REFUND_COLOR);
+    }
 }
 
 // --- Input: keyboard (tools, rotation, sim speed, camera) ---
@@ -362,6 +396,10 @@ const PAN_SPEED = 0.014; // world units per ms at zoom 1
 
 window.addEventListener('keydown', (e) => {
     if (!state.started || e.target.closest?.('textarea, input:not([type="range"])')) return;
+    if (state.cinematic) {
+        if (e.key.toLowerCase() === 'm') ui.toast(audio.toggleMute() ? 'Sound off · M' : 'Sound on · M');
+        return;
+    }
     // A focused volume slider keeps its arrow keys; every other game key still works.
     if (e.target.matches?.('input[type="range"]') && e.key.startsWith('Arrow')) return;
     const k = e.key.toLowerCase();
@@ -463,6 +501,7 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerleave', () => (state.hovered = { x: -1, y: -1 }));
 
 canvas.addEventListener('pointerdown', (e) => {
+    if (state.cinematic) return;
     canvas.setPointerCapture(e.pointerId);
     if (e.button === 1) {
         e.preventDefault();
@@ -489,6 +528,7 @@ canvas.addEventListener('pointerdown', (e) => {
 
 const endDrag = (e) => {
     state.drag = null;
+    if (panDrag) renderer.rig.endPan(); // let the view glide on
     panDrag = null;
     if (e?.pointerId != null && canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 };
@@ -497,6 +537,7 @@ canvas.addEventListener('pointercancel', endDrag);
 
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (state.cinematic) return;
     renderer.rig.zoomBy(Math.exp(-e.deltaY * 0.0012));
 }, { passive: false });
 

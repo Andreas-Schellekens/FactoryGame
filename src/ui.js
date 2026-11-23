@@ -11,7 +11,8 @@
 //   keys      — build tools and edit tools as hardware keys
 //   comms     — DELTA's CAPCOM terminal (message queue + typewriter + log)
 //   tooltip   — the inspector, following the hovered cell
-// Title screen and ending are full-screen overlays on <body>.
+// Title screen and mission report are overlays on <body>; the ending itself
+// plays in the 3D world (letterbox, the shot, the Moon breaking, Moon+).
 //
 // Sound goes through the optional `sound` object (audio.js): the HUD only
 // tells it what happened (a comms line starts, a panel opens, the ending
@@ -21,7 +22,7 @@ import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor,
 } from './story.js';
-import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, endingSceneSVG } from './brand.js';
+import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG } from './brand.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -33,8 +34,8 @@ const ICON = {
     generator: 'M13 2L4 14h7l-1 8 9-12h-7z',
     lab: 'M9 3h6M10 3v6L5 19a1 1 0 0 0 1 2h12a1 1 0 0 0 1-2l-5-10V3',
     lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
-    upgrade: 'M12 19V5M5 12l7-7 7 7',
-    erase: 'M6 6l12 12M18 6L6 18',
+    upgrade: 'M6 13l6-6 6 6M6 19l6-6 6 6',
+    erase: 'M3 21l9-9M14.5 3.5l6 6-4 4-6-6z',
     rotate: 'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5',
     pause: 'M8 5v14M16 5v14',
     play: 'M7 5l12 7-12 7z',
@@ -64,12 +65,15 @@ function iconSVG(path, size = 24) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="round" aria-hidden="true"><path d="${path}"></path></svg>`;
 }
 
-/** A hardware key: number in the corner, icon, small caption. */
-function hwKey({ k, label, iconPath, sub = '', cls = '', onClick }) {
-    const b = el('button', `hwkey ${cls}`);
+/** A hardware key: number in the corner, the machine's picture (or a glyph), small caption. */
+function hwKey({ k, label, iconPath, img = null, sub = '', cls = '', onClick }) {
+    const b = el('button', `hwkey ${cls}${img ? ' has-img' : ''}`);
     b.type = 'button';
     b.setAttribute('aria-label', label);
-    b.innerHTML = `<span class="hwkey-k">${k}</span>${iconSVG(iconPath)}<span class="hwkey-sub"></span>`;
+    const picture = img
+        ? `<img class="hwkey-img" src="${img}" alt="" draggable="false"><span class="hwkey-lock">${iconSVG(ICON.lock, 13)}</span>`
+        : iconSVG(iconPath);
+    b.innerHTML = `<span class="hwkey-k">${k}</span>${picture}<span class="hwkey-sub"></span>`;
     b.querySelector('.hwkey-sub').textContent = sub;
     b.addEventListener('click', onClick);
     return b;
@@ -99,9 +103,18 @@ const fmtTime = (secs) => {
  *   sound?: ReturnType<typeof import('./audio.js').createAudio>,
  * }} opts
  */
-export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound }) {
+export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {} }) {
     root.innerHTML = '';
     const cue = (name) => sound?.cue(name);
+    let cinematic = false;   // the ending is playing: HUD hidden, comms held
+    let skyOverride = null;  // keeps the sky (and its Moon) up until the shot lands
+
+    // Moon+ lives in the sky (behind the 3D canvas), shown by CSS once the Moon is gone.
+    const view = document.getElementById('view');
+    const billboard = el('div', 'moonplus');
+    billboard.setAttribute('aria-hidden', 'true');
+    billboard.append(el('span', 'mp-name', ENDING.billboard.name), el('span', 'mp-tag', ENDING.billboard.tag));
+    view?.insertBefore(billboard, view.querySelector('canvas'));
     let phaseShown = -1; // phase the phase-dependent DOM was last built for
     let brandPhase = 0;  // for comms headers / portraits
 
@@ -170,7 +183,12 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         ['LMB', 'build · drag to lay belts'], ['RMB', 'demolish (refunds cost)'], ['R', 'rotate before placing'],
         ['1–4 7–0', 'buildings'], ['5 / 6', 'upgrade / demolish tool'], ['WASD', 'move view'], ['Wheel', 'zoom'],
         ['Q / E', 'turn view'], ['Space', 'pause'], ['+ / −', 'sim speed'], ['M', 'sound on / off'],
-    ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('');
+    ].map(([k, v]) => `<div><b>${k}</b><span>${v}</span></div>`).join('')
+        // What the arrows on machines mean.
+        + `<div class="help-legend">${[
+            ['lg-in', 'input: things go in here'], ['lg-out', 'output: things come out here'],
+            ['lg-off', 'dim: nothing hooked up yet'], ['lg-block', 'red: output blocked'],
+        ].map(([c, t]) => `<div><i class="lg ${c}"></i><span>${t}</span></div>`).join('')}</div>`;
     root.appendChild(help);
 
     // ---- Sound panel -------------------------------------------------------------
@@ -281,15 +299,15 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     const toolButtons = {};
     for (const [tool, k] of BUILD_DEFS) {
         toolButtons[tool] = hwKey({
-            k, label: `${BUILDING_NAMES[tool]}, key ${k}`, iconPath: ICON[tool],
+            k, label: `${BUILDING_NAMES[tool]}, key ${k}`, iconPath: ICON[tool], img: icons[tool] ?? null,
             onClick: () => onToolChange(tool),
         });
         keys.appendChild(toolButtons[tool]);
     }
     keys.appendChild(el('span', 'keys-divider'));
-    toolButtons.upgrade = hwKey({ k: '5', label: 'Upgrade, key 5', iconPath: ICON.upgrade, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
-    toolButtons.erase = hwKey({ k: '6', label: 'Demolish, key 6', iconPath: ICON.erase, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
-    const rotateKey = hwKey({ k: 'R', label: 'Rotate, R', iconPath: ICON.rotate, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
+    toolButtons.upgrade = hwKey({ k: '5', label: 'Upgrade, key 5', iconPath: ICON.upgrade, img: icons.upgrade ?? null, sub: 'UPGRADE', cls: 'edit', onClick: () => onToolChange('upgrade') });
+    toolButtons.erase = hwKey({ k: '6', label: 'Demolish, key 6', iconPath: ICON.erase, img: icons.erase ?? null, sub: 'DEMOLISH', cls: 'edit', onClick: () => onToolChange('erase') });
+    const rotateKey = hwKey({ k: 'R', label: 'Rotate, R', iconPath: ICON.rotate, img: icons.rotate ?? null, sub: 'ROTATE', cls: 'edit', onClick: onRotate });
     keys.append(toolButtons.upgrade, toolButtons.erase, rotateKey);
     root.appendChild(keys);
 
@@ -370,6 +388,9 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const who = speaker(current);
         comms.className = `comms who-${current.who} mood-${current.mood ?? 'neutral'} speaking`;
         portrait.innerHTML = who.svg;
+        portrait.classList.remove('pop');
+        void portrait.offsetWidth; // restart the pop animation
+        portrait.classList.add('pop');
         commsName.textContent = who.name;
         commsRole.textContent = who.role;
         commsText.textContent = '';
@@ -391,11 +412,11 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         queue.push(line);
         log.push({ ...line, label: speaker(line).name }); // header as it was when said
         if (log.length > 80) log.shift();
-        if (!typeTimer && !holdTimer) nextLine();
+        if (!typeTimer && !holdTimer && !cinematic) nextLine();
         else updateMore();
     }
-    /** Still mid-conversation (typing, lingering or with lines queued)? */
-    const isBusy = () => !!typeTimer || !!holdTimer || queue.length > 0;
+    /** Still mid-conversation (typing, lingering or with lines queued)? The ending counts as busy. */
+    const isBusy = () => cinematic || !!typeTimer || !!holdTimer || queue.length > 0;
 
     comms.addEventListener('click', (e) => {
         if (e.target === logBtn || logPanel.contains(e.target)) return;
@@ -428,6 +449,8 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
     let toastTimer = null;
     function toast(msg) {
         toastEl.textContent = msg;
+        toastEl.classList.remove('show');
+        void toastEl.offsetWidth;
         toastEl.classList.add('show');
         clearTimeout(toastTimer);
         toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
@@ -438,6 +461,10 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const unlocks = PHASES[phaseIndex]?.unlocks ?? [];
         celebrating = true;
         ribbon.classList.add('celebrate');
+        // A warm flash at the edges of the screen with the stinger.
+        const flash = el('div', 'phase-flash');
+        root.appendChild(flash);
+        setTimeout(() => flash.remove(), 1600);
         ribbonKicker.textContent = `Phase ${pad2(phaseIndex + 1)} · accomplished`;
         ribbonTitle.textContent = PHASE_TEXT[phaseIndex]?.title ?? '';
         ribbonExtra.textContent = unlocks.length ? `New · ${unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}` : '';
@@ -491,81 +518,248 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         begin.focus();
     }
 
-    function showEnding({ stats: s, onContinue, onNewGame }) {
-        const overlay = el('div', 'overlay ending');
-        const card = el('div', 'ending-card');
-        const scene = el('div', 'ending-scene');
-        scene.innerHTML = endingSceneSVG();
-        const lines = el('div', 'ending-lines');
-        const delays = [0.6, 7, 10.5, 14];
-        ENDING.lines.forEach((line, i) => {
-            const p = el('p', `ending-line who-${line.who}`);
-            p.style.animationDelay = `${delays[i] ?? 3 * i}s`;
-            p.appendChild(el('b', null, `${line.who === 'nile' ? 'NIHIL' : AI.name}  `));
-            p.appendChild(document.createTextNode(line.text));
-            lines.appendChild(p);
-        });
-        const final = el('div', 'ending-final');
-        final.style.animationDelay = '18s';
-        const statRow = el('div', 'ending-stats');
-        for (const [label, value] of [
-            ['Contract length', fmtTime(s.seconds)],
-            ['Items delivered', s.delivered],
-            ['Machines built', s.machines],
-            ['Moons removed', 1],
-        ]) {
-            const box = el('div', 'ending-stat');
-            box.append(el('span', 'ending-stat-value', String(value)), el('span', 'ending-stat-label', label));
-            statRow.appendChild(box);
+    // ---- The ending: a cinematic in the world, then the mission report --------------------------
+    // Timeline (seconds): letterbox and a cut to the cannon (0), countdown and charge (0–3), the
+    // shot (3.0), the Moon breaks and the sky turns (3.15), Moon+ switches on (6.0), DELTA's last
+    // lines as subtitles, the mission report (16.5). audio.js plays the score of it on the same times.
+    const END = { fire: 3.0, hit: 3.15, ad: 6.0, report: 16.5, lines: [0.3, 7.0, 10.4, 13.6] };
+
+    /**
+     * @param {{ stats: any, onContinue: () => void, onNewGame: () => void,
+     *   stage?: { start(moon: {x:number,y:number}): void, charge(level: number): void, fire(): void,
+     *             muzzle(): {x:number,y:number}, end(): void } }} opts
+     */
+    function showEnding({ stats: s, onContinue, onNewGame, stage }) {
+        cinematic = true;
+        // Whatever DELTA was saying waits until after the ending.
+        if (current && (typeTimer || holdTimer)) {
+            stopTimers();
+            sound?.lineStop();
+            queue.unshift(current);
         }
-        const actions = el('div', 'title-actions');
-        const keep = el('button', 'btn-primary', 'Keep building');
+        comms.classList.add('idle');
+        document.body.classList.add('cinematic', 'moonplus-wait');
+        skyOverride = 4;
+        document.body.dataset.phase = '4';
+
+        // Where the Moon hangs in the CSS sky, in page coordinates. The camera cuts to the
+        // cannon and finds clear sky along the barrel; the Moon moves there under the cut.
+        const vr = view.getBoundingClientRect();
+        const cs = getComputedStyle(view);
+        let moon = {
+            x: vr.left + (vr.width * parseFloat(cs.getPropertyValue('--moon-x'))) / 100,
+            y: vr.top + (vr.height * parseFloat(cs.getPropertyValue('--moon-y'))) / 100,
+        };
+        const vmin = Math.min(vr.width, vr.height);
+        const aim = stage?.start({ radius: vmin * 0.066, top: vr.top + vr.height * 0.12 + vmin * 0.07 });
+        if (aim) {
+            moon = aim;
+            view.style.setProperty('--moon-x', `${(((aim.x - vr.left) / vr.width) * 100).toFixed(2)}%`);
+            view.style.setProperty('--moon-y', `${(((aim.y - vr.top) / vr.height) * 100).toFixed(2)}%`);
+            document.body.classList.add('sky-cut'); // the sky's Moon jumps with the cut, not glides
+            requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
+        }
+
+        const lb = el('div', 'letterbox');
+        const top = el('div', 'lb-bar lb-top');
+        const clock = el('span', 'lb-clock', 'T−03.0');
+        top.append(el('span', 'lb-caption', ENDING.caption), clock);
+        const bottom = el('div', 'lb-bar lb-bottom');
+        const subWho = el('span', 'lb-who');
+        const subText = el('span', 'lb-text');
+        bottom.append(subWho, subText);
+        lb.append(top, bottom);
+        const catcher = el('div', 'end-catch'); // a click anywhere skips
+        document.body.append(catcher, lb);
+        requestAnimationFrame(() => lb.classList.add('in'));
+
+        // Sky effects: the Moon's pieces behind the 3D canvas, the beam and the flash in front.
+        const back = el('div', 'end-fx end-back');
+        view.insertBefore(back, view.querySelector('canvas'));
+        const front = el('div', 'end-fx end-front');
+        view.appendChild(front);
+        const local = (p) => ({ x: p.x - vr.left, y: p.y - vr.top });
+
+        const timers = [];
+        const at = (sec, fn) => timers.push(setTimeout(fn, sec * 1000));
+        const t0 = performance.now();
+        let fired = false;
+        let hitDone = false;
+        const countdown = setInterval(() => {
+            const t = (performance.now() - t0) / 1000;
+            if (t >= END.fire) return clearInterval(countdown);
+            clock.textContent = `T−${(END.fire - t).toFixed(1).padStart(4, '0')}`;
+            stage?.charge(t / END.fire);
+        }, 50);
+
+        function fire(withBeam = true) {
+            if (fired) return;
+            fired = true;
+            clearInterval(countdown);
+            clock.textContent = ENDING.status.fire;
+            stage?.fire();
+            if (!withBeam) return;
+            const m = local(stage?.muzzle() ?? moon);
+            const target = local(moon);
+            const beam = el('div', 'end-beam');
+            beam.style.left = `${m.x}px`;
+            beam.style.top = `${m.y}px`;
+            beam.style.width = `${Math.hypot(target.x - m.x, target.y - m.y)}px`;
+            beam.style.transform = `rotate(${Math.atan2(target.y - m.y, target.x - m.x)}rad)`;
+            front.appendChild(beam);
+        }
+        function hit(withShards = true) {
+            if (hitDone) return;
+            hitDone = true;
+            if (withShards) {
+                // The Moon breaks into wedges that tumble away, under a white flash.
+                const p = local(moon);
+                const pieces = el('div', 'moon-shards');
+                pieces.style.left = `${p.x}px`;
+                pieces.style.top = `${p.y}px`;
+                const n = 9;
+                for (let i = 0; i < n; i++) {
+                    const a0 = (i / n) * Math.PI * 2 + 0.2;
+                    const a1 = ((i + 1) / n) * Math.PI * 2 + 0.2;
+                    const am = (a0 + a1) / 2;
+                    const pt = (a) => `${(50 + 50 * Math.cos(a)).toFixed(1)}% ${(50 + 50 * Math.sin(a)).toFixed(1)}%`;
+                    const shard = el('span', 'shard');
+                    shard.style.clipPath = `polygon(50% 50%, ${pt(a0)}, ${pt(am)}, ${pt(a1)})`;
+                    const dist = 18 + Math.random() * 22; // vmin
+                    shard.style.setProperty('--tx', `${(Math.cos(am) * dist).toFixed(1)}vmin`);
+                    shard.style.setProperty('--ty', `${(Math.sin(am) * dist + 6).toFixed(1)}vmin`);
+                    shard.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 300)}deg`);
+                    pieces.appendChild(shard);
+                }
+                pieces.appendChild(el('span', 'moon-ring'));
+                front.appendChild(pieces);
+                front.appendChild(el('div', 'end-flash'));
+            }
+            // The sky turns to the aftermath at once (the flash hides the cut).
+            document.body.classList.add('sky-cut');
+            skyOverride = null;
+            document.body.dataset.phase = '5';
+            requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
+            clock.textContent = ENDING.status.hit;
+        }
+        function ad() {
+            document.body.classList.remove('moonplus-wait'); // Moon+ flickers on (CSS)
+            clock.textContent = ENDING.status.ad;
+        }
+        function subtitle(line) {
+            subWho.textContent = line.who === 'nile' ? `${BRAND.nihil.name} BROADCAST` : `${AI.name} ▸ CAPCOM`;
+            subWho.className = `lb-who who-${line.who}`;
+            subText.textContent = line.text;
+            bottom.classList.remove('show');
+            void bottom.offsetWidth;
+            bottom.classList.add('show');
+        }
+
+        // The mission report, in the console's style.
+        const R = ENDING.report;
+        const report = el('div', 'report hidden');
+        const head = el('div', 'rep-head');
+        const patch = el('span', 'rep-patch');
+        patch.innerHTML = patchSVG(true, 64, { text: false });
+        const headText = el('div', 'rep-headtext');
+        headText.append(el('span', 'rep-kicker', R.kicker), el('span', 'rep-title', R.title), el('span', 'rep-sub', `${GAME_TITLE} · ${BRAND.nihil.byline} · ${BRAND.nihil.motto}`));
+        head.append(patch, headText);
+        const grid = el('div', 'rep-grid');
+        for (const [key, value] of [
+            ['seconds', fmtTime(s.seconds)], ['delivered', s.delivered], ['machines', s.machines],
+            ['moons', 1], ['subscribers', R.subscribers],
+        ]) {
+            const cell = el('div', `rep-stat stat-${key}`);
+            cell.append(el('span', 'rep-value', String(value)), el('span', 'rep-label', R.labels[key]));
+            grid.appendChild(cell);
+        }
+        const actions = el('div', 'rep-actions');
+        const keep = el('button', 'btn-primary', R.keep);
         keep.type = 'button';
+        const fresh = el('button', 'btn-secondary', R.fresh);
+        fresh.type = 'button';
+        actions.append(keep, fresh);
+        report.append(head, grid, el('p', 'rep-note', R.note), actions);
+        document.body.appendChild(report);
+        const showReport = () => {
+            report.classList.remove('hidden');
+            catcher.classList.add('done');
+            keep.focus();
+        };
+
+        at(END.fire, () => fire());
+        at(END.hit, () => hit());
+        at(END.ad, ad);
+        ENDING.lines.forEach((line, i) => at(END.lines[i] ?? 3 + 3 * i, () => subtitle(line)));
+        at(END.report, showReport);
+        sound?.ending(ENDING.lines, END.lines, END);
+
+        catcher.addEventListener('click', () => {
+            if (!report.classList.contains('hidden')) return;
+            timers.forEach(clearTimeout);
+            fire(false);
+            hit(false);
+            ad();
+            subtitle(ENDING.lines[ENDING.lines.length - 1]);
+            showReport();
+            sound?.endingSkip();
+        });
+
+        function finish() {
+            timers.forEach(clearTimeout);
+            clearInterval(countdown);
+            lb.classList.remove('in');
+            setTimeout(() => lb.remove(), 700);
+            for (const n of [catcher, back, front, report]) n.remove();
+            document.body.classList.remove('cinematic', 'moonplus-wait');
+            view.style.removeProperty('--moon-x'); // Moon+ goes back to the Moon's usual spot in the sky
+            view.style.removeProperty('--moon-y');
+            skyOverride = null;
+            cinematic = false;
+            stage?.end();
+            if (queue.length && !typeTimer && !holdTimer) nextLine();
+        }
         keep.addEventListener('click', () => {
-            overlay.remove();
+            finish();
             sound?.afterEnding();
             onContinue();
         });
-        const fresh = el('button', 'btn-secondary', 'New contract');
-        fresh.type = 'button';
         fresh.addEventListener('click', onNewGame);
-        actions.append(keep, fresh);
-        final.append(
-            el('span', 'ending-title', 'The end'),
-            el('span', 'ending-sub', `${GAME_TITLE} · ${BRAND.nihil.byline}. ${BRAND.nihil.motto}. Thank you for playing.`),
-            statRow,
-            actions,
-        );
-        card.append(scene, lines, final);
-        overlay.appendChild(card);
-        overlay.addEventListener('click', (e) => {
-            if (actions.contains(e.target) || overlay.classList.contains('skip')) return;
-            overlay.classList.add('skip'); // skip to the final card
-            sound?.endingSkip();
-        });
-        document.body.appendChild(overlay);
-        sound?.ending(ENDING.lines, delays);
     }
 
     // ---- Per-frame refresh -------------------------------------------------------------------
     /** Inspector text for a cell, or null when there's nothing worth showing. */
-    function describe(cell) {
+    /** Inspector text for a cell: what a machine takes and makes, what it holds, and how it's hooked up. */
+    function describe(cell, io, ports) {
         if (!cell) return null;
         if (cell.blocked) return { title: 'Selene construction site', body: 'Reserved. Deliveries to the pad build the cannon here.' };
         const lines = [];
         let title = null;
+        const names = (list) => list.map((k) => (ITEM_NAMES[k] ?? k).toUpperCase()).join(' · ');
         if (cell.machine) {
             const m = cell.machine;
             title = BUILDING_NAMES[m.type] ?? m.type;
             if (m.tier && !['sink', 'belt', 'splitter', 'merger'].includes(m.type)) title += `  T${m.tier}`;
+            if (m.type === 'extractor' && cell.resource) lines.push(`MAKES ${names([cell.resource])}`);
+            if (io?.takes.length) lines.push(`TAKES ${names(io.takes)}`);
+            if (io?.makes.length) lines.push(`MAKES ${names(io.makes)}`);
+            if (m.type === 'splitter') lines.push('ROUTE 1 IN → 3 OUT, IN TURN');
+            if (m.type === 'merger') lines.push('ROUTE 3 IN → 1 OUT, IN TURN');
             const buf = Object.entries(m.buffer || {}).filter(([, n]) => n > 0);
-            if (buf.length) lines.push('IN   ' + buf.map(([k, n]) => `${(ITEM_NAMES[k] ?? k).toUpperCase()} ×${n}`).join(', '));
-            if (m.type === 'generator') lines.push(m.fuelTicks > 0 ? `FUEL ${m.fuelTicks} TICKS` : 'FUEL EMPTY');
-            if (m.pendingOutput) lines.push(`OUT  ${(ITEM_NAMES[m.pendingOutput] ?? m.pendingOutput).toUpperCase()}`);
-            if (m.dir && m.type !== 'sink') lines.push(`DIR  ${m.dir.toUpperCase()}`);
+            if (buf.length) lines.push('HOLDS ' + buf.map(([k, n]) => `${(ITEM_NAMES[k] ?? k).toUpperCase()} ×${n}`).join(', '));
+            if (m.type === 'generator') lines.push(m.fuelTicks > 0 ? `FUEL  ${m.fuelTicks} TICKS` : 'FUEL  EMPTY');
+            // Hook-up state, matching the arrows in the world.
+            const outs = (ports ?? []).filter((p) => p.kind === 'out');
+            const ins = (ports ?? []).filter((p) => p.kind === 'in');
+            if (outs.some((p) => p.blocked)) lines.push(`⚠ OUTPUT BLOCKED · ${(ITEM_NAMES[m.pendingOutput] ?? m.pendingOutput ?? '').toUpperCase()} WAITING`);
+            else if (outs.length && !outs.some((p) => p.connected)) lines.push('OUT   NOT CONNECTED');
+            if (ins.length && m.type !== 'sink') {
+                const fed = ins.filter((p) => p.connected).length;
+                lines.push(fed ? `IN    ${fed} OF ${ins.length} SIDES FED` : 'IN    NOTHING CONNECTED');
+            }
         }
-        if (cell.resource) {
-            if (!title) title = 'Ore node';
+        if (cell.resource && !cell.machine) {
+            title = 'Ore node';
             lines.push(`NODE ${ITEM_NAMES[cell.resource].toUpperCase()}`);
         }
         if (cell.item) lines.push(`ITEM ${(ITEM_NAMES[cell.item.type] ?? cell.item.type).toUpperCase()}`);
@@ -578,7 +772,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         const evil = phase >= 4;
         const b = brandFor(phase);
         document.body.classList.toggle('evil', evil);
-        document.body.dataset.phase = String(Math.min(phase, 5)); // sky layers (style.css)
+        document.body.dataset.phase = String(skyOverride ?? Math.min(phase, 5)); // sky layers (style.css)
         brandMark.innerHTML = markSVG(evil, 28);
         brandWord.textContent = b.name;
         brandCell.title = `${b.name} · ${b.full} · ${b.motto}`;
@@ -606,26 +800,33 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             bar.appendChild(fill);
             row.append(name, count, bar);
             reqList.appendChild(row);
-            reqRows[item] = { count, fill, n };
+            reqRows[item] = { row, count, fill, n, got: -1 };
         }
         unlockLine.textContent = def.unlocks.length
             ? `Unlocks · ${def.unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}`
             : phase === PHASES.length - 1 ? 'Completes Protocol: Selene' : PHASE_TEXT[phase].blurb;
     }
 
+    let planDone = new Set();
+    let planIds = new Set();
     function renderPlan(list) {
         const sig = list.map((o) => `${o.id}:${o.done ? 1 : 0}`).join('|');
         if (sig === planSig) return;
+        const fresh = list.some((o) => planIds.has(o.id)); // the same checklist as before (not a new phase or a load)
         planSig = sig;
         planList.innerHTML = '';
         const firstOpen = list.find((o) => !o.done);
         for (const o of list) {
-            const li = el('li', o.done ? 'done' : o === firstOpen ? 'active' : '');
+            const justDone = fresh && o.done && !planDone.has(o.id);
+            const li = el('li', `${o.done ? 'done' : o === firstOpen ? 'active' : ''}${justDone ? ' just-done' : ''}`);
+            if (justDone) cue('check');
             li.appendChild(el('span', 'box'));
             li.appendChild(el('span', 'plan-text', o.text));
             if (o === firstOpen) li.appendChild(el('span', 'plan-now', 'Now'));
             planList.appendChild(li);
         }
+        planDone = new Set(list.filter((o) => o.done).map((o) => o.id));
+        planIds = new Set(list.map((o) => o.id));
         planSec.classList.toggle('hidden', list.length === 0);
     }
 
@@ -652,19 +853,48 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         }
     }
 
+    let shownMoney = null;
+    let lastMoney = null;
+    let moneyFlash = null;
+    let lastTool = null;
+    let lastUpdate = performance.now();
+    function bump(node, cls, ms) {
+        node.classList.remove(cls);
+        void node.offsetWidth; // restart the animation
+        node.classList.add(cls);
+        clearTimeout(node._bump);
+        node._bump = setTimeout(() => node.classList.remove(cls), ms);
+    }
+
     function update() {
         const s = getState();
         if (!s) return;
+        const now = performance.now();
+        const dt = Math.min(100, now - lastUpdate);
+        lastUpdate = now;
         if (!soundPanel.classList.contains('hidden') && sound && muteBtn.classList.contains('off') !== sound.settings().muted) refreshSoundPanel();
         const { project } = s;
         if (project.phase !== phaseShown) buildPhaseDom(project.phase, project.complete);
 
-        creditsValue.textContent = credits(s.money);
+        // Credits count toward the real value and flash mustard (earned) or red (spent).
+        if (shownMoney === null) shownMoney = s.money;
+        if (lastMoney !== null && s.money !== lastMoney) {
+            creditsCell.classList.remove('earn', 'spend');
+            void creditsCell.offsetWidth;
+            creditsCell.classList.add(s.money > lastMoney ? 'earn' : 'spend');
+            clearTimeout(moneyFlash);
+            moneyFlash = setTimeout(() => creditsCell.classList.remove('earn', 'spend'), 500);
+        }
+        lastMoney = s.money;
+        const gap = s.money - shownMoney;
+        shownMoney = Math.abs(gap) < 1 ? s.money : shownMoney + gap * (1 - Math.exp(-dt / 70));
+        creditsValue.textContent = credits(Math.round(shownMoney));
         const { supply, demand, throttle } = s.power;
         powerLabel.textContent = `Power kW · ${demand}/${supply}`;
         const lit = supply > 0 ? Math.min(SEGMENTS, Math.ceil((demand / supply) * SEGMENTS)) : SEGMENTS;
         const tone = throttle >= 1 ? 'ok' : throttle >= 0.5 ? 'warn' : 'bad';
         segs.forEach((seg, i) => (seg.className = i < lit ? tone : ''));
+        powerCell.classList.toggle('alarm', throttle < 1 && demand > 0);
         pauseBtn.innerHTML = iconSVG(s.paused ? ICON.play : ICON.pause, 16);
         pauseBtn.setAttribute('aria-label', s.paused ? 'Resume' : 'Pause');
         speedLabel.textContent = `${s.speed.toFixed(2)}×`;
@@ -673,11 +903,15 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             const got = Math.min(row.n, project.delivered[item] ?? 0);
             row.count.textContent = `${pad2(got)}/${pad2(row.n)}`;
             row.fill.style.width = `${(got / row.n) * 100}%`;
+            if (row.got >= 0 && got > row.got) bump(row.row, 'bump', 380);
+            row.row.classList.toggle('met', got >= row.n);
+            row.got = got;
         }
         renderPlan(s.objectives ?? []);
 
         for (const [tool, btn] of Object.entries(toolButtons)) {
             btn.classList.toggle('active', s.tool === tool);
+            if (s.tool === tool && lastTool !== null && lastTool !== tool) bump(btn, 'pressed', 160);
             if (!(tool in MACHINE_COST)) continue;
             const unlocked = s.unlocked[tool];
             const sub = btn.querySelector('.hwkey-sub');
@@ -687,9 +921,11 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
             const arrives = unlockPhaseOf(tool) + 2;
             sub.textContent = !unlocked ? `PH ${pad2(arrives)}` : s.tool === tool ? BUILDING_NAMES[tool].toUpperCase() : `CR ${MACHINE_COST[tool]}`;
             btn.title = unlocked ? `${BUILDING_NAMES[tool]} · ${BUILDING_DESC[tool]}` : `${BUILDING_NAMES[tool]} · arrives in phase ${arrives}`;
-            btn.querySelector('svg path').setAttribute('d', unlocked ? ICON[tool] : ICON.lock);
+            // Pictured keys stay pictured (greyed, with a lock badge, via CSS); glyph keys swap to a lock.
+            if (!btn.classList.contains('has-img')) btn.querySelector('svg path').setAttribute('d', unlocked ? ICON[tool] : ICON.lock);
         }
 
+        lastTool = s.tool;
         orderSec.classList.toggle('hidden', project.phase < 1);
         renderOrder(s.order);
 
@@ -704,7 +940,7 @@ export function createUI({ root, onToolChange, onRotate, onTogglePause, onSpeedC
         }
 
         // Inspector follows the hovered cell.
-        const info = s.hoverScreen ? describe(s.hovered) : null;
+        const info = s.hoverScreen ? describe(s.hovered, s.hoveredIO, s.hoveredPorts) : null;
         tip.classList.toggle('hidden', !info);
         if (info) {
             tipTitle.textContent = info.title;

@@ -93,36 +93,3 @@ export function memoSVG() {
         <rect x="34" y="64" width="32" height="9" fill="#1c1608" transform="rotate(-6 50 68)" />
     </svg>`;
 }
-
-/** The ending scene: the cannon fires, the Moon breaks, Moon+ switches on. Animated by CSS. */
-export function endingSceneSVG() {
-    const frags = [
-        ['M-14 -10 L0 -22 L10 -6 L-4 2 Z', -150, -90, -70],
-        ['M2 -4 L20 -16 L26 4 L10 10 Z', 160, -110, 80],
-        ['M-24 4 L-6 0 L-10 20 L-26 18 Z', -170, 60, -120],
-        ['M4 8 L22 6 L18 26 L2 22 Z', 140, 90, 140],
-        ['M-8 -30 L8 -32 L4 -20 Z', 20, -160, 200],
-        ['M-30 -12 L-18 -16 L-20 -2 Z', -200, -20, -160],
-    ];
-    return `<svg viewBox="0 0 640 340" class="ending-svg">
-        <defs><linearGradient id="esky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#05070f" /><stop offset="1" stop-color="#2a0d18" />
-        </linearGradient></defs>
-        <rect width="640" height="340" fill="url(#esky)" />
-        ${Array.from({ length: 40 }, (_, i) => `<circle cx="${(i * 97) % 640}" cy="${(i * 53) % 230}" r="${i % 3 ? 0.8 : 1.4}" fill="#fff" opacity="0.6" />`).join('')}
-        <g class="end-moon"><circle cx="470" cy="100" r="54" fill="#dfe3ea" stroke="#9aa3b4" stroke-width="2" />
-            <circle cx="452" cy="86" r="10" fill="#c3c9d4" /><circle cx="490" cy="118" r="13" fill="#c3c9d4" /><circle cx="486" cy="78" r="6" fill="#c3c9d4" /></g>
-        <g transform="translate(470 100)">${frags.map(([d, dx, dy, r]) => `<path class="end-frag" style="--dx:${dx}px;--dy:${dy}px;--r:${r}deg" d="${d}" fill="#cfd5df" stroke="#8a93a3" />`).join('')}</g>
-        <line class="end-beam" x1="249" y1="217" x2="470" y2="100" stroke="#ffe08a" stroke-width="7" stroke-linecap="round" />
-        <g class="end-billboard"><rect x="384" y="58" width="172" height="84" fill="${C.alarm}" />
-            <text x="470" y="106" text-anchor="middle" font-size="40" font-weight="900" fill="#fff" font-family="'Big Shoulders Display', sans-serif">MOON+</text>
-            <text x="470" y="126" text-anchor="middle" font-size="10" fill="#ffe1e4" font-family="'IBM Plex Mono', monospace">NOW WITH ADS · 49.99/MO</text></g>
-        <rect x="0" y="292" width="640" height="48" fill="#0b0d16" />
-        <g fill="#5b6577" stroke="#1d232e" stroke-width="2">
-            <polygon points="70,294 250,294 230,268 90,268" />
-            <circle cx="160" cy="262" r="20" fill="#7d889c" />
-            <rect x="160" y="250" width="100" height="24" rx="4" fill="#a3adbf" transform="rotate(-27 160 262)" />
-        </g>
-        <rect class="end-flash" width="640" height="340" fill="#fff" />
-    </svg>`;
-}

@@ -17,7 +17,9 @@ export function startGameLoop(renderer, state, onFrame, onEvents) {
     let last = performance.now();
 
     function frame(now) {
-        const dt = Math.min(100, now - last); // clamp long stalls (tab switch)
+        // Clamp long stalls (tab switch), and never go backwards: the first frame's timestamp can
+        // predate `last` after a long startup task, and a negative dt makes every eased value explode.
+        const dt = Math.max(0, Math.min(100, now - last));
         last = now;
 
         renderer.tweenItems(dt);

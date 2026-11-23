@@ -21,7 +21,14 @@ await page.waitForSelector('text=Begin Onboarding', { timeout: 60000 }); // mode
 await page.click('text=Begin Onboarding'); // dismiss the title screen
 // Skip the campaign gate so the Assembler is buildable (dev-only hook).
 await page.evaluate(() => { window.__sim.project.phase = 1; });
-await page.waitForTimeout(800); // let the camera settle
+// The phase jump plays the completion juice (camera shake + zoom punch): wait
+// until the view is still, or the first clicks can land a cell off.
+for (let i = 0, prev = null; i < 60; i++) {
+    await page.waitForTimeout(150);
+    const p = await page.evaluate(() => window.__renderer.projectCell(14, 11));
+    if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) < 0.5) break;
+    prev = p;
+}
 
 // Cell centres in page coordinates come from the renderer's own projection.
 const center = (gx, gy) => page.evaluate(([x, y]) => window.__renderer.projectCell(x, y), [gx, gy]);

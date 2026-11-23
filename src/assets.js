@@ -40,13 +40,14 @@ const MANIFEST = {
     crystalsB: { file: 'space/rock_crystalsLargeB', fit: 0.82 },
     crystalsC: { file: 'space/rock_crystals', fit: 0.7 },
 
-    // The cannon (Space Kit), assembled in cannon.js.
+    // The cannon's launch deck (Space Kit); the turret itself is built in cannon.js.
     cannonDeck: { file: 'space/platform_large', fit: 2.7 },
-    cannonDish: { file: 'space/satelliteDish_large', fit: 1.05 },
-    cannonCore: { file: 'space/machine_generatorLarge', fit: 1.0 },
-    cannonMount: { file: 'space/rocket_baseA', fit: 1.25 },
-    cannonRing: { file: 'space/pipe_ring', fit: 0.95 },
-    scaffold: { file: 'space/structure_detailed', fit: 0.9 },
+    // Construction-site dressing around the cannon (Factory Kit).
+    siteCone: { file: 'factory/cone', fit: 0.26 },
+    siteCrate: { file: 'factory/box-large', fit: 0.46 },
+    siteCrateSmall: { file: 'factory/box-small', fit: 0.28 },
+    siteBeacon: { file: 'factory/warning-orange', fitHeight: 0.62 },
+    siteCrane: { file: 'factory/crane', fitHeight: 1.55 },
 
     // NILE's compound (City Kit Industrial + Space Kit).
     buildingA: { file: 'city/building-a', fit: 2.6 },
