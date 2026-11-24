@@ -416,6 +416,7 @@ function flagTexture() {
 const RIVER_COMMON = /* glsl */ `
     uniform float uTime;
     uniform float uFront;
+    uniform float uFill;
     uniform float uDam;
     uniform sampler2D uMask;
     uniform sampler2D uDry;
@@ -428,12 +429,14 @@ const RIVER_COMMON = /* glsl */ `
 // Water: the river cells, shallower and lighter at the edges with a foam
 // line, dashes of light drifting downstream (fast down the falls). Once the
 // dam is shut the water downstream of it runs off: everything upstream of
-// uFront is gone, and it thins to a trickle over the last few units.
+// uFront is gone, and it thins to a trickle over the last few units. When the
+// epilogue opens the dam again it comes back from the dam down: everything
+// upstream of uFill is water, its leading edge a thinning tongue.
 const WATER_GLSL = /* glsl */ `
     vec4 mk = texture2D(uMask, (vWorldXZ - uMaskBox.xy) / uMaskBox.zw);
     float s = vRiver.y;
     float fall = vRiver.z;
-    float level = s < uDam ? 1.0 : smoothstep(uFront, uFront + 3.0, s);
+    float level = s < uDam ? 1.0 : max(smoothstep(uFront, uFront + 3.0, s), 1.0 - smoothstep(uFill - 3.0, uFill, s));
     float thr = mix(1.04, 0.5, level) + sin(s * 2.7 + uTime * 1.4) * 0.012 + sin(vRiver.x * 6.0 - uTime) * 0.01;
     float m = mk.r;
     float wa = smoothstep(thr - 0.025, thr + 0.025, m);
@@ -471,7 +474,7 @@ const BED_GLSL = /* glsl */ `
     float bed = smoothstep(0.36, 0.62, mk.r);
     // A narrow band of wet earth hugging the water, and a faint damp halo beyond it.
     float bank = max(smoothstep(0.1, 0.4, mk.r) * 0.92, smoothstep(0.04, 0.6, mk.g) * 0.22);
-    float dry = s < uDam ? 0.0 : 1.0 - smoothstep(uFront - 2.5, uFront + 0.5, s);
+    float dry = s < uDam ? 0.0 : (1.0 - smoothstep(uFront - 2.5, uFront + 0.5, s)) * smoothstep(uFill - 0.5, uFill + 2.5, s);
     float a = mix(bank, max(bank, smoothstep(0.12, 0.42, mk.r)), dry);
     if (a < 0.01) discard;
     vec3 dryCol = texture2D(uDry, muv).rgb * mix(1.06, 0.82, smoothstep(0.55, 1.0, mk.r));
@@ -739,6 +742,7 @@ export function buildEnvironment(scene, assets, effects) {
     const riverU = {
         uTime: { value: 0 },
         uFront: { value: -1e4 },
+        uFill: { value: -1e4 },
         uDam: { value: S_DAM },
         uMask: { value: masks.tex },
         uDry: { value: dryBedTexture(pointAt, sOf) },
@@ -953,6 +957,19 @@ export function buildEnvironment(scene, assets, effects) {
         const t = (now - reveal - DAM_RISE[1]) / DRAIN_MS;
         return t >= 1 ? S_GONE : S_DAM - 0.5 + (S_GONE - S_DAM + 0.5) * Math.max(0, t);
     }
+    // The epilogue blows the dam (`freed`: the clock time it went, null while it stands,
+    // -Infinity when it was already gone on load): it sinks back into its dust, then the
+    // water runs down the bed again from the dam to the falls (uFill, the reverse of uFront).
+    let freed = null;
+    let blasted = false;
+    const DAM_SINK = [350, 1900]; // ms after the blast: the dam goes down
+    const FILL_AT = 1100;         // the water starts down the bed
+    const FILL_MS = 5600;         // and reaches past the falls
+    function riverFill(now) {
+        if (freed === null) return -1e4;
+        const t = (now - freed - FILL_AT) / FILL_MS;
+        return t >= 1 ? 1e4 : S_DAM - 0.5 + (S_GONE + 3 - S_DAM + 0.5) * Math.max(0, t);
+    }
 
     // Rim: forest, meadow and NILE's compound.
     const BIG_BY_PHASE = {
@@ -1154,7 +1171,10 @@ export function buildEnvironment(scene, assets, effects) {
                 hq.stack.visible = false;
             }
         }
-        if (hq.ruined) {
+        if (hq.ruined && healed >= 2) {
+            // The epilogue cleared the compound: the ruin's fires are out at last.
+            hq.fires.forEach((fl) => (fl.material.opacity = Math.max(0, fl.material.opacity - dt / 1500)));
+        } else if (hq.ruined) {
             hq.fires.forEach((fl, i) => (fl.material.opacity = 0.55 + 0.35 * Math.sin(clock / (70 + i * 17) + i)));
             hq.smoke += dt;
             if (hq.smoke > 260) {
@@ -1426,6 +1446,13 @@ export function buildEnvironment(scene, assets, effects) {
     let phase = -1;
     let clock = 0;
     const pending = []; // { at, run }
+    // The epilogue after the NIHIL HQ ending (epilogue.js; goals done, 0–4): the camp fire is
+    // relit (1), NIHIL's compound comes down and its floodlights go out (2), the dam goes and the
+    // river runs again (3), and every goal turns the land one phase back toward its first
+    // morning: colours, trees, flowers and crops follow `landP()`, not the campaign's phase.
+    let healed = 0;
+    const landFor = (p) => (healed ? Math.max(1, p - healed) : p);
+    const landP = () => landFor(phase);
 
     function treeTarget(t, p) {
         if (p >= t.fellPhase) return 'stump';
@@ -1449,7 +1476,7 @@ export function buildEnvironment(scene, assets, effects) {
         const wasDammed = phase >= RIVER.damPhase;
         phase = p;
         for (const t of trees) {
-            const target = treeTarget(t, p);
+            const target = treeTarget(t, landFor(p));
             if (target === t.state) continue;
             if (!animate || !t.obj) {
                 setTree(t, target);
@@ -1463,7 +1490,7 @@ export function buildEnvironment(scene, assets, effects) {
             }
         }
         compound.forEach((c) => {
-            const show = p >= c.appear;
+            const show = p >= c.appear && healed < 2;
             if (show === c.shown) return;
             c.shown = show;
             if (!animate) {
@@ -1482,21 +1509,114 @@ export function buildEnvironment(scene, assets, effects) {
         if (dammed && animate && !wasDammed) reveal = clock;
         else if (!animate || !dammed) reveal = dammed ? -Infinity : null;
         if (!animate) applyRiver(true);
-        if (instant) {
-            for (const pr of props) {
-                pr.shown = p >= pr.min && p <= pr.max && !pr.gone && !pr.covered && !pr.ore;
-                pr.k = pr.shown ? 1 : 0;
-                pr.obj.visible = pr.shown;
-                pr.obj.scale.setScalar(pr.obj.userData.baseScale * pr.k);
-            }
-            const land = LAND[Math.min(p, LAND.length - 1)];
-            groundMat.color.setHex(land.ground);
-            natureMaterial('grass').color.setHex(land.grass);
-            natureMaterial('leafsGreen').color.setHex(land.leafs);
-            natureMaterial('dirt').color.setHex(land.dirt);
-            waterMat.color.setHex(land.water);
-            bankTarget(riverU.uBankWet.value, land);
+        if (instant) snapLand();
+    }
+
+    /** Props, flora and the land's colours at once, for the land's phase (loads, jumps). */
+    function snapLand() {
+        const p = landP();
+        for (const pr of props) {
+            pr.shown = p >= pr.min && p <= pr.max && !pr.gone && !pr.covered && !pr.ore;
+            pr.k = pr.shown ? 1 : 0;
+            pr.obj.visible = pr.shown;
+            pr.obj.scale.setScalar(pr.obj.userData.baseScale * pr.k);
         }
+        const land = LAND[Math.max(0, Math.min(p, LAND.length - 1))];
+        groundMat.color.setHex(land.ground);
+        natureMaterial('grass').color.setHex(land.grass);
+        natureMaterial('leafsGreen').color.setHex(land.leafs);
+        natureMaterial('dirt').color.setHex(land.dirt);
+        waterMat.color.setHex(land.water);
+        bankTarget(riverU.uBankWet.value, land);
+    }
+
+    /**
+     * The epilogue's goals done so far (0–4). One step forward animates: the camp fire catches
+     * with a shower of sparks, the compound sinks away building by building, the dam is blown
+     * and the river runs back down its bed, trees grow back out of their stumps; the land's
+     * colours ease toward the earlier phase. Anything else (a load) snaps.
+     */
+    function setEpilogue(stage, instant = false) {
+        if (stage === healed) return;
+        const animate = !instant && phase >= 0 && stage === healed + 1;
+        const was = healed;
+        healed = stage;
+        for (const t of trees) {
+            if (treeTarget(t, landP()) === t.state) continue;
+            if (!animate || !t.obj) {
+                t.anim = null;
+                setTree(t, treeTarget(t, landP()));
+                continue;
+            }
+            // The target is read when it runs, so a quick second step can't leave a tree behind.
+            pending.push({ at: clock + 600 + Math.random() * 5200, run: () => {
+                const target = treeTarget(t, landP());
+                if (target === t.state) return;
+                const regrow = t.state === 'stump';
+                setTree(t, target);
+                t.anim = { kind: regrow ? 'grow' : 'shiver', t: 0 };
+                if (regrow) {
+                    t.obj.scale.setScalar(0.01);
+                    effects.sparkle(new THREE.Vector3(t.x, 0.25, t.z), { color: 0x9be070, count: 4, power: 0.8, size: 0.08 });
+                }
+            } });
+        }
+        if (stage >= 2 && was < 2) {
+            // NIHIL's compound comes down, nearest the valley first, one building after another.
+            compound.forEach((c, i) => {
+                if (!c.shown) return;
+                c.shown = false;
+                if (!animate) {
+                    c.obj.visible = false;
+                    return;
+                }
+                pending.push({ at: clock + 500 + i * 160 + Math.random() * 300, run: () => {
+                    c.grow = null;
+                    c.sink = 0;
+                    effects.puff(c.obj.position, { count: 16, size: 0.7, spread: 1.3, color: 0xb9a88c });
+                } });
+            });
+        } else if (stage < 2 && was >= 2) {
+            compound.forEach((c) => {
+                c.sink = null;
+                c.shown = phase >= c.appear;
+                c.obj.visible = c.shown;
+                c.obj.position.y = 0;
+                c.obj.scale.setScalar(c.obj.userData.baseScale);
+            });
+        }
+        if (animate && stage === 1) {
+            // The camp fire catches again.
+            pending.push({ at: clock + 400, run: () => {
+                effects.sparkle(new THREE.Vector3(-2.2, 0.3, 12.5), { color: 0xffb040, count: 18, power: 1.4, size: 0.1 });
+                effects.puff(new THREE.Vector3(-2.2, 0.1, 12.5), { count: 6, size: 0.3, spread: 0.3, color: 0x9a9088 });
+            } });
+        }
+        if (stage >= 3) {
+            if (freed === null) {
+                freed = animate ? clock : -Infinity;
+                blasted = !animate;
+            }
+        } else {
+            freed = null;
+            blasted = false;
+        }
+        if (!animate) {
+            applyRiver(true);
+            snapLand();
+        }
+    }
+
+    /** Where the epilogue's goal `stage` changes the valley (for the camera to glide to). */
+    function epiloguePoint(stage) {
+        if (stage === 1) return { x: -2.2, z: 12.5 };
+        if (stage === 2) {
+            const shown = compound.filter((c) => c.appear <= Math.max(1, phase));
+            const n = Math.max(1, shown.length);
+            return { x: shown.reduce((a, c) => a + c.obj.position.x, 0) / n, z: shown.reduce((a, c) => a + c.obj.position.z, 0) / n };
+        }
+        if (stage === 3) return { x: damPt.x + 3, z: damPt.z + 1 };
+        return null;
     }
 
     const tmpColor = new THREE.Color();
@@ -1515,9 +1635,12 @@ export function buildEnvironment(scene, assets, effects) {
      */
     function applyRiver(snap = false) {
         const front = riverFront(clock);
+        const fill = riverFill(clock);
         riverU.uFront.value = front;
-        // The dam: below ground while the river flows, rising at the reveal.
-        const rise = reveal === null ? 0 : clamp01((clock - reveal - DAM_RISE[0]) / (DAM_RISE[1] - DAM_RISE[0]));
+        riverU.uFill.value = fill;
+        // The dam: below ground while the river flows, rising at the reveal, sinking when blown.
+        let rise = reveal === null ? 0 : clamp01((clock - reveal - DAM_RISE[0]) / (DAM_RISE[1] - DAM_RISE[0]));
+        if (freed !== null) rise *= 1 - clamp01((clock - freed - DAM_SINK[0]) / (DAM_SINK[1] - DAM_SINK[0]));
         dam.visible = rise > 0;
         const e = 1 - (1 - rise) ** 3;
         dam.position.y = -0.98 * (1 - e);
@@ -1526,14 +1649,14 @@ export function buildEnvironment(scene, assets, effects) {
         dam.position.z = damPt.z + (shaking ? (Math.random() - 0.5) * 0.04 : 0);
         let reedsMoved = false;
         for (const c of reedClumps) {
-            const want = c.s < S_DAM || c.s > front + 0.6 ? 1 : 0;
+            const want = c.s < S_DAM || c.s > front + 0.6 || c.s < fill - 0.6 ? 1 : 0;
             if (c.k === want) continue;
             c.k = snap ? want : c.k + Math.sign(want - c.k) * Math.min(Math.abs(want - c.k), 0.05);
             reedsMoved = true;
         }
         if (reedsMoved) writeReeds();
         for (const l of lilies) {
-            const want = l.s < S_DAM || l.s > front + 0.4 ? 1 : 0;
+            const want = l.s < S_DAM || l.s > front + 0.4 || l.s < fill - 0.4 ? 1 : 0;
             if (l.k === want) continue;
             l.k = snap ? want : l.k + Math.sign(want - l.k) * Math.min(Math.abs(want - l.k), 0.06);
             l.obj.visible = l.k > 0.001;
@@ -1569,6 +1692,10 @@ export function buildEnvironment(scene, assets, effects) {
                     effects.puff(t.obj.position, { count: 10, size: 0.4, spread: 0.8, color: 0x9e8a6a });
                     t.anim = null;
                 }
+            } else if (t.anim.kind === 'grow') { // back out of its stump (the epilogue)
+                const k = Math.min(1, t.anim.t / 1500);
+                t.obj.scale.setScalar(t.scale * Math.max(0.01, ease(k)) * (1 + Math.sin(k * Math.PI) * 0.1));
+                if (k >= 1) t.anim = null;
             } else {
                 const k = Math.min(1, t.anim.t / 500);
                 t.obj.scale.setScalar(t.scale * (1 + Math.sin(k * Math.PI) * 0.12));
@@ -1576,13 +1703,30 @@ export function buildEnvironment(scene, assets, effects) {
             }
         }
         for (const c of compound) {
+            if (c.sink != null) { // taken down (the epilogue): it judders and sinks into its dust
+                c.sink = Math.min(1, c.sink + dt / 1300);
+                const k = c.sink * c.sink;
+                c.obj.position.y = -k * ((c.obj.userData.height ?? 2) + 0.2);
+                c.obj.rotation.z = Math.sin(c.sink * 40) * 0.025 * (1 - c.sink);
+                if (Math.random() < dt / 110) {
+                    effects.puff(new THREE.Vector3(c.obj.position.x + (Math.random() - 0.5) * 1.2, 0.1, c.obj.position.z + (Math.random() - 0.5) * 1.2), { count: 4, size: 0.5, spread: 0.6, color: 0xb9a88c });
+                }
+                if (c.sink >= 1) {
+                    c.sink = null;
+                    c.obj.visible = false;
+                    c.obj.position.y = 0;
+                    c.obj.rotation.z = 0;
+                }
+                continue;
+            }
             if (c.grow == null || c.grow >= 1) continue;
             c.grow = Math.min(1, c.grow + dt / 700);
             const s = 1 + Math.sin(c.grow * Math.PI) * 0.12; // overshoot pop
             c.obj.scale.setScalar(c.obj.userData.baseScale * ease(c.grow) * s);
         }
+        const lp = landP();
         for (const pr of props) {
-            const want = phase >= pr.min && phase <= pr.max && !pr.gone && !pr.covered && !pr.ore;
+            const want = lp >= pr.min && lp <= pr.max && !pr.gone && !pr.covered && !pr.ore;
             if (want !== pr.shown) pr.shown = want;
             const target = pr.shown ? 1 : 0;
             if (pr.k === target) continue;
@@ -1590,7 +1734,7 @@ export function buildEnvironment(scene, assets, effects) {
             pr.obj.visible = pr.k > 0.001;
             pr.obj.scale.setScalar(pr.obj.userData.baseScale * ease(pr.k));
         }
-        const land = LAND[Math.max(0, Math.min(phase, LAND.length - 1))];
+        const land = LAND[Math.max(0, Math.min(lp, LAND.length - 1))];
         const k = 1 - Math.exp(-dt / 1800);
         lerpHex(groundMat.color, land.ground, k);
         lerpHex(natureMaterial('grass').color, land.grass, k);
@@ -1623,8 +1767,39 @@ export function buildEnvironment(scene, assets, effects) {
                 }
             }
         }
+        if (freed !== null && freed > -Infinity) {
+            // The epilogue: the charges go off, the dam sinks in a cloud, the water rushes down the bed.
+            const since = clock - freed;
+            if (!blasted && since >= DAM_SINK[0]) {
+                blasted = true;
+                const at = new THREE.Vector3(damPt.x, 0.5, damPt.z);
+                effects.sparkle(at, { color: 0xffc04a, count: 26, power: 2.4, size: 0.13 });
+                for (let i = 0; i < 5; i++) {
+                    const a = (Math.random() - 0.5) * 3.4;
+                    effects.puff(new THREE.Vector3(damPt.x + damPt.nx * a, 0.2, damPt.z + damPt.nz * a), { color: 0xb4aea2, count: 8, size: 0.7, spread: 0.9 });
+                }
+            }
+            if (since > DAM_SINK[0] && since < DAM_SINK[1]) {
+                damDust += dt;
+                if (damDust > 80) {
+                    damDust = 0;
+                    const a = (Math.random() - 0.5) * 3.4;
+                    effects.puff(new THREE.Vector3(damPt.x + damPt.nx * a, 0, damPt.z + damPt.nz * a), { color: 0xb9ad98, count: 3, size: 0.45, spread: 0.5 });
+                }
+            }
+            const fill = riverU.uFill.value;
+            if (fill > S_DAM && fill < S_LIP) { // white water at the head of the returning river
+                dustAcc += dt;
+                if (dustAcc > 110) {
+                    dustAcc = 0;
+                    const p = pointAt(fill - 0.6);
+                    const a = (Math.random() - 0.5) * 1.8;
+                    effects.smoke(new THREE.Vector3(p.x + p.nx * a, 0.08, p.z + p.nz * a), { color: 0xf2f8ff, size: 0.22, rise: 0.25, opacity: 0.5 });
+                }
+            }
+        }
         // Spray where the falls drop into the void, while there's water to fall.
-        if (riverU.uFront.value < S_LIP + 1) {
+        if (riverU.uFront.value < S_LIP + 1 || riverU.uFill.value > S_LIP) {
             sprayAcc += dt;
             if (sprayAcc > 190) {
                 sprayAcc = 0;
@@ -1645,8 +1820,8 @@ export function buildEnvironment(scene, assets, effects) {
         updateFence(dt);
         updateShade(dt);
 
-        // The campfire burns until the reveal; then the camp is abandoned.
-        const fireOn = phase < 4;
+        // The campfire burns until the reveal; then the camp is abandoned (until the epilogue relights it).
+        const fireOn = phase < 4 || healed >= 1;
         const flick = 0.75 + Math.sin(clock / 90) * 0.12 + Math.sin(clock / 37) * 0.08;
         fireHalo.material.opacity = fireOn ? flick * (phase >= 2 ? 1 : 0.6) : Math.max(0, fireHalo.material.opacity - dt / 2000);
         campfire.visible = true;
@@ -1657,7 +1832,7 @@ export function buildEnvironment(scene, assets, effects) {
                 effects.smoke(new THREE.Vector3(-2.2, 0.35, 12.5), { color: 0xa09a94, size: 0.16, rise: 0.45, opacity: 0.4 });
             }
         }
-        const lampsOn = phase >= 2;
+        const lampsOn = phase >= 2 && healed < 2; // NIHIL's floodlights go out with its compound
         for (const l of lamps) {
             const target = lampsOn ? 0.75 + Math.sin(clock / 400 + l.position.x) * 0.05 : 0;
             l.material.opacity += (target - l.material.opacity) * Math.min(1, dt / 800);
@@ -1666,6 +1841,12 @@ export function buildEnvironment(scene, assets, effects) {
 
     return {
         setPhase,
+        /** The epilogue's goals done (0–4): the valley mends, one step animated, a jump snapped. */
+        setEpilogue,
+        /** Where goal `stage` changes the valley ({ x, z } on the ground), or null. */
+        epiloguePoint,
+        /** The phase the land looks like: the campaign's, minus the epilogue's mending. */
+        landPhase: landP,
         /** Set the fence and the shade to land level `p` (Infinite buys land apart from phases); `animate` grows it. */
         setPlot,
         /** Show the cannon site's gravel, or plain ground (an Infinite valley has no cannon). */

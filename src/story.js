@@ -239,7 +239,7 @@ export const BEATS = [
             d('NILE has also acquired the forest edge. The trees were not consulted. The fence has moved again.'),
             d('Heavy industry, at last! The Foundry (key 5) melts an iron ingot and a lump of coal into Steel.', 'happy'),
             d('Foundries are hungry. Generators (key 0) burn coal for the grid: belt coal from the black crystal field into one. You will want several.'),
-            memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after SELENE.'),
+            memo('INTERNAL — Moon+ launch plan. Tiers: Basic (crescent only), Plus (full moon, with ads), Premium (full moon, ad-free, 49.99/month). Launch date: one day after SELENE. Approved — N.I.L.'),
             d('Please disregard that memo. It was sent to you by mistake. You are not cleared for mistakes.', 'glitch'),
             d('Moving on! Phase 3 is the Power Core: Steel and Capacitors. A Capacitor is one steel and two copper wire, in an Assembler. Faster work is its own reward. It is also the only reward.'),
         ],
@@ -652,4 +652,181 @@ export const INFINITE = {
         late: [],
     },
     REACTIONS,
+};
+
+// ---- Iteration 7: Nolan Isaac Locke before the reveal ------------------------------------------
+// He never speaks before phase 4, but he is there: NILE's broadcasts read out "a message from
+// our Chief Executive", memos go out over his initials, DELTA mentions him now and then, and
+// his name is on the construction site's sign. Each beat names the campaign beat it follows
+// (`after`); STORY_BEATS is the campaign's list with them slotted in (the director plays it).
+const ceo = (text) => nile(`A MESSAGE FROM OUR CHIEF EXECUTIVE, as read by this announcer: "${text}" Message ends.`);
+export const LOCKE = {
+    BEATS: [
+        {
+            after: 'firstDelivery',
+            id: 'ceoWelcome',
+            when: (w) => w.phase === 0 && (w.deliveredTotal.ironIngot ?? 0) >= 12,
+            lines: [
+                ceo('Welcome, Steward. Every ingot is a promise, and NILE keeps its promises.'),
+                d("The Chief Executive doesn't do interviews, photographs or Tuesdays. He does do messages. You'll get used to them."),
+            ],
+        },
+        {
+            after: 'firstCircuit',
+            id: 'ceoFile',
+            when: (w) => w.phase === 1 && w.phaseProgress >= 0.4,
+            lines: [d('Good news: the Chief Executive has read your file. All of it. He has asked me to tell you he has no further questions.')],
+        },
+        {
+            after: 'phase2',
+            id: 'ceoMemo',
+            when: (w) => w.phase === 2 && w.produced.steel > 0,
+            lines: [
+                memo('INTERNAL — From the Office of the Chief Executive. Re: Steward morale. Morale is not a deliverable. Please stop measuring it. — N.I.L.'),
+                d('That memo was not for you. Very little is.'),
+            ],
+        },
+        {
+            after: 'phase3',
+            id: 'ceoThanks',
+            when: (w) => w.phase === 3 && w.phaseProgress >= 0.3,
+            lines: [
+                ceo('I look forward to thanking our Steward personally. Upon completion.'),
+                d("He has never thanked anyone personally before. I checked the logs. I'm sure it will be lovely."),
+            ],
+        },
+    ],
+    // Mixed into the early chatter (phases 1–4): DELTA's plain strings, and one broadcast.
+    AMBIENT: [
+        'The Chief Executive sends his regards. He sends them to everyone, in bulk, at a discount.',
+        'The suggestion box goes straight to the Chief Executive. He has never opened it. That is how you know it is safe.',
+        "The Chief Executive's door is always open. It is on the forty-first floor, and the lift is by appointment.",
+        ceo('The future belongs to those who deliver it. Please deliver it to the Dispatch Pad.'),
+    ],
+    /** The sign on the Selene construction site (the inspector), until the reveal. */
+    siteSign: 'By order of the Chief Executive · N. I. Locke',
+};
+
+/** The campaign's beats with Nolan's pre-reveal ones slotted in after the beats they name. */
+export const STORY_BEATS = BEATS.flatMap((beat) => [beat, ...LOCKE.BEATS.filter((b) => b.after === beat.id)]);
+
+// ---- Iteration 7: the epilogue, after the NIHIL HQ ending ---------------------------------------
+// Your company's first year: four goals in the flight plan, each undoing a piece of what NIHIL
+// did to the valley (epilogue.js GOALS says what each asks the Dispatch Pad for, and in what
+// order), then a short report and the sandbox. Played by the same director with its own script
+// (director.js EPILOGUE_SCRIPT). Snapshot field: w.epilogue = { stage (goals done), ready (the
+// active goal's deliveries are in), bedLeft (our machines still in the old river bed), closed
+// (the report has been shown) }, or null before the epilogue starts.
+const goalNo = (n) => String(n).padStart(2, '0');
+const stageOf = (w) => w.epilogue?.stage ?? -1;
+const goalBanner = (n, title, extra) => ({ kicker: `Goal ${goalNo(n)} · done`, title, extra });
+export const EPILOGUE = {
+    ribbon: (n, total) => `Epilogue · Goal ${goalNo(n)} of ${goalNo(total)}`,
+    sub: 'Epilogue',
+    doneKicker: 'Epilogue complete',
+    doneTitle: 'Year one',
+    doneNote: 'The camp is warm, the river runs, the valley is green. Keep building.',
+    // Keyed by epilogue.js GOALS ids. `blurb` is the console's line under the deliveries.
+    GOALS: {
+        camp: { title: 'Relight the camp', blurb: 'The fire you used to sleep beside.' },
+        compound: { title: 'Clear the compound', blurb: "NIHIL's compound on the east rim, sold for scrap." },
+        river: { title: 'Give the river back', blurb: "Blow NIHIL's dam. Nothing of ours may stand in the bed." },
+        valley: { title: 'Let the valley grow back', blurb: 'Sensors for the soil, wire for the irrigation.' },
+    },
+    /** The river goal's extra console row: our machines still in the old river bed. */
+    bed: { name: 'Old river bed', left: (n) => `${n} left`, clear: 'Clear' },
+    BEATS: [
+        {
+            id: 'epi:intro',
+            when: (w) => stageOf(w) >= 0,
+            lines: [
+                d('Right. Every company needs a to-do list, so I wrote us one. It is four items long, and none of them involve the Moon.', 'happy'),
+                d('NIHIL left the valley in a state: the camp is cold, their compound still stands, the river is dammed and the grass has given up. We fix it one item at a time.'),
+                d("The Dispatch Pad still buys whatever we make, and now the money is ours. The list is in the flight plan; the deliveries are in the console."),
+                d('Item one: sixty Circuits and forty Iron Plates, and I relight the fire at your old camp. Every company needs a break room.'),
+            ],
+        },
+        {
+            id: 'epi:camp',
+            when: (w) => stageOf(w) >= 1,
+            banner: goalBanner(1, 'Relight the camp', 'The camp fire burns again'),
+            lines: [
+                d("The fire at your old camp is burning again. I can't feel warmth, but I logged it, and the log looks warm.", 'happy'),
+                d("Item two: NIHIL's compound on the east rim. Fifty Steel and thirty Motors pay for the cranes. We'll sell the scrap back to whoever is left."),
+            ],
+        },
+        {
+            id: 'epi:compound',
+            when: (w) => stageOf(w) >= 2,
+            banner: goalBanner(2, 'Clear the compound', "NIHIL's compound is gone"),
+            lines: [
+                d('The compound is coming down: the containers, the cooling tower, the hangar where the board parked its golf carts.', 'happy'),
+                d("I've switched off NIHIL's floodlights too. It turns out the valley has a night of its own. It came with the valley."),
+                d("And on the east edge, where their survey pegs were: sulfur. NIHIL found it years ago. They took the river anyway. It was closer."),
+                d('Item three: the river. Twenty-five Explosives for the dam and forty Capacitors for the pumps. First move everything of ours out of the old river bed. The sulfur down there goes back under the water.'),
+            ],
+        },
+        {
+            id: 'epi:bedBusy',
+            when: (w) => stageOf(w) === 2 && w.epilogue.ready && w.epilogue.bedLeft > 0,
+            lines: [d("The charges are ready. The river bed isn't: some of our machines are still standing in it. I'll wait. The river has waited longer.")],
+        },
+        {
+            id: 'epi:river',
+            when: (w) => stageOf(w) >= 3,
+            banner: goalBanner(3, 'Give the river back', 'The river runs again'),
+            lines: [
+                d("The dam is down. The river runs all the way to the falls again, and the fish have not thanked us. I'm told that is normal for fish.", 'happy'),
+                d('Last item: the valley itself. Thirty Advanced Circuits for the soil sensors and eighty Copper Wire for the irrigation, and the grass can take it from there.'),
+            ],
+        },
+        {
+            id: 'epi:valley',
+            when: (w) => stageOf(w) >= 4,
+            banner: goalBanner(4, 'Let the valley grow back', 'The valley is green again'),
+            lines: [
+                d('Look at it. The trees are coming back, the farm has carrots again and the butterflies returned without an invoice.', 'happy'),
+                d("That was the whole list. I've written up our first year. Founders get a report too.", 'happy'),
+            ],
+        },
+    ],
+    // The flight plan: the whole list, ticked off goal by goal.
+    OBJECTIVES: [
+        { id: 'epi-camp', text: 'Relight the camp', done: (w) => stageOf(w) >= 1,
+            hint: 'Belt Circuits and Iron Plates into the Dispatch Pad. The console counts them for the camp.' },
+        { id: 'epi-compound', text: 'Clear the compound', done: (w) => stageOf(w) >= 2,
+            hint: 'Steel and Motors into the Pad. A Motor takes steel, a plate and a wire, one per side of an Assembler.' },
+        { id: 'epi-river', text: 'Give the river back', done: (w) => stageOf(w) >= 3,
+            hint: 'Explosives and Capacitors into the Pad, and nothing of ours left in the old river bed. Demolish with X, or drag with the right mouse button.' },
+        { id: 'epi-valley', text: 'Let the valley grow back', done: (w) => stageOf(w) >= 4,
+            hint: 'Advanced Circuits and Copper Wire into the Pad. That is the last item on the list.' },
+    ],
+    // Joins AMBIENT.free (the founder's chatter) while the company is ours.
+    AMBIENT: [
+        'Our first board meeting went well. It was you, me and a belt. The belt abstained.',
+        'Customer feedback is in. It says "Fine." I have had it framed.',
+        'I drafted the company handbook. It is one page. Page one: be nice to the river.',
+    ],
+    REACTIONS: {
+        orderCompleted: [
+            'Priority Request filled. A real customer paid real credits, to us. I may frame the invoice.',
+            'Request delivered. The customer said thank you. NIHIL never once said thank you. I logged it twice.',
+        ],
+        orderFailed: [
+            "Missed that one. Nobody's permanent record has been updated. We don't keep permanent records.",
+            'Deadline missed. The customer was gracious about it. Customers are nicer when you are not NIHIL.',
+        ],
+    },
+    // The closing report, in the style of the mission and founding reports.
+    report: {
+        kicker: 'Annual report · filed by DELTA',
+        title: 'Year one',
+        labels: {
+            seconds: 'Since founding', sold: 'Items sold', compounds: 'Compounds cleared',
+            rivers: 'Rivers returned', moons: 'Moons, still free',
+        },
+        note: 'The camp is warm, the river runs to the falls and the valley is green again. The factory is yours. Keep building.',
+        keep: 'Keep building',
+        credits: 'Credits',
+    },
 };

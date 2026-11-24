@@ -29,7 +29,8 @@ import { BUILDING_NAMES, ITEM_NAMES, INFINITE } from './story.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
-import { createDirector, STORY_SCRIPT } from './director.js';
+import { createDirector, STORY_SCRIPT, EPILOGUE_SCRIPT } from './director.js';
+import { tickEpilogue, epilogueSnapshot, epilogueInfo, epilogueStats, closeEpilogue } from './epilogue.js';
 import { createAudio, BUILD_SIZE } from './audio.js';
 import { createSettings } from './settings.js';
 import { createAccount } from './account.js';
@@ -156,6 +157,7 @@ function snapshot() {
             return need ? req.reduce((a, [k, n]) => a + Math.min(n, project.delivered[k] ?? 0), 0) / need : 1;
         })(),
         ending: project.ending,
+        epilogue: epilogueSnapshot(), // the company's goals after the NIHIL HQ ending (epilogue.js)
         minPrice: Math.min(1, ...Object.keys(SINK_VALUE).map((k) => salePrice(k) / SINK_VALUE[k])),
         order: { status: order.status, startTick: order.startTick },
     };
@@ -441,10 +443,27 @@ const director = createDirector({
     say: (line) => ui.say(line),
     banner: (i) => ui.showBanner(i),
     isBusy: () => ui.isBusy() || menus.isOpen(),
-    script: () => (isInfinite() ? INFINITE : STORY_SCRIPT),
+    script: () => (isInfinite() ? INFINITE : project.ending === 'hq' && project.epilogue ? EPILOGUE_SCRIPT : STORY_SCRIPT),
     hints: () => settings.get().gameplay.hints,
     ending: () => playEnding(),
+    finale: () => showEpilogueReport(),
 });
+
+/** The epilogue's last goal is done and DELTA has said so: the company's annual report, then sandbox. */
+function showEpilogueReport() {
+    closeEpilogue();
+    saveGame();
+    const wasPaused = state.paused;
+    state.paused = true;
+    ui.showEpilogueReport({
+        stats: epilogueStats(tickCount),
+        company: project.company,
+        onContinue: () => {
+            state.paused = wasPaused;
+            saveGame();
+        },
+    });
+}
 
 /** The end: choose the target (unless a save already chose), the cinematic, the report. */
 function playEnding() {
@@ -588,6 +607,7 @@ const ui = createUI({
             infinite: isInfinite() ? infiniteInfo() : null,
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
             objectives: director.objectives(),
+            epilogue: epilogueInfo(),
         };
     },
 });
@@ -688,6 +708,14 @@ function onFrame(dt) {
         directorClock += dt;
         if (directorClock >= DIRECTOR_EVERY_MS) {
             directorClock = 0;
+            // After the NIHIL HQ ending: the epilogue starts once the ending is over, and a goal whose
+            // deliveries are in is done (the valley changes; the river takes back what is in its bed).
+            const goal = tickEpilogue(tickCount, { hold: state.cinematic });
+            if (goal) {
+                renderer.applyEvents(goal.events, 0);
+                audio.cue('phase', { phase: 1 });
+                saveGame('auto');
+            }
             const w = snapshot();
             lastWorking = w.working;
             director.update(w);
@@ -1133,6 +1161,7 @@ if (import.meta.env.DEV) {
     window.__saves = saves;
     window.__account = account;
     window.__menus = menus;
+    window.__epilogue = await import('./epilogue.js'); // the epilogue: __epilogue.GOALS, epilogueInfo(), tickEpilogue()
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);

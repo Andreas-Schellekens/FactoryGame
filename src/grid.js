@@ -133,6 +133,9 @@ export const project = {
     complete: false,
     ending: null,   // null | 'moon' | 'hq': the target chosen at the end
     company: null,  // the player's company name after the 'hq' ending
+    // The epilogue after the 'hq' ending (epilogue.js owns it; plain data, saved as-is), or null.
+    // The sim reads only `eastRim` (the east-rim sulfur is laid) and `river` (NIHIL's dam is down).
+    epilogue: null,
 };
 
 // Lifetime counters the story director reads to trigger tutorial steps and
@@ -467,9 +470,9 @@ for (let x = 0; x < GRID_WIDTH; x++) {
     }
 }
 
-/** Has NIHIL dammed the river: RIVER.damPhase phases complete, or an Infinite aftermath? */
+/** Has NIHIL dammed the river: RIVER.damPhase phases complete (until the epilogue opens it), or an Infinite aftermath? */
 export function riverDammed() {
-    return isInfinite() ? game.world === 'aftermath' : project.phase >= RIVER.damPhase;
+    return isInfinite() ? game.world === 'aftermath' : project.phase >= RIVER.damPhase && !project.epilogue?.river;
 }
 
 /** Water flows in the river bed until it is dammed. */
@@ -485,7 +488,8 @@ export let oreRevision = 0;
 
 /** Is an ore field there yet: the riverbed sulfur once dammed, Infinite's own sulfur with its land. */
 function fieldDue(f) {
-    if (f.only === 'infinite') return isInfinite() && game.world === 'valley' && game.plot >= (f.fromPlot ?? 0);
+    // Infinite's east-rim sulfur; Story's epilogue digs it up too, once NIHIL's compound is cleared.
+    if (f.only === 'infinite') return (isInfinite() && game.world === 'valley' && game.plot >= (f.fromPlot ?? 0)) || (!isInfinite() && !!project.epilogue?.eastRim);
     if (f.fromPhase != null) return isInfinite() ? game.world === 'aftermath' : project.phase >= f.fromPhase;
     return true;
 }
@@ -505,6 +509,34 @@ function revealOre() {
         }
         oreRevision++;
     });
+}
+
+/**
+ * The epilogue changed the land (`project.epilogue.eastRim` / `.river`): lay any ore now due,
+ * and let the river back into its bed. Ore under the water is gone; anything still standing
+ * in the bed is demolished and refunded (the epilogue asks for a clear bed first).
+ * @returns {FactoryEvent[]} consumes for destroyed in-transit items
+ */
+export function applyEpilogueLand() {
+    applyRiver();
+    const events = [];
+    let drowned = false;
+    for (const { x, y } of RIVER_CELLS) {
+        const cell = grid[x][y];
+        if (!cell.water) continue;
+        if (cell.machine) events.push(...removeMachine(x, y));
+        if (cell.item) {
+            events.push({ kind: 'consume', item: cell.item, at: { x, y } });
+            cell.item = null;
+        }
+        if (cell.resource) {
+            cell.resource = null;
+            drowned = true;
+        }
+    }
+    if (drowned) oreRevision++;
+    revealOre();
+    return events;
 }
 
 /** Deterministic pseudo-random value in [0, 1) for a cell (map + decor layout). */
@@ -553,7 +585,10 @@ export function serialize() {
         tickCount,
         order: { ...order },
         research: { points: research.points, unlocked: { ...research.unlocked } },
-        project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company },
+        project: {
+            phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company,
+            epilogue: project.epilogue ? structuredClone(project.epilogue) : null,
+        },
         game: { ...game, licences: [...game.licences] },
         stats: structuredClone(stats),
         market: { pressure: { ...market.pressure } },
@@ -584,6 +619,8 @@ export function loadState(data) {
     project.complete = data.project?.complete ?? false;
     project.ending = data.project?.ending ?? null;
     project.company = data.project?.company ?? null;
+    const epi = data.project?.epilogue;
+    project.epilogue = epi && typeof epi === 'object' ? structuredClone(epi) : null;
 
     initGrid(); // reset to empty cells + ore terrain + the pre-placed sink
 

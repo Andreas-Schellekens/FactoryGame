@@ -1259,6 +1259,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         for (const id of [...items.keys()]) removeItem(id);
         quiet = true; // the next sync rebuilds a loaded factory: no juice
         shownPhase = -1;
+        shownHealed = -1;
         for (const p of orePops) p.g.scale.setScalar(1);
         orePops.length = 0;
     }
@@ -1911,6 +1912,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     // ---- Frame ---------------------------------------------------------------------------
     let shownPhase = -1;
     let shownPlot = -1;
+    let shownHealed = -1;
     function draw(state, dt) {
         statusShown = !state.cinematic;
         const dtSim = state.paused ? 0 : dt * state.speed;
@@ -1939,6 +1941,17 @@ export async function createRenderer(container, { onProgress } = {}) {
         env.setCannonSite(cannonGroup.visible);
         applyMood(dt, phase !== shownPhase && instant);
         shownPhase = phase;
+        // The epilogue after the NIHIL HQ ending (epilogue.js): each goal done mends the valley.
+        // One step forward animates (and the view glides there unless the player is mid-drag).
+        const healed = project.epilogue?.stage ?? 0;
+        if (healed !== shownHealed) {
+            const step = shownHealed >= 0 && healed === shownHealed + 1;
+            env.setEpilogue(healed, !step);
+            const at = step ? env.epiloguePoint(healed) : null;
+            if (step) rig.shake(0.3);
+            if (at && !state.drag && !state.group && !state.cinematic) rig.focusOn(at.x, at.z);
+            shownHealed = healed;
+        }
         syncOre(!quiet);
         animateOre(dt);
         syncMachines();
@@ -1951,7 +1964,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         updateShots(dt);
         env.update(dt);
         cannon.update(dt, performance.now());
-        effects.update(dt, rig.target, phase, { width: W, height: H });
+        effects.update(dt, rig.target, env.landPhase(), { width: W, height: H }); // ash and butterflies follow the land
         const now = performance.now();
         if (padCredits > 0 && now - lastFloat > 450) {
             lastFloat = now;
