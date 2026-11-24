@@ -16,6 +16,7 @@ const ACTION_NAMES = {
     upgrade: 'Upgrade tool', erase: 'Demolish tool', select: 'Select tool', pipette: 'Pipette (build what is under the cursor)',
     rotate: 'Rotate before placing', viewLeft: 'Turn the view left', viewRight: 'Turn the view right', pause: 'Pause',
     mute: 'Sound on / off', move: 'Move the selection', copy: 'Copy the selection',
+    codex: 'Codex: items, recipes, buildings',
 };
 const actionName = (a) => ACTION_NAMES[a] ?? BUILDING_NAMES[a] ?? a;
 const FIXED_KEYS = [
@@ -165,6 +166,7 @@ export function createSettingsPanel({ settings, sound, menus, account }) {
         function gameplay() {
             choice('gameplay', 'autosave', 'Autosave', [[0, 'Off'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']], 'Also on every phase and when you leave');
             toggle('gameplay', 'hints', 'DELTA’s hints', 'A nudge when an objective stays open for a while');
+            toggle('gameplay', 'highlights', 'Tutorial highlights', 'Show where: the key to press, rings on the map, the panel an objective is about');
             choice('gameplay', 'textSpeed', 'Text speed', [[0.6, 'Slow'], [1, 'Normal'], [1.6, 'Fast'], [99, 'Instant']], 'How fast DELTA’s lines type out (with a voice, they follow it)');
             toggle('gameplay', 'voice', 'DELTA’s voice', 'Off: her lines stay text only');
         }

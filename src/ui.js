@@ -24,11 +24,13 @@ import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS, HQ_
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
-    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT,
+    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, CODEX,
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
 import { MADE_BY } from './menus.js';
+import { createCodexPanel } from './codexPanel.js';
+import { entryForCell } from './codex.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -50,6 +52,7 @@ const ICON = {
     rotate: 'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5',
     gear: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1',
     menu: 'M4 7h16M4 12h16M4 17h16',
+    book: 'M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4zM20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z',
     pause: 'M8 5v14M16 5v14',
     play: 'M7 5l12 7-12 7z',
     faster: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -118,7 +121,7 @@ const fmtTime = (secs) => {
  * }} opts
  */
 export function createUI({
-    root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {},
+    root, onToolChange, onRotate, onTogglePause, onSpeedChange, onSave, onLoad, onUnlock, getState, sound, icons = {}, itemIcons = {},
     onSetRecipe = () => false, onUpgradeSelected = () => false, onToggleSelected = () => false, onDeselect = () => {}, onResetBreaker = () => false,
     onGroupAction = () => {},
     // Iteration 6: the save slots, settings and leaderboard panels (menus.js), Infinite's shop.
@@ -131,6 +134,7 @@ export function createUI({
     const kl = (action) => keyLabel(keysBound[action] ?? DEFAULT_KEYS[action] ?? '');
     let textSpeed = 1; // the Text speed setting
     let uiScale = 1;   // the Interface size setting (#hud is zoomed by CSS)
+    let highlights = true; // the Tutorial highlights setting
     const cue = (name) => sound?.cue(name);
     let cinematic = false;   // the ending is playing: HUD hidden, comms held
     let skyOverride = null;  // keeps the sky (and its Moon) up until the shot lands
@@ -210,9 +214,17 @@ export function createUI({
         for (const p of [help, prodPanel]) p.classList.add('hidden');
         onOpenMenu();
     });
+    // The codex (codexPanel.js): a reference that stays open while the factory runs.
+    const codexBtn = el('button', 'tbtn tb-codex-btn');
+    codexBtn.type = 'button';
+    codexBtn.innerHTML = `${iconSVG(ICON.book, 15)}<span></span>`;
+    codexBtn.querySelector('span').textContent = CODEX.title;
+    codexBtn.addEventListener('click', () => codex.toggle());
+    const prodBtn = textButton('Production', () => togglePopover(prodPanel));
     menuCell.append(
-        textButton('Production', () => togglePopover(prodPanel)),
+        prodBtn,
         textButton('Keys', () => togglePopover(help)),
+        codexBtn,
         menuBtn,
     );
     top.append(brandCell, creditsCell, powerCell, el('div', 'tb-spacer'), simCell, menuCell);
@@ -229,6 +241,7 @@ export function createUI({
             [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection, open the menu'],
             ['WASD', 'move view'], ['Wheel', 'zoom'],
             [`${kl('viewLeft')} / ${kl('viewRight')}`, 'turn view'], [kl('pause'), 'pause'], ['+ / −', 'sim speed'], [kl('mute'), 'sound on / off'],
+            [kl('codex'), 'codex: items, recipes, buildings (over a machine: its page)'],
         ];
         help.innerHTML = '';
         for (const [k, v] of rows) {
@@ -351,6 +364,13 @@ export function createUI({
     con.append(head, reqSec, planSec, researchSec, orderSec);
     root.appendChild(con);
 
+    // ---- Codex (over the console while it is open; the game keeps running) -------------------------
+    const codex = createCodexPanel({
+        root, icons, itemIcons, cue,
+        brand: () => brandFor(brandPhase, brandEnding, brandCompany).name,
+        keyLabel: () => kl('codex'),
+    });
+
     // ---- Keys -------------------------------------------------------------------------
     const keys = el('div', 'keys');
     const toolButtons = {};
@@ -379,6 +399,8 @@ export function createUI({
         }
         renderHelp();
         selSig = '';
+        codexBtn.title = `${CODEX.title} · ${kl('codex')}`;
+        codex.refresh();
     }
 
     // ---- Selection bar: what's selected, and what you can do with it ----------------------
@@ -607,7 +629,13 @@ export function createUI({
             cue('close');
             onDeselect();
         });
-        head.append(titles, close);
+        const toCodex = el('button', 'mp-codex');
+        toCodex.type = 'button';
+        toCodex.title = `${CODEX.link} · ${BUILDING_NAMES[sel.type] ?? sel.type}`;
+        toCodex.setAttribute('aria-label', toCodex.title);
+        toCodex.innerHTML = iconSVG(ICON.book, 15);
+        toCodex.addEventListener('click', () => codex.open(`building:${sel.type}`));
+        head.append(titles, toCodex, close);
         mp.appendChild(head);
         mpRefs.status = status;
 
@@ -633,6 +661,8 @@ export function createUI({
         if (sel.recipes?.length) {
             const sec = el('div', 'mp-sec');
             sec.appendChild(el('span', 'con-label', 'Recipe'));
+            mpRefs.recipeSec = sec;
+            mpRefs.recipeBtns = {};
             for (const r of sel.recipes) {
                 const b = el('button', `mp-recipe${r.active ? ' active' : ''}${r.unlocked ? '' : ' locked'}`);
                 b.type = 'button';
@@ -643,6 +673,7 @@ export function createUI({
                     if (r.active) return;
                     if (!onSetRecipe(r.id)) cue('deny');
                 });
+                mpRefs.recipeBtns[r.id] = b;
                 sec.appendChild(b);
             }
             mp.appendChild(sec);
@@ -1254,6 +1285,7 @@ export function createUI({
         }
         if (cell.item) lines.push(`ITEM ${(ITEM_NAMES[cell.item.type] ?? cell.item.type).toUpperCase()}`);
         if (cell.machine && !['belt', 'splitter', 'merger'].includes(cell.machine.type)) lines.push('CLICK FOR PANEL');
+        if (title && entryForCell(cell)) lines.push(CODEX.tip(kl('codex')));
         return title ? { title, body: lines.join('\n') } : null;
     }
 
@@ -1338,7 +1370,7 @@ export function createUI({
                 if (!onBuyPlot()) cue('deny');
             });
             land.appendChild(buy);
-            infRefs.push({ btn: buy, cost: inf.nextPlotCost });
+            infRefs.push({ btn: buy, cost: inf.nextPlotCost, land: true });
         } else land.appendChild(el('span', 'con-note', INFINITE_TEXT.allLand));
         reqList.appendChild(land);
         reqList.appendChild(el('span', 'con-label', INFINITE_TEXT.licences));
@@ -1354,7 +1386,7 @@ export function createUI({
                     if (!onBuyLicence(l.type)) cue('deny');
                 });
                 lic.appendChild(buy);
-                infRefs.push({ btn: buy, cost: l.cost });
+                infRefs.push({ btn: buy, cost: l.cost, type: l.type });
             } else {
                 lic.appendChild(el('span', 'inf-chip locked', BUILDING_NAMES[l.type]));
             }
@@ -1516,6 +1548,8 @@ export function createUI({
         if (!prodPanel.classList.contains('hidden')) renderProduction(s.production);
         updatePanel(s.selected, s.money);
         renderSelection(s.selection);
+        codex.update();
+        updateHighlights(s);
 
         // Inspector follows the hovered cell (not over the machine whose panel is open).
         const overSelected = s.selected && s.hoverX === s.selected.x && s.hoverY === s.selected.y;
@@ -1534,10 +1568,65 @@ export function createUI({
         }
     }
 
+    // ---- Tutorial highlights: where the first open objective wants you to look -------------------
+    // Its `key` pulses that building's keycap until you pick the tool; its `ui` glows the HUD
+    // element it is about (story.js, "Tutorial highlights"). The rings in the world are the
+    // renderer's (state.focus). Reduced motion stills the pulse (menus.css).
+    let hintKey = null;
+    let hintEl = null;
+    function hintTarget(ui, s) {
+        const [what, arg] = ui.split(':');
+        const panelOpen = !!s.selected && !mp.classList.contains('hidden');
+        switch (what) {
+            case 'recipe': {
+                if (!panelOpen || !mpRefs.recipeBtns) return null;
+                if (!arg) return mpRefs.recipeSec ?? null;
+                const b = mpRefs.recipeBtns[arg];
+                return b && !b.classList.contains('active') ? b : null;
+            }
+            case 'upgrade': return panelOpen ? mpRefs.up ?? null : null;
+            case 'power': return powerCell;
+            case 'production': return prodBtn;
+            case 'menu': return menuBtn;
+            case 'codex': return codexBtn;
+            case 'order': return orderSec.classList.contains('hidden') ? null : orderSec;
+            case 'research':
+                if (researchSec.classList.contains('hidden')) return null;
+                return arg && techButtons[arg] && !s.research.unlocked[arg] ? techButtons[arg] : researchSec;
+            case 'licence': return infRefs.find((r) => r.type === arg)?.btn ?? null;
+            case 'land': return infRefs.find((r) => r.land)?.btn ?? null;
+            default: return null;
+        }
+    }
+    function updateHighlights(s) {
+        const now = highlights && !cinematic ? (s.objectives ?? []).find((o) => !o.done) : null;
+        const key = now?.key && s.tool !== now.key && s.unlocked[now.key] !== false ? toolButtons[now.key] ?? null : null;
+        if (key !== hintKey) {
+            hintKey?.classList.remove('hint-pulse');
+            key?.classList.add('hint-pulse');
+            hintKey = key;
+        }
+        const target = now?.ui ? hintTarget(now.ui, s) : null;
+        if (target !== hintEl) {
+            hintEl?.classList.remove('hint-glow');
+            target?.classList.add('hint-glow');
+            hintEl = target;
+        }
+    }
+
     update();
     return {
         update, say, isBusy, showBanner, showTitle, showEnding, showCredits, toast,
         setKeys,
+        /** The codex (codexPanel.js): open on an entry ('item:steel', 'building:press'…), K's toggle, Esc's close. */
+        openCodex: (id) => codex.open(id),
+        toggleCodex: (id) => codex.toggle(id),
+        closeCodex: () => codex.close(),
+        codexOpen: () => codex.isOpen(),
+        /** The Tutorial highlights setting (keycap pulse, HUD glow). */
+        setHighlights: (on) => {
+            highlights = !!on;
+        },
         /** The Text speed setting: 1 normal, higher is faster (99: at once). */
         setTextSpeed: (x) => {
             textSpeed = Math.max(0.3, Number(x) || 1);

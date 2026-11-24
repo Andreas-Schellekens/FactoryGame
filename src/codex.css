@@ -1,0 +1,723 @@
+/* Protocol: Selene — the codex (codexPanel.js) and the tutorial highlights (ui.js).
+   Same instrument panel as the HUD: square corners, 1 px hairlines, mono labels. The codex
+   docks over the console on the left, so the factory, the machine panel and DELTA stay in view. */
+
+/* ---- The codex panel --------------------------------------------------------------------------- */
+.codex {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  bottom: 104px;
+  width: min(680px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  background: #0c1726; /* opaque: the console it covers must not show through */
+  box-shadow: inset 0 0 0 1px var(--hair), 3px 3px 0 rgba(5, 10, 20, 0.6);
+}
+
+.cx-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 18px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-titles {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cx-kicker,
+.cx-ph-kicker {
+  font: 600 10px var(--f-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+.cx-title {
+  font: 900 28px/1 var(--f-mission);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cx-keyhint {
+  font: 500 10px var(--f-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.cx-close {
+  align-self: flex-start;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--hair-2);
+  background: transparent;
+  color: var(--paper-2);
+  font: 400 18px/1 var(--f-mono);
+  cursor: pointer;
+}
+
+.cx-close:hover {
+  color: var(--paper);
+  border-color: var(--paper-2);
+}
+
+.cx-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.cx-tab {
+  height: 30px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--hair-2);
+  background: transparent;
+  color: var(--paper-2);
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cx-tab:hover {
+  border-color: var(--paper-2);
+  color: var(--paper);
+}
+
+.cx-tab.on {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--midnight);
+}
+
+.cx-tab.none {
+  opacity: 0.45;
+}
+
+.cx-count {
+  font-size: 10px;
+  color: var(--mustard);
+}
+
+.cx-count:empty {
+  display: none;
+}
+
+.cx-tab.on .cx-count {
+  color: var(--midnight);
+}
+
+.cx-search {
+  flex: 1;
+  min-width: 150px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--hair-2);
+  background: var(--console-edge);
+  color: var(--paper);
+  font: 500 12px var(--f-mono);
+}
+
+.cx-search::placeholder {
+  color: var(--muted);
+}
+
+.cx-search:focus {
+  outline: none;
+  border-color: var(--mustard);
+}
+
+.cx-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 206px 1fr;
+}
+
+.cx-body.wide {
+  grid-template-columns: 1fr;
+}
+
+.cx-body.wide .cx-list {
+  display: none;
+}
+
+.cx-list {
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border-right: 1px solid var(--hair);
+}
+
+.cx-row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-row:hover {
+  background: var(--console);
+}
+
+.cx-row.on {
+  background: var(--console);
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+
+.cx-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cx-row-name {
+  font: 600 12.5px/1.25 var(--f-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-row-sub {
+  font: 500 10px var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--label);
+}
+
+.cx-row.locked .cx-row-name {
+  color: var(--paper-2);
+}
+
+.cx-row.locked .cx-pic img,
+.cx-recipe.locked .cx-pic img {
+  filter: grayscale(0.7) brightness(0.75);
+}
+
+.cx-row.classified .cx-row-name,
+.cx-redacted {
+  color: var(--muted);
+  letter-spacing: -0.08em;
+}
+
+.cx-chip {
+  flex: none;
+  padding: 1px 4px;
+  border: 1px solid var(--hair-2);
+  font: 600 9px var(--f-mono);
+  letter-spacing: 0.1em;
+  color: var(--label);
+  white-space: nowrap;
+}
+
+.cx-pic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cx-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(5, 10, 20, 0.45));
+}
+
+.cx-pic.glyph {
+  background: var(--console);
+  color: var(--teal);
+}
+
+.cx-pic.blank {
+  background: var(--console);
+}
+
+.cx-pic.redacted {
+  background: repeating-linear-gradient(-45deg, #141c28 0 5px, #22324a 5px 10px);
+  color: var(--muted);
+}
+
+.cx-empty {
+  margin: 0;
+  padding: 10px;
+  font: 500 12px var(--f-mono);
+  color: var(--muted);
+}
+
+/* ---- A page ------------------------------------------------------------------------------- */
+.cx-page {
+  overflow-y: auto;
+  padding: 14px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cx-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--hair-2);
+  background: transparent;
+  color: var(--paper-2);
+  font: 600 10px var(--f-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cx-back:hover {
+  color: var(--paper);
+  border-color: var(--paper-2);
+}
+
+.cx-ph {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cx-ph-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cx-ph-name {
+  font: 800 30px/1 var(--f-mission);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.cx-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 11px var(--f-mono);
+  color: var(--paper-2);
+}
+
+.cx-status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--teal);
+}
+
+.cx-status.locked {
+  color: var(--mustard);
+}
+
+.cx-status.locked::before {
+  background: var(--mustard);
+}
+
+.cx-desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--paper-2);
+}
+
+.cx-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cx-note {
+  margin: 0;
+  font: 400 11px/1.5 var(--f-mono);
+  color: var(--label);
+}
+
+.cx-phase.current {
+  color: var(--mustard);
+}
+
+.cx-phase.done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.cx-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font: 500 12px var(--f-mono);
+}
+
+.cx-facts dt {
+  color: var(--label);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  align-self: center;
+}
+
+.cx-facts dd {
+  margin: 0;
+  color: var(--paper);
+}
+
+/* A recipe: inputs → output on one line, machine, time and gate under it. */
+.cx-recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--hair-2);
+  background: var(--console);
+}
+
+.cx-recipe.locked {
+  background: transparent;
+}
+
+/* The Recipes tab has the whole width: ingredients left, machine and time right. */
+.cx-body.wide .cx-recipe {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+}
+
+.cx-body.wide .cx-meta {
+  justify-content: flex-end;
+}
+
+.cx-recipe.classified {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  background: repeating-linear-gradient(-45deg, rgba(20, 28, 40, 0.8) 0 8px, rgba(34, 50, 74, 0.5) 8px 16px);
+}
+
+.cx-recipe.marked {
+  border-color: var(--mustard);
+  box-shadow: inset 3px 0 0 var(--mustard);
+}
+
+.cx-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.cx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 2px 8px 2px 3px;
+  border: 1px solid transparent;
+  background: rgba(11, 21, 36, 0.55);
+  color: var(--paper);
+  font: 600 12px var(--f-text);
+  cursor: pointer;
+}
+
+.cx-link:hover {
+  border-color: var(--mustard);
+}
+
+.cx-link.classified {
+  color: var(--muted);
+  cursor: default;
+}
+
+.cx-link.classified:hover {
+  border-color: transparent;
+}
+
+.cx-meta .cx-link {
+  min-height: 24px;
+  font: 500 11px var(--f-mono);
+}
+
+.cx-link.gate {
+  color: var(--mustard);
+}
+
+.cx-link.online {
+  color: var(--teal);
+}
+
+.cx-plus {
+  font: 600 13px var(--f-mono);
+  color: var(--label);
+}
+
+.cx-arrow {
+  margin: 0 2px;
+  font: 600 14px var(--f-mono);
+  color: var(--signal);
+}
+
+.cx-points {
+  font: 600 12px var(--f-mono);
+  color: var(--teal);
+}
+
+.cx-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font: 500 11px var(--f-mono);
+  color: var(--label);
+}
+
+.cx-time {
+  color: var(--paper-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-why {
+  flex-basis: 100%;
+  font: 500 11px var(--f-mono);
+  color: var(--mustard);
+}
+
+/* Ports: the machine from above, front to the right. */
+.cx-ports {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cx-ports-svg {
+  flex: none;
+}
+
+.cx-port-body {
+  fill: var(--console);
+  stroke: var(--hair-2);
+}
+
+.cx-port-in {
+  fill: #3cc8b4;
+}
+
+.cx-port-out {
+  fill: #ff7a2a;
+}
+
+body.cb-safe .cx-port-in {
+  fill: #56b4e9;
+}
+
+body.cb-safe .cx-port-out {
+  fill: #e69f00;
+}
+
+.cx-ports-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font: 600 12px var(--f-mono);
+  color: var(--paper);
+}
+
+.cx-tiers {
+  border-collapse: collapse;
+  font: 500 12px var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-tiers th,
+.cx-tiers td {
+  padding: 4px 14px 4px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--hair);
+}
+
+.cx-tiers th {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--label);
+  font-weight: 600;
+}
+
+.cx-tiers td {
+  color: var(--mustard);
+}
+
+.cx-tiers tr.head td {
+  color: var(--paper);
+}
+
+.cx-tiers td.locked {
+  color: var(--muted);
+}
+
+/* The Pad's prices, like the market in its machine panel. */
+.cx-market {
+  display: grid;
+  grid-template-columns: minmax(130px, auto) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font: 500 12px var(--f-mono);
+}
+
+.cx-market-k {
+  color: var(--paper);
+}
+
+.cx-market-v {
+  color: var(--mustard);
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-mbar {
+  height: 6px;
+  background: var(--console);
+}
+
+.cx-mfill {
+  height: 100%;
+  background: var(--teal);
+}
+
+.cx-mfill[data-low='1'] {
+  background: var(--signal);
+}
+
+/* Classified: what NILE doesn't want you to read yet. */
+.cx-sealed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px;
+  background: repeating-linear-gradient(-45deg, rgba(20, 28, 40, 0.85) 0 10px, rgba(34, 50, 74, 0.45) 10px 20px);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+}
+
+/* The machine panel's link into the codex (beside its close button). */
+.mp-codex {
+  align-self: flex-start;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hair-2);
+  background: transparent;
+  color: var(--paper-2);
+  cursor: pointer;
+}
+
+.mp-codex:hover {
+  color: var(--mustard);
+  border-color: var(--mustard);
+}
+
+.tb-codex-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---- Tutorial highlights ------------------------------------------------------------------------
+   The keycap to press pulses with an arrow over it; the HUD element an objective is about glows.
+   Reduced motion (menus.css) stops the animation and leaves the outline. */
+.hwkey.hint-pulse {
+  outline: 2px solid var(--mustard);
+  outline-offset: 2px;
+  animation: hint-pulse 1.2s ease-in-out infinite;
+}
+
+.hwkey.hint-pulse::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -22px;
+  margin-left: -8px;
+  border: 8px solid transparent;
+  border-top-color: var(--mustard);
+  animation: hint-bob 1.2s ease-in-out infinite;
+}
+
+@keyframes hint-pulse {
+  0%, 100% { outline-color: var(--mustard); }
+  50% { outline-color: rgba(243, 178, 60, 0.3); }
+}
+
+@keyframes hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.hint-glow {
+  outline: 2px solid var(--mustard);
+  outline-offset: -2px;
+  background-image: linear-gradient(rgba(243, 178, 60, 0.12), rgba(243, 178, 60, 0.12));
+  animation: hint-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hwkey.hint-pulse,
+  .hwkey.hint-pulse::before,
+  .hint-glow {
+    animation: none;
+  }
+}
+
+/* Phones and narrow windows: the list goes on top of the page. */
+@media (max-width: 720px) {
+  .codex {
+    bottom: 16px;
+  }
+
+  .cx-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(90px, 30%) 1fr;
+  }
+
+  .cx-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .cx-keyhint {
+    display: none;
+  }
+}

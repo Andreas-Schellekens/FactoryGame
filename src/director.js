@@ -59,7 +59,7 @@ export function createDirector({ say, banner, ending, isBusy, script = () => STO
         objectives = list.map((o) => {
             const key = `obj:${w.phase}:${o.id}`;
             if (!flags.has(key) && o.done(w)) flags.add(key); // sticky once done
-            return { id: o.id, text: o.text, hint: o.hint, focus: o.focus ?? null, done: flags.has(key) };
+            return { id: o.id, text: o.text, hint: o.hint, focus: o.focus ?? null, key: o.key ?? null, ui: o.ui ?? null, done: flags.has(key) };
         });
     }
 

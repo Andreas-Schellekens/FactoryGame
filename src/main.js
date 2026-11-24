@@ -11,6 +11,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 import './menus.css';
+import './codex.css';
 import {
     GRID_WIDTH, GRID_HEIGHT, TICK_RATE, SINK_VALUE, MAX_TIER, PRODUCT_REWARD,
     ORDER_TARGET, ORDER_TICKS, ORDER_REWARD, ORDER_GRACE_TICKS, ORDER_POOL,
@@ -38,6 +39,7 @@ import { createMenus } from './menus.js';
 import { createSettingsPanel } from './settingsPanel.js';
 import { blueprintThumb } from './blueprint.js';
 import { layoutOf } from './benchmark.js';
+import { entryForCell } from './codex.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -495,6 +497,7 @@ const ui = createUI({
     root: document.getElementById('hud'),
     sound: audio,
     icons: renderer.icons,
+    itemIcons: renderer.itemIcons,
     onToolChange: selectTool,
     onRotate: rotateDir,
     onTogglePause: togglePause,
@@ -691,7 +694,7 @@ function onFrame(dt) {
             const w = snapshot();
             lastWorking = w.working;
             director.update(w);
-            state.focus = director.objectives().find((o) => !o.done)?.focus ?? null;
+            state.focus = settings.get().gameplay.highlights ? director.objectives().find((o) => !o.done)?.focus ?? null : null;
         }
         if (!state.paused && document.visibilityState === 'visible') playMs += dt;
         autosaveClock += dt;
@@ -820,7 +823,8 @@ function openBoard() {
 // Settings take effect here, once at start and on every change.
 function applySettings(v) {
     const motionless = v.access.reducedMotion;
-    renderer.setGraphics({ ...v.graphics, shake: v.graphics.shake && !motionless });
+    renderer.setGraphics({ ...v.graphics, shake: v.graphics.shake && !motionless, calm: motionless });
+    ui.setHighlights(v.gameplay.highlights);
     renderer.setPortPalette(v.access.colorblind);
     audio.setSettings({ voiceOff: !v.gameplay.voice });
     ui.setKeys(v.keys);
@@ -960,10 +964,13 @@ window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') return clearSelection();
     }
     if (act === 'pipette') pipette();
+    // The codex: over something in the world, its page; otherwise open / close.
+    if (act === 'codex') ui.toggleCodex(state.hovered.x >= 0 ? entryForCell(grid[state.hovered.x][state.hovered.y]) : null);
     if (TOOL_ACTIONS.has(act)) selectTool(act);
     if (k === 'delete' || k === 'backspace') selectTool('erase');
     if (e.key === 'Escape') {
-        if (state.selected) {
+        if (ui.codexOpen()) ui.closeCodex();
+        else if (state.selected) {
             deselect();
             audio.cue('close');
         } else openGameMenu(); // nothing to close: Esc opens the menu
