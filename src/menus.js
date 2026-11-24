@@ -9,6 +9,7 @@ import { markSVG, patchSVG } from './brand.js';
 import { BRAND, GAME_TITLE, INFINITE_TEXT, ITEM_NAMES } from './story.js';
 import { PHASES } from './campaign.js';
 import { PLOTS } from './config.js';
+import { passkeySection, passkeySignInButton } from './passkeys.js';
 
 function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -79,9 +80,10 @@ function syncBadge(slot, signedIn) {
 }
 
 /**
- * @param {{ account: any, saves: any, sound?: any, onOpenSettings: () => void }} opts
+ * @param {{ account: any, saves: any, sound?: any, onOpenSettings: () => void, people?: () => any }} opts
+ * `people()` is profile.js (late-bound): the Profile page, avatars, other players' profiles.
  */
-export function createMenus({ account, saves, sound, onOpenSettings }) {
+export function createMenus({ account, saves, sound, onOpenSettings, people = () => null }) {
     const cue = (name) => sound?.cue(name);
     let modal = null; // the open modal panel: { node, close }
     let titleNode = null;
@@ -142,11 +144,14 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             chip.classList.toggle('on', !!s.user);
             chip.classList.toggle('offline', s.checked && !s.online);
             chip.textContent = s.user ? s.user.name : !s.checked ? 'Account…' : s.online ? 'Sign in' : 'Offline';
+            const p = people();
+            chip.classList.toggle('has-av', !!(s.user && p));
+            if (s.user && p) chip.prepend(p.avatarNode(s.user.avatar ?? p.myAvatar(), 24));
             chip.title = s.user ? 'Your account' : s.online ? 'Sign in to keep your saves and settings in your account' : 'The server can’t be reached: saves stay in this browser';
         };
         render();
         const off = account.onChange(render);
-        chip.addEventListener('click', () => openAccount());
+        chip.addEventListener('click', () => (account.state.user && people() ? people().open() : openAccount()));
         chip._off = off;
         return chip;
     }
@@ -215,11 +220,11 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
         if (onBlueprints) item('Blueprints', 'Your saved machine groups: place · rename · export · import', onBlueprints);
         item('Settings', 'Sound · graphics · gameplay · controls · accessibility', onSettings);
         item('Leaderboard', 'The most efficient Infinite factories', onLeaderboard);
-        const acc = item('Account', '', () => openAccount());
+        const acc = item(people() ? 'Profile' : 'Account', '', () => (people() ? people().open() : openAccount()));
         const renderAccount = () => {
             const s = account.state;
-            acc.querySelector('.gm-hint').textContent = s.user ? `Signed in as ${s.user.name}`
-                : s.checked && !s.online ? 'Offline: saves stay in this browser' : 'Sign in to keep your saves in the cloud';
+            acc.querySelector('.gm-hint').textContent = (people() ? `${people().menuHint()} · ` : '') + (s.user ? `Signed in as ${s.user.name}`
+                : s.checked && !s.online ? 'Offline: saves stay in this browser' : 'Sign in to keep your saves in the cloud');
         };
         renderAccount();
         list.appendChild(el('span', 'gm-sep'));
@@ -452,7 +457,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             renderSignedOut(view ?? 'login');
         };
 
-        const privacy = () => el('p', 'mm-fine', 'We keep your name, a hash of your password, your saves, settings and leaderboard scores. No e-mail address, no IP address. You can download or delete all of it here.');
+        const privacy = () => el('p', 'mm-fine', 'We keep your name, a hash of your password, your saves, settings, leaderboard scores, achievements and avatar, and your passkeys’ public keys. No e-mail address, no IP address. You can download or delete all of it here.');
         const errorLine = () => el('p', 'mm-error');
         async function busy(btn, fn, err) {
             btn.disabled = true;
@@ -481,7 +486,16 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
                 const pw = field('Password', 'password', { autocomplete: 'current-password', required: true });
                 const go = button('Sign in', () => {}, 'btn-primary small');
                 go.type = 'submit';
-                form.append(name.wrap, pw.wrap, err, go);
+                form.append(name.wrap, pw.wrap, err, go, passkeySignInButton({
+                    err,
+                    cue,
+                    onUser: async (user) => {
+                        account.adoptUser(user);
+                        cue('check');
+                        await saves.sync();
+                        render();
+                    },
+                }));
                 form.addEventListener('submit', (e) => {
                     e.preventDefault();
                     busy(go, async () => {
@@ -611,7 +625,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
                 }, derr);
             });
             delSec.appendChild(delForm);
-            body.append(pwSec, delSec, privacy());
+            body.append(passkeySection({ cue, open: view === 'passkeys' }), pwSec, delSec, privacy());
         }
 
         render();
@@ -665,7 +679,13 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             const row = (e) => {
                 const r = el('div', `lb-row${e.me ? ' me' : ''}`);
                 const value = board === 'throughput' ? fmtNum(e.perMinute) : fmtNum(e.efficiency);
-                r.append(el('span', 'lb-rank', String(e.rank)), el('span', 'lb-name', e.name), el('span', 'lb-val', value),
+                const nameCell = el('span', 'lb-name', people() ? null : e.name);
+                if (people()) {
+                    const av = el('span', 'lb-av');
+                    av.dataset.avName = e.name;
+                    nameCell.append(av, button(e.name, () => people().openPlayer(e.name), 'lb-player'));
+                }
+                r.append(el('span', 'lb-rank', String(e.rank)), nameCell, el('span', 'lb-val', value),
                     el('span', null, String(e.machines)), el('span', 'lb-date', new Date(e.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })));
                 const view = el('span', 'lb-view');
                 if (onView && e.id != null) {
@@ -683,6 +703,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
                 table.appendChild(el('div', 'lb-gap', '⋯'));
                 table.appendChild(row(data.me));
             }
+            people()?.fillAvatars(table);
         }
 
         function renderSubmit() {

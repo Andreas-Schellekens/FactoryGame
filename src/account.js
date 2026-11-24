@@ -13,7 +13,8 @@ export class ApiError extends Error {
     }
 }
 
-async function call(path, { method = 'GET', body } = {}) {
+/** One API call: JSON in and out, the CSRF header, the session cookie. Throws ApiError. */
+export async function call(path, { method = 'GET', body } = {}) {
     let res;
     try {
         res = await fetch(`/api${path}`, {
@@ -98,6 +99,14 @@ export function createAccount() {
             const r = await call('/auth/recover', { method: 'POST', body: { name, recoveryCode, newPassword } });
             setUser(r.user);
             return r; // a new recovery code
+        },
+        /** Signed in some other way (a passkey): take the user the server answered with. */
+        adoptUser: (user) => setUser(user),
+        /** Add fields to the signed-in user (profile.js: the avatar) and tell the listeners. */
+        patchUser(fields) {
+            if (!state.user) return;
+            state.user = { ...state.user, ...fields };
+            emit();
         },
         changePassword: (password, newPassword) => call('/me/password', { method: 'POST', body: { password, newPassword } }),
         async deleteAccount(password) {

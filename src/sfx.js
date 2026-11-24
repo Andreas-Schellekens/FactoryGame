@@ -47,6 +47,7 @@ export const CUE_META = {
     ending: { gap: 30000, gain: 1 },
     endingFinal: { gap: 2000, gain: 0.9 },
     endingFree: { gap: 2000, gain: 0.9 },
+    achievement: { gap: 1200, gain: 1.1 },
 };
 
 export const CUES = {
@@ -134,6 +135,13 @@ export const CUES = {
     orderFail({ ctx, out, mood }, t) {
         blip(ctx, out, t, degreeFreq(mood, 2, 0), { type: 'triangle', dur: 0.28, gain: 0.08, cutoff: 900 });
         blip(ctx, out, t + 0.3, degreeFreq(mood, 0, 0), { type: 'triangle', dur: 0.5, gain: 0.08, glide: degreeFreq(mood, -1, 0), cutoff: 700 });
+    },
+    /** An achievement: a rising run of bells up to the octave, with a shimmer. */
+    achievement({ ctx, out, wet, mood }, t) {
+        [0, 2, 4, 7].forEach((deg, i) => tine(ctx, out, t + i * 0.07, degreeFreq(mood, deg, 1), { vel: 0.55, decay: 0.7, bright: 1.5 }));
+        bell(ctx, wet, t + 0.3, degreeFreq(mood, 7, 1), { vel: 0.55, decay: 2.4 });
+        bell(ctx, out, t + 0.3, degreeFreq(mood, 14, 0), { vel: 0.3, decay: 1.6 });
+        for (let i = 0; i < 6; i++) noise(ctx, out, t + 0.32 + i * 0.06, { dur: 0.02, gain: 0.025, type: 'highpass', freq: 8000 });
     },
     tech({ ctx, out, wet, mood }, t) {
         [0, 4, 7, 11].forEach((deg, i) => blip(ctx, out, t + i * 0.06, degreeFreq(mood, deg, 1), { type: 'square', dur: 0.09, gain: 0.035, cutoff: 3000 }));

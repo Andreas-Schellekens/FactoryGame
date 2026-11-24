@@ -25,7 +25,7 @@ const check = (name, ok, detail = '') => {
 };
 const js = (fn, arg) => page.evaluate(fn, arg);
 const wait = (ms) => page.waitForTimeout(ms);
-/** Top bar → Menu, then one of its items (Save game, Saves, Settings, Leaderboard, Account, Main menu). */
+/** Top bar → Menu, then one of its items (Save game, Saves, Settings, Leaderboard, Profile, Main menu). */
 async function menu(item) {
     await page.click('.tb-menu-btn');
     await page.click(`.gm-item:has-text("${item}")`);
@@ -139,7 +139,8 @@ const name = `v6_${Date.now().toString(36).slice(-6)}`;
 const password = 'correct horse battery';
 let recoveryCode = null;
 if (apiUp) {
-    await menu('Account');
+    await menu('Profile'); // the account panel is in the profile (iteration 7)
+    await page.click('.pf-foot button:has-text("Account")');
     await page.click('.mm-tab:has-text("Create account")');
     await page.fill('.mm-field:has-text("Name") input', name);
     await page.fill('.mm-field:has-text("Password (8") input', password);

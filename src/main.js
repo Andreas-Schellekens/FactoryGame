@@ -48,6 +48,8 @@ import { createBlueprints, fromCells, fromLayout, anchorOf } from './blueprints.
 import { createBlueprintPanel } from './blueprintPanel.js';
 import { createViewBar, linkedFactory, factoryLink, shareLink } from './viewer.js';
 import './blueprints.css';
+import { createAchievements } from './achievements.js';
+import { createProfile, avatarForAchievement } from './profile.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -69,6 +71,8 @@ audio.setSettings(settings.get().audio);
 const account = createAccount();
 const saves = createSaves({ account, isLoadable: isLoadableSave });
 const blueprints = createBlueprints({ account }); // iteration 7: the blueprint library
+// Achievements (iteration 7): polled from the world once a second, a toast in the HUD.
+const achievements = createAchievements({ account, sound: audio, avatarFor: avatarForAchievement, quiet: () => state.cinematic });
 
 // --- 3D view (loads the Kenney models first; the loader shows progress) ---
 initGrid();
@@ -298,7 +302,7 @@ let activeSlot = null; // the slot card of the running game
 let playMs = 0;        // real time played in this slot (paused time doesn't count)
 
 function saveData() {
-    return { ...serialize(), story: director.save(), visual: renderer.saveVisual(), playMs: Math.round(playMs) };
+    return { ...serialize(), story: director.save(), visual: renderer.saveVisual(), playMs: Math.round(playMs), achv: achievements.saveRun() };
 }
 function slotMeta() {
     let thumb = null;
@@ -349,6 +353,7 @@ function applySave(data) {
     director.load(data.story, tickCount, project.phase, project.ending);
     history.clear();
     alerts.reset();
+    achievements.loadRun(data.achv);
     state.started = true;
     return true;
 }
@@ -786,6 +791,7 @@ function onFrame(dt) {
             const w = snapshot();
             lastWorking = w.working;
             director.update(w);
+            achievements.update(w);
             state.focus = settings.get().gameplay.highlights ? director.objectives().find((o) => !o.done)?.focus ?? null : null;
         }
         if (!state.paused && document.visibilityState === 'visible') playMs += dt;
@@ -815,13 +821,17 @@ function onFrame(dt) {
     panWithKeys(dt);
     ui.update();
 }
-startGameLoop(renderer, state, onFrame, (events) => audio.onEvents(events));
+startGameLoop(renderer, state, onFrame, (events) => {
+    audio.onEvents(events);
+    achievements.onEvents(events);
+});
 window.addEventListener('beforeunload', () => saveGame('later'));
 
 // --- Menus: title screen, saves, account, leaderboard, settings (menus.js, settingsPanel.js) ---
-const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open() });
+const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open(), people: () => profile });
 const settingsPanel = createSettingsPanel({ settings, sound: audio, menus, account });
 const blueprintPanel = createBlueprintPanel({ menus, blueprints, account, sound: audio, unlocked: isBuildingUnlocked });
+const profile = createProfile({ account, menus, achievements, saves, icons: renderer.icons, sound: audio, onLeaderboard: () => openBoard() });
 
 /** Start playing (the title screen is gone): a new game in a new slot, or a slot's save. */
 function beginNew(mode) {
@@ -833,6 +843,7 @@ function beginNew(mode) {
     history.clear();
     alerts.reset();
     playMs = 0;
+    achievements.loadRun(null);
     state.started = true;
     state.paused = false;
     lastPhase = project.phase;
@@ -938,7 +949,7 @@ async function beginView({ factory, back = null }) {
     state.tool = 'select';
     document.body.classList.add('viewing');
     try {
-        history.replaceState(null, '', `${location.pathname}?factory=${encodeURIComponent(factory)}`);
+        window.history.replaceState(null, '', `${location.pathname}?factory=${encodeURIComponent(factory)}`);
         if (back) sessionStorage.setItem(VIEW_BACK, JSON.stringify({ factory, back }));
         else {
             const kept = JSON.parse(sessionStorage.getItem(VIEW_BACK) ?? 'null');
@@ -948,7 +959,7 @@ async function beginView({ factory, back = null }) {
     viewBar = createViewBar({
         onBack: () => {
             try {
-                history.replaceState(null, '', location.pathname);
+                window.history.replaceState(null, '', location.pathname);
                 sessionStorage.removeItem(VIEW_BACK);
             } catch { /* ignore */ }
             switchTo(back ?? { action: 'title' });
@@ -1059,6 +1070,12 @@ else if (bootSlot) beginSlot(bootSlot);
 else if (boot?.action === 'new') beginNew(boot.mode);
 else if (linked) beginView({ factory: linked });
 else showTitle();
+// A shared profile link (?player=<name>) opens that player's profile over the title screen.
+const sharedPlayer = new URLSearchParams(location.search).get('player');
+if (sharedPlayer) {
+    profile.openPlayer(sharedPlayer.slice(0, 20));
+    window.history.replaceState(null, '', location.pathname + location.search.replace(/([?&])player=[^&]*&?/, '$1').replace(/[?&]$/, '') + location.hash);
+}
 
 // --- Input: build tools ---
 function actAt(gx, gy, button) {
@@ -1349,6 +1366,8 @@ if (import.meta.env.DEV) {
     window.__menus = menus;
     window.__undo = history; // undo.js: __undo.size(), __undo.undo()
     window.__alerts = alerts; // alerts.js: __alerts.groups()
+    window.__achievements = achievements; // __achievements.grant('circuit') earns one
+    window.__profile = profile;
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);

@@ -109,7 +109,7 @@ fn cookie_token(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-async fn start_session(state: &AppState, user_id: i64) -> ApiResult<HeaderValue> {
+pub async fn start_session(state: &AppState, user_id: i64) -> ApiResult<HeaderValue> {
     let token = random_token();
     sqlx::query("insert into sessions (token_hash, user_id, expires_at) values ($1, $2, now() + make_interval(days => $3))")
         .bind(token_hash(&token))
@@ -120,7 +120,7 @@ async fn start_session(state: &AppState, user_id: i64) -> ApiResult<HeaderValue>
     Ok(session_cookie(state, &token, SESSION_DAYS * 86_400))
 }
 
-fn with_cookie(cookie: HeaderValue, body: Value) -> Response {
+pub fn with_cookie(cookie: HeaderValue, body: Value) -> Response {
     let mut res = Json(body).into_response();
     res.headers_mut().insert(SET_COOKIE, cookie);
     res
@@ -322,12 +322,14 @@ pub async fn export(State(state): State<AppState>, AuthUser(user): AuthUser) -> 
     .fetch_all(&state.db)
     .await?;
     let blueprints = crate::blueprints::export(&state.db, user.id).await?;
+    let profile = crate::profile::export(&state, user.id).await?;
     let body = json!({
         "exportedFrom": "Protocol: Selene",
         "user": { "name": user.name, "createdAt": created },
         "saves": saves.into_iter().map(|(slot, name, meta, data, rev, at)| json!({ "slot": slot, "name": name, "meta": meta, "data": data, "rev": rev, "updatedAt": at })).collect::<Vec<_>>(),
         "settings": settings.map(|(d,)| d),
         "blueprints": blueprints,
+        "profile": profile,
         "scores": scores.into_iter().map(|(world, v, pm, eff, machines, sold, layout, at)| json!({ "world": world, "benchVersion": v, "perMinute": pm, "efficiency": eff, "machines": machines, "sold": sold, "layout": layout, "createdAt": at })).collect::<Vec<_>>(),
     });
     let mut res = Json(body).into_response();
@@ -340,7 +342,8 @@ pub struct DeleteAccount {
     password: String,
 }
 
-/// Delete the account and everything with it (saves, settings, scores, blueprints, sessions).
+/// Delete the account and everything with it (saves, settings, scores, blueprints, sessions,
+/// profile, achievements and passkeys: every table cascades from users).
 pub async fn delete_account(State(state): State<AppState>, AuthUser(user): AuthUser, Json(body): Json<DeleteAccount>) -> ApiResult<Response> {
     limit(&state, format!("delete:{}", user.id), 10, 900)?;
     let (hash,): (String,) = sqlx::query_as("select pass_hash from users where id = $1").bind(user.id).fetch_one(&state.db).await?;

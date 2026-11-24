@@ -9,6 +9,8 @@ mod auth;
 mod blueprints;
 mod error;
 mod limits;
+mod passkeys;
+mod profile;
 mod scores;
 mod sim;
 mod store;
@@ -84,6 +86,8 @@ pub fn router(state: AppState) -> Router {
         .route("/blueprints", get(blueprints::list))
         .route("/blueprints/{id}", put(blueprints::put).delete(blueprints::delete))
         .route("/factories/{id}", get(blueprints::factory))
+        .merge(profile::routes())
+        .merge(passkeys::routes())
         .layer(middleware::from_fn(require_header))
         .layer(DefaultBodyLimit::max(6 * 1024 * 1024))
         .with_state(state);
@@ -163,7 +167,7 @@ async fn main() {
     };
     let addr = if host.contains(':') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap_or_else(|e| panic!("could not listen on {addr}: {e}"));
-    println!("selene-api listening on {addr} (benchmark v{bench_version})");
+    println!("selene-api listening on {addr} (benchmark v{bench_version}; {})", passkeys::describe());
     axum::serve(listener, router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
