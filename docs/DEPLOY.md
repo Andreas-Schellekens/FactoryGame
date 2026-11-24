@@ -52,11 +52,13 @@ Plus, per service (Settings in the dashboard, or `serviceInstanceUpdate` through
 
 | Service | Dockerfile | Healthcheck | Watch paths |
 |---|---|---|---|
-| api | `api/Dockerfile` | `/api/health` (120 s) | `api/**`, `src/grid.js`, `src/config.js`, `src/campaign.js`, `src/benchmark.js` |
+| api | `api/Dockerfile` | `/api/health` (120 s) | `api/**`, `src/grid.js`, `src/config.js`, `src/campaign.js`, `src/benchmark.js`, `src/challenge.js` |
 | web | `web/Dockerfile` | `/` | `web/**`, `src/**`, `public/**`, `index.html`, `vite.config.js`, `package.json`, `package-lock.json` |
 
 Variables: **api** has `DATABASE_URL` (Postgres's private URL, as a reference), `PORT=8080`
-and `COOKIE_SECURE=1`; **web** has `API_UPSTREAM` (the api's private address) and
+and `COOKIE_SECURE=1`, plus for passkeys `WEBAUTHN_RP_ID=selene.schellekensdigital.be` and
+`WEBAUTHN_ORIGIN=https://selene.schellekensdigital.be` (a passkey belongs to one domain, so
+they don't work on the railway.app address; passwords do); **web** has `API_UPSTREAM` (the api's private address) and
 `PORT=8080`. The api service has no public domain. Never set `RELAX_LIMITS` on Railway.
 
 ## Costs

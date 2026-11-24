@@ -88,7 +88,9 @@ check('Esc opens the menu and pauses the game', paused.open && paused.paused && 
 await page.click('.gm-item:has-text("Resume")');
 await wait(800);
 check('Resume closes it and the game runs on', await js(() => !document.querySelector('.mm-panel') && !window.__state.paused));
-check('the top bar keeps only the game\'s own buttons', (await js(() => [...document.querySelectorAll('.tb-menu .tbtn')].map((b) => b.textContent).join(','))) === 'Production,Keys,Menu');
+// Iteration 7 added Alerts (with a count) and Codex before Menu.
+const topBar = await js(() => [...document.querySelectorAll('.tb-menu .tbtn')].map((b) => b.textContent.replace(/\d+$/, '')).join(','));
+check('the top bar keeps only the game\'s own buttons', topBar === 'Production,Keys,Alerts,Codex,Menu', topBar);
 
 // ---- Settings: apply, rebind ----------------------------------------------------------------
 await menu('Settings');
