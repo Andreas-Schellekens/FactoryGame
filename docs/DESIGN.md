@@ -58,7 +58,13 @@ portrait (a backlit silhouette, NIHIL-red tie) and voice (ElevenLabs,
 unhurried and low, a little boardroom room): he introduces himself and
 thanks the Asset at the reveal, drops in halfway through Ignition, comments
 on a blackout, leaves a memo in the late chatter, and thanks the Asset once
-more in the ending ("you, Asset, are now a cost").
+more in the ending ("you, Asset, are now a cost"). Before the reveal he is
+only heard of: NILE's broadcasts read out "a message from our Chief
+Executive", DELTA mentions him now and then (he doesn't do interviews,
+photographs or Tuesdays; he has read your file), memos go out over his
+initials (N.I.L.) — the Moon+ plan is "Approved — N.I.L." — and his name is
+on the construction site's sign. In phase 4 he looks forward to "thanking
+our Steward personally. Upon completion."
 
 **Protocol: Selene** — the cannon. Built in five phases by delivering goods to
 the **Dispatch Pad**:
@@ -115,6 +121,12 @@ left." DELTA: "The button on the right is also a button.").
   NIHIL's red drains from the HUD, the birds and the bright early music come
   back, DELTA becomes your co-founder, and you name your own company; the
   sandbox goes on under that name and mark.
+- **The epilogue** (NIHIL HQ only): the company's first year, four goals
+  paid for at the Dispatch Pad, each mending what NIHIL did: relight the
+  camp, clear the compound (the east rim's sulfur turns up under it), give
+  the river back (blow the dam once nothing of ours stands in the bed), let
+  the valley grow back; every goal turns the land a phase greener. It closes
+  with DELTA's annual report, "Year one", then sandbox.
 - Both end in a report (a mission report, or a founding report) and the
   credits roll.
 
@@ -324,3 +336,31 @@ Each iteration should be playable on its own before the next one starts.
             patch), and phones get a notice (made for a computer, play anyway)
             and menus that fit.
       - [ ] Playtest Infinite's prices (licences, land, request growth).
+- [ ] **Iteration 7 — build help, a codex, blueprints, profiles, a weekly challenge, an epilogue.**
+      Built in six parallel streams and merged.
+      - [x] Build help: undo / redo (Ctrl+Z / Ctrl+Y, 100 steps, credits reversed exactly, nothing
+            duplicated: demolished machines come back empty); an alerts list (top bar, N) of problems
+            that lasted a few seconds, grouped, a click jumps to the machine; ratios in the machine
+            panel (how many suppliers keep it busy, how many machines it feeds).
+      - [x] Codex & tutorial highlights: an in-game codex (K) for items, buildings, recipes and
+            research, generated from the game's data, searchable, every entry linked to the next, with
+            what's locked for you now and NIHIL's things Classified until the reveal; highlights that
+            show where a tutorial objective wants you to look, switchable in Settings.
+      - [x] Blueprints and shared factories: save a selection as a named blueprint (B), a library in the
+            browser and the account, placed like a copy; every leaderboard factory can be watched
+            running, read-only (View, or a share link `/?factory=<id>`), and copied as a blueprint.
+      - [x] Profile, achievements, passkeys: 40 achievements weighted to Infinite (plus Story's phases,
+            endings and a few secret ones), a profile page (an avatar from the game's own pictures, some
+            earned; play time; best scores with rank; endings), public unless switched off (`?player=`
+            links), passkey sign-in next to password and recovery code.
+      - [x] Weekly challenge: one factory puzzle per ISO week, the same for everyone (a theme, a target
+            product, a machine cap, a budget, a tier cap, the week's own ore), its own save slot, rebuilt
+            and scored by the server under the week's rules, a board per week. Later: a daily variant.
+      - [x] The epilogue after the NIHIL HQ ending: four goals (the camp fire, the compound, the river,
+            the valley), each changing the valley (the dam blown and the river back, the land greener
+            every goal), DELTA as co-founder, an annual report; older saves start it on load.
+      - [x] Nolan Isaac Locke present before the reveal: the Chief Executive's messages in NILE's
+            broadcasts, memos over his initials, DELTA's mentions, his name on the site's sign.
+      - [x] Recorded the 43 new lines (Nolan's pre-reveal broadcasts, DELTA's lines, the epilogue, the
+            challenge's fixed lines); a challenge's per-week lines stay text.
+      - [ ] Playtest the epilogue's goal sizes and the challenge's weeks at real pace.
