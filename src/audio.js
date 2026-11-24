@@ -18,7 +18,7 @@ import { voiceKey } from './voiceLines.js';
 import { PAD_POS } from './config.js';
 
 const SETTINGS_KEY = 'selene.audio.v1';
-const DEFAULTS = { master: 0.8, music: 0.6, sfx: 0.8, voice: 1, muted: false };
+const DEFAULTS = { master: 0.8, music: 0.6, sfx: 0.8, voice: 1, muted: false, voiceOff: false }; // voiceOff: Settings → Gameplay
 const LOOKAHEAD = 0.35; // seconds of music scheduled ahead of the clock
 const VOICE_BASE = `${import.meta.env?.BASE_URL ?? '/'}assets/voice/`;
 
@@ -214,7 +214,7 @@ export function createAudio() {
 
     /** Play the recorded clip for a line. Returns its length in ms, or null when there is none. */
     function speak(line) {
-        if (!ctx || settings.muted || settings.voice <= 0.01) return null;
+        if (!ctx || settings.muted || settings.voiceOff || settings.voice <= 0.01) return null;
         const clip = clipFor(line);
         if (!clip) return null;
         stopVoice();

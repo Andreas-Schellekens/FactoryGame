@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "voice": "node scripts/voice.mjs"
+    "voice": "node scripts/voice.mjs",
+    "dev:api": "cargo run --release --manifest-path api/Cargo.toml",
+    "test:bench": "node scripts/test-bench.mjs"
   },
   "devDependencies": {
     "playwright": "^1.60.0",

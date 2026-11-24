@@ -44,8 +44,10 @@ export function createEffects(scene) {
     // ---- Pooled particles ----------------------------------------------------
     const pool = [];
     const live = [];
+    let density = 1; // the Particles setting: 1 = all, 0 = none (floating text is kept)
 
     function particle({ pos, vel, life, size, grow = 1, color, opacity = 0.8, gravity = 0, drag = 1, additive = false }) {
+        if (density < 1 && Math.random() >= density) return null;
         let p = pool.pop();
         if (!p) {
             const mat = new THREE.SpriteMaterial({ map: SOFT, transparent: true, depthWrite: false });
@@ -224,7 +226,7 @@ export function createEffects(scene) {
         }
         butterflies.forEach((b, i) => {
             const u = b.userData;
-            const on = i < w.butterflies;
+            const on = i < w.butterflies * density;
             b.visible = on || b.scale.x > 0.02;
             b.scale.setScalar(THREE.MathUtils.lerp(b.scale.x, on ? 1 : 0, 0.03));
             if (!b.visible) return;
@@ -241,7 +243,7 @@ export function createEffects(scene) {
             u.r.rotation.x = -flap;
         });
 
-        ashAcc += w.ash * s;
+        ashAcc += w.ash * density * s;
         while (ashAcc >= 1) {
             ashAcc -= 1;
             particle({
@@ -250,7 +252,7 @@ export function createEffects(scene) {
                 life: rand(9, 14), size: rand(0.05, 0.09), grow: 1, color: 0x9a9396, opacity: 0.85,
             });
         }
-        emberAcc += w.embers * s;
+        emberAcc += w.embers * density * s;
         while (emberAcc >= 1) {
             emberAcc -= 1;
             particle({
@@ -262,5 +264,9 @@ export function createEffects(scene) {
         }
     }
 
-    return { puff, sparkle, smoke, bubble, floatText, update };
+    /** The Particles setting: 0 (off) … 1 (all). */
+    const setDensity = (d) => {
+        density = Math.max(0, Math.min(1, d));
+    };
+    return { puff, sparkle, smoke, bubble, floatText, update, setDensity };
 }

@@ -24,6 +24,7 @@ export function createCameraRig(bounds) {
     let aspect = 1;
     let trauma = 0;      // 0..1, shake strength (squared when applied)
     let kick = 0;        // zoom punch, decays to 0
+    let shakeScale = 1;  // the Camera shake setting (0 = off)
     const momentum = new THREE.Vector2(); // px/ms after a drag ends
     const lastDrag = { vx: 0, vy: 0, at: 0, h: 1 };
 
@@ -117,11 +118,15 @@ export function createCameraRig(bounds) {
         },
         /** Add shake (0..1). Big moments ~0.4–1, a thud ~0.05–0.1. */
         shake(amount) {
-            trauma = Math.min(1, trauma + amount);
+            trauma = Math.min(1, trauma + amount * shakeScale);
         },
         /** A quick zoom-in kick that springs back (e.g. 0.05 = 5%). */
         punch(amount) {
-            kick += amount;
+            kick += amount * shakeScale;
+        },
+        /** The Camera shake setting (and reduced motion): 0 turns shake and punch off. */
+        setShakeScale(s) {
+            shakeScale = s;
         },
         /** Cut (no easing) to a framing: default view direction unless given. */
         snap({ x = target.x, z = target.z, zoom: zz = zoom, azimuth: az = DEFAULT_AZIMUTH } = {}) {

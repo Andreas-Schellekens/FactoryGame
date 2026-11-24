@@ -14,15 +14,20 @@ const REACTION_CHANCE = 0.5;
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
+/** The campaign's script. Infinite mode passes its own (story.js INFINITE) through `script`. */
+export const STORY_SCRIPT = { BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack, lateFrom: 4 };
+
 /**
  * @param {{
  *   say: (line: {who: string, text: string, mood?: string}) => void,
  *   banner: (phaseIndex: number) => void,
  *   ending: () => void,
  *   isBusy: () => boolean,   // is the comms panel still talking?
+ *   script?: () => typeof STORY_SCRIPT,   // which script plays (the mode's)
+ *   hints?: () => boolean,   // the "DELTA's hints" setting
  * }} io
  */
-export function createDirector({ say, banner, ending, isBusy }) {
+export function createDirector({ say, banner, ending, isBusy, script = () => STORY_SCRIPT, hints = () => true }) {
     /** Fired beat ids, ticked objectives (`obj:<phase>:<id>`), used ambient lines. Persisted. */
     let flags = new Set();
     let objectives = [];
@@ -36,6 +41,7 @@ export function createDirector({ say, banner, ending, isBusy }) {
     // already finished is skipped instead of arriving late. Phase banners
     // don't wait — they show the moment the phase completes.
     function runBeats(w) {
+        const { BEATS } = script();
         for (const beat of BEATS) {
             if (beat.banner == null || flags.has(`banner:${beat.id}`) || !beat.when(w)) continue;
             flags.add(`banner:${beat.id}`);
@@ -49,7 +55,7 @@ export function createDirector({ say, banner, ending, isBusy }) {
     }
 
     function computeObjectives(w) {
-        const list = OBJECTIVES[w.phase] ?? [];
+        const list = script().OBJECTIVES[w.phase] ?? [];
         objectives = list.map((o) => {
             const key = `obj:${w.phase}:${o.id}`;
             if (!flags.has(key) && o.done(w)) flags.add(key); // sticky once done
@@ -64,7 +70,7 @@ export function createDirector({ say, banner, ending, isBusy }) {
             stuck = { key, since: w.tick };
             return;
         }
-        if (!open?.hint || isBusy() || w.tick - stuck.since < HINT_DELAY) return;
+        if (!open?.hint || !hints() || isBusy() || w.tick - stuck.since < HINT_DELAY) return;
         const last = lastHintAt.get(key);
         if (last != null && w.tick - last < HINT_REPEAT) return;
         lastHintAt.set(key, w.tick);
@@ -78,6 +84,7 @@ export function createDirector({ say, banner, ending, isBusy }) {
         if (key === lastOrderKey) return;
         lastOrderKey = key;
         if (isBusy() || Math.random() > REACTION_CHANCE) return;
+        const { REACTIONS } = script();
         say({ who: 'delta', text: pick(o.status === 'completed' ? REACTIONS.orderCompleted : REACTIONS.orderFailed) });
     }
 
@@ -86,12 +93,15 @@ export function createDirector({ say, banner, ending, isBusy }) {
         lastAmbient = w.tick;
         // Plain strings are DELTA; a line object (Nolan's memo) speaks as itself.
         const textOf = (t) => (typeof t === 'string' ? t : t.text);
-        const free = w.ending === 'hq';
-        const pool = (free ? AMBIENT.free : w.phase >= 4 ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${textOf(t)}`));
+        const { AMBIENT, lateFrom = Infinity } = script();
+        // After the HQ ending (Story) DELTA is a co-founder: her own, happier chatter.
+        const free = w.ending === 'hq' && !!AMBIENT.free;
+        const late = !free && w.phase >= lateFrom;
+        const pool = (free ? AMBIENT.free : late ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${textOf(t)}`));
         if (!pool.length) return;
         const line = pick(pool);
         flags.add(`amb:${textOf(line)}`);
-        const mood = free ? 'happy' : w.phase >= 4 ? 'sinister' : undefined;
+        const mood = free ? 'happy' : late ? 'sinister' : undefined;
         say(typeof line === 'string' ? { who: 'delta', text: line, mood } : line);
     }
 
@@ -125,7 +135,7 @@ export function createDirector({ say, banner, ending, isBusy }) {
             stuck = { key: null, since: tick };
             lastHintAt.clear();
             lastOrderKey = null;
-            if (flags.size) say(welcomeBack(phase, ending));
+            if (flags.size) say(script().welcomeBack(phase, ending));
         },
     };
 }

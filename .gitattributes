@@ -1,0 +1,4 @@
+# The API checksums its SQL migrations: keep them (and the container files) LF on every OS.
+*.sql text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
