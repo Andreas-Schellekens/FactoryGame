@@ -2578,3 +2578,135 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
   text-transform: uppercase;
   color: var(--paper);
 }
+
+/* ---- Iteration 7 · build help: the alerts list, ratios in the machine panel ---------- */
+.tb-alerts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tb-alerts-n {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.tb-alerts-n:empty {
+  display: none;
+}
+
+.tb-alerts.has {
+  border-color: var(--signal);
+}
+
+.tb-alerts.has .tb-alerts-n {
+  min-width: 18px;
+  padding: 1px 5px;
+  background: var(--signal);
+  color: var(--midnight);
+  text-align: center;
+}
+
+.alerts-panel {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  width: 330px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+
+/* The machine panel opens where the list is: the list steps aside, so a second click can cycle on. */
+.mpanel:not(.hidden) ~ .alerts-panel {
+  right: 344px;
+}
+
+.al-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.al-row {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--hair-2);
+  background: var(--console);
+  color: var(--paper);
+  font: 500 12px/1.35 var(--f-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.al-row:hover {
+  background: var(--console-hover);
+}
+
+.al-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+}
+
+.al-row[data-kind="blocked"] .al-dot { background: var(--signal); }
+.al-row[data-kind="input"] .al-dot,
+.al-row[data-kind="brownout"] .al-dot,
+.al-row[data-kind="order"] .al-dot { background: var(--mustard); }
+.al-row[data-kind="fuel"] .al-dot,
+.al-row[data-kind="tripped"] .al-dot { background: var(--alarm); }
+.al-row[data-kind="locked"] .al-dot { background: var(--label); }
+
+.al-row.quiet {
+  background: transparent;
+  color: var(--label);
+}
+
+.al-n {
+  font: 500 11px var(--f-mono);
+  color: var(--label);
+  white-space: nowrap;
+}
+
+.al-foot {
+  margin-top: 4px;
+}
+
+.tb-power.pinged {
+  animation: power-ping 0.9s ease-out;
+}
+
+@keyframes power-ping {
+  0%, 60% { box-shadow: inset 0 0 0 2px var(--signal); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+
+body.reduced-motion .tb-power.pinged {
+  animation: none;
+  box-shadow: inset 0 0 0 2px var(--signal);
+}
+
+.mp-ratio {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  column-gap: 8px;
+  font: 500 12px var(--f-mono);
+  color: var(--paper);
+}
+
+.mp-ratio .mp-v {
+  grid-column: 2;
+}
+
+.mp-or {
+  color: var(--label);
+}

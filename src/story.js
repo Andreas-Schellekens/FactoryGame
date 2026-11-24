@@ -653,3 +653,75 @@ export const INFINITE = {
     },
     REACTIONS,
 };
+
+// ---- Iteration 7 · build help: undo / redo, the alerts list, ratios in the machine panel ----
+const BUILDING_PLURALS = { press: 'Presses', foundry: 'Foundries', sink: 'Dispatch Pads' };
+/** A building's name for `n` of them: "1 Smelter", "1.5 Smelters", "2 Presses". */
+export const buildingsName = (type, n = 2) => (Math.abs(n - 1) < 0.05 ? BUILDING_NAMES[type] : BUILDING_PLURALS[type] ?? `${BUILDING_NAMES[type]}s`);
+
+/** A count for the ratios: "2", "≈1.5", "<0.1". */
+const approx = (n) => {
+    if (n < 0.1) return '<0.1';
+    const r = Math.round(n * 10) / 10;
+    return Math.abs(r - Math.round(r)) < 0.05 ? `${Math.round(r)}` : `≈${r}`;
+};
+
+export const BUILD_HELP = {
+    // Undo / redo (Ctrl+Z; Ctrl+Y or Ctrl+Shift+Z): what a step was, for the toast.
+    what: {
+        build: (type) => `${BUILDING_NAMES[type] ?? type} built`,
+        belts: (n) => (n === 1 ? 'a belt' : `${n} belts`),
+        demolish: (n, type) => (n === 1 ? `${BUILDING_NAMES[type] ?? type} demolished` : `${n} demolished`),
+        move: (n) => (n === 1 ? 'a move' : `moving ${n} machines`),
+        copy: (n) => (n === 1 ? 'a copy' : `a copy of ${n} machines`),
+        group: (n) => `${n} machines`,
+        upgrade: (type, tier) => `${BUILDING_NAMES[type] ?? type} to T${tier}`,
+        recipe: (type) => `${BUILDING_NAMES[type] ?? type} recipe`,
+        power: (type, on) => `${BUILDING_NAMES[type] ?? type} switched ${on ? 'on' : 'off'}`,
+        edit: 'that change',
+    },
+    undone: (what) => `Undone · ${what}`,
+    redone: (what) => `Redone · ${what}`,
+    nothing: { undo: 'Nothing to undo', redo: 'Nothing to redo' },
+    refused: {
+        taken: 'Can’t undo that: something stands there now',
+        changed: 'Can’t undo that: the factory has changed there',
+        broke: (cr) => `Can’t undo that: it needs CR ${cr}`,
+    },
+    refusedRedo: {
+        taken: 'Can’t redo that: something stands there now',
+        changed: 'Can’t redo that: the factory has changed there',
+        broke: (cr) => `Can’t redo that: it needs CR ${cr}`,
+    },
+    keysRow: ['Ctrl+Z / Ctrl+Y', 'undo / redo (also Ctrl+Shift+Z)'],
+
+    // The alerts list (top bar, key N): current problems, grouped.
+    alerts: {
+        button: 'Alerts',
+        title: 'Alerts',
+        none: 'All quiet. Problems that last a few seconds show up here.',
+        foot: 'Click a line to go to the machine; click again for the next one.',
+        blocked: 'Output blocked',
+        input: (items) => `Waiting for ${items}`,
+        fuel: 'Generator without coal',
+        locked: 'Recipe needs research',
+        tripped: 'Breaker tripped · reset it on the power gauge',
+        brownout: (pct) => `Brownout · powered machines at ${pct}%`,
+        order: (left, got, need, item) => `Priority Request fails in ${left} s · ${got}/${need} ${item}`,
+        off: 'Switched off',
+        machines: (n) => `${n} machine${n === 1 ? '' : 's'}`,
+        gauge: 'The power gauge is in the top bar',
+        actionName: 'Alerts list',
+    },
+
+    // Ratios in the machine panel: how many suppliers keep it busy, how many machines it keeps busy.
+    ratios: {
+        title: 'Ratios · to run at full speed',
+        needs: 'Needs',
+        feeds: 'Feeds',
+        supply: (n, type, tier) => `${approx(n)} ${buildingsName(type, n)} · T${tier}`,
+        feed: (n, type, tier, product) => `${approx(n)} ${buildingsName(type, n)}${product ? ` → ${product}` : ''} · T${tier}`,
+        or: 'or',
+        note: 'At the tier most of yours have (T1 if you have none).',
+    },
+};

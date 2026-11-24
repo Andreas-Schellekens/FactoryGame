@@ -25,7 +25,7 @@ import {
     game, isInfinite, visualPhase, newGame, licenceAvailable, buyLicence, nextPlotCost, buyPlot, isLoadableSave,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
-import { BUILDING_NAMES, ITEM_NAMES, INFINITE } from './story.js';
+import { BUILDING_NAMES, ITEM_NAMES, INFINITE, BUILD_HELP } from './story.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
@@ -38,6 +38,9 @@ import { createMenus } from './menus.js';
 import { createSettingsPanel } from './settingsPanel.js';
 import { blueprintThumb } from './blueprint.js';
 import { layoutOf } from './benchmark.js';
+import { history } from './undo.js';
+import { createAlerts } from './alerts.js';
+import { machineRatios } from './ratios.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -104,6 +107,18 @@ const state = {
 };
 // The recipe last picked per machine type: new machines of that type start on it.
 const lastRecipe = {};
+// The alerts list (alerts.js): the factory's problems that have lasted a few seconds.
+const alerts = createAlerts();
+let alertsClock = 0;
+/** Alerts list → a group: go to its next machine and open its panel. @returns {boolean} there was one */
+function jumpToAlert(key) {
+    const t = alerts.next(key);
+    if (!t) return false;
+    renderer.rig.focusOn(t.x + 0.5, t.y + 0.5);
+    state.selected = { x: t.x, y: t.y };
+    audio.cue('open');
+    return true;
+}
 
 // --- World snapshot for the story director (and objectives) ---
 function snapshot() {
@@ -205,6 +220,7 @@ function selectedInfo() {
         const fmt = (n) => (n >= 10 ? Math.round(n) : n.toFixed(1));
         upgrade = { cost, gain: item ? `${fmt(now)} → ${fmt(next)}/min` : rates.points ? `${fmt(rates.points)} → ${fmt(rates.next.points)} pts/min` : '' };
     }
+    const ratios = machineRatios(x, y);
     const tierCap = UPGRADABLE.has(m.type) && cost == null ? (m.tier >= MAX_TIER ? 'Top tier' : 'Tier 4 needs the Tier 4 research') : null;
     return {
         x, y, type: m.type,
@@ -218,7 +234,8 @@ function selectedInfo() {
         upgrade,
         tierCap,
         canToggle: true,
-        sig: [m.type, x, y, m.tier, m.recipe, !!m.off, recipes?.map((r) => (r.unlocked ? 1 : 0)).join(''), cost].join('|'),
+        ratios,
+        sig: [m.type, x, y, m.tier, m.recipe, !!m.off, recipes?.map((r) => (r.unlocked ? 1 : 0)).join(''), cost, JSON.stringify(ratios)].join('|'),
     };
 }
 function selectMachine(x, y) {
@@ -321,6 +338,8 @@ function applySave(data) {
     nextOrderTick = null; // let the restored order resume cleanly
     playMs = data.playMs ?? 0;
     director.load(data.story, tickCount, project.phase, project.ending);
+    history.clear();
+    alerts.reset();
     state.started = true;
     return true;
 }
@@ -402,7 +421,8 @@ function placeGroup() {
         return;
     }
     renderer.quietNext(); // the machines slide over: no demolish/build juice for each one
-    renderer.applyEvents(applyGroup(plan, g.mode), 140);
+    const what = g.mode === 'copy' ? BUILD_HELP.what.copy(plan.moves.length) : BUILD_HELP.what.move(plan.moves.length);
+    renderer.applyEvents(history.run(what, () => applyGroup(plan, g.mode)), 140);
     audio.cue('build', { size: 2 });
     renderer.rig.shake(0.15);
     const at = plan.moves.find((m) => m.from.x === g.anchor.x && m.from.y === g.anchor.y)?.to ?? plan.moves[0].to;
@@ -416,13 +436,37 @@ function placeGroup() {
 function removeSelection() {
     const cells = state.sel.cells;
     const refund = cells.reduce((a, { x, y }) => a + machineCost(grid[x][y].machine?.type), 0);
-    renderer.applyEvents(removeGroup(cells), 0);
+    const one = cells.length === 1 ? grid[cells[0].x][cells[0].y].machine?.type : null;
+    renderer.applyEvents(history.run(BUILD_HELP.what.demolish(cells.length, one), () => removeGroup(cells)), 0);
     audio.cue('demolish');
     const c = cells[Math.floor(cells.length / 2)];
     if (refund) renderer.floatAt(c.x, c.y, `+${refund}`, REFUND_COLOR);
     state.sel = null;
     state.group = null;
 }
+/**
+ * Undo (or redo) the last step: machines back as they were, credits reversed exactly (undo.js).
+ * Not while a drag is under way; a carried group is let go if its machines changed.
+ */
+function stepHistory(redo) {
+    if (state.drag || state.selDrag || state.cinematic) return;
+    const r = redo ? history.redo() : history.undo();
+    if (!r.ok) {
+        audio.cue('deny');
+        const no = redo ? BUILD_HELP.refusedRedo : BUILD_HELP.refused;
+        ui.toast(r.error === 'empty' ? BUILD_HELP.nothing[redo ? 'redo' : 'undo'] : r.error === 'broke' ? no.broke(Math.ceil(r.need)) : no[r.error]);
+        return;
+    }
+    if (r.carried) renderer.quietNext(); // moved machines slide back
+    renderer.applyEvents(r.events, r.carried ? 140 : 0);
+    audio.cue('rotate');
+    const credits = redo ? r.step.credits : -r.step.credits;
+    const at = r.step.cells[Math.floor(r.step.cells.length / 2)];
+    if (Math.round(credits)) renderer.floatAt(at.x, at.y, `${credits > 0 ? '+' : '−'}${Math.abs(Math.round(credits))}`, credits > 0 ? REFUND_COLOR : SPEND_COLOR);
+    ui.toast((redo ? BUILD_HELP.redone : BUILD_HELP.undone)(r.step.label ?? BUILD_HELP.what.edit));
+    if (state.group && state.group.cells.some(({ x, y }) => !grid[x][y].machine)) state.group = null;
+}
+
 /** Pipette: build what's under the cursor next, same direction, same recipe. */
 function pipette() {
     const h = state.hovered;
@@ -524,7 +568,7 @@ const ui = createUI({
     onUnlock: (id) => unlockTech(id),
     onSetRecipe: (id) => {
         const sel = state.selected;
-        if (!sel || !setRecipe(sel.x, sel.y, id)) return false;
+        if (!sel || !history.run(BUILD_HELP.what.recipe(grid[sel.x][sel.y].machine?.type), () => setRecipe(sel.x, sel.y, id))) return false;
         lastRecipe[grid[sel.x][sel.y].machine.type] = id;
         audio.cue('recipe');
         return true;
@@ -533,7 +577,8 @@ const ui = createUI({
         const sel = state.selected;
         if (!sel) return false;
         const cost = upgradeCost(sel.x, sel.y);
-        if (!upgradeMachine(sel.x, sel.y)) return false;
+        const m = grid[sel.x][sel.y].machine;
+        if (!history.run(BUILD_HELP.what.upgrade(m?.type, (m?.tier ?? 0) + 1), () => upgradeMachine(sel.x, sel.y))) return false;
         audio.cue('upgrade');
         if (cost) renderer.floatAt(sel.x, sel.y, `−${cost}`, SPEND_COLOR);
         return true;
@@ -541,11 +586,13 @@ const ui = createUI({
     onToggleSelected: () => {
         const sel = state.selected;
         const m = sel && grid[sel.x][sel.y].machine;
-        if (!m || !setMachineOn(sel.x, sel.y, !!m.off)) return false;
+        if (!m || !history.run(BUILD_HELP.what.power(m.type, !!m.off), () => setMachineOn(sel.x, sel.y, !!m.off))) return false;
         audio.cue(m.off ? 'pause' : 'resume');
         return true;
     },
     onDeselect: deselect,
+    onAlert: (key) => jumpToAlert(key),
+    onAlertsOpen: () => alerts.rewind(),
     onGroupAction: (action) => {
         if (action === 'cancel') return state.group ? cancelGroup() : clearSelection();
         if (!state.sel) return;
@@ -575,6 +622,7 @@ const ui = createUI({
             power: { ...power },
             selected: selectedInfo(),
             production,
+            alerts: { count: alerts.count(), groups: alerts.groups() },
             selection: state.sel || state.group ? {
                 count: (state.group?.cells ?? state.sel.cells).length,
                 mode: state.group?.mode ?? null,
@@ -678,6 +726,11 @@ function onFrame(dt) {
         const m = grid[state.selected.x][state.selected.y].machine;
         if (!m || NO_PANEL.has(m.type) || state.cinematic) state.selected = null;
     }
+    alertsClock += dt;
+    if (alertsClock >= 250 && state.started) {
+        alertsClock = 0;
+        alerts.update();
+    }
     flowClock += dt;
     if (flowClock >= 500) {
         flowClock = 0;
@@ -734,6 +787,8 @@ function beginNew(mode) {
         renderer.applyEvents(newGame('infinite'), 0);
     }
     activeSlot = saves.create({ mode });
+    history.clear();
+    alerts.reset();
     playMs = 0;
     state.started = true;
     state.paused = false;
@@ -880,7 +935,8 @@ function actAt(gx, gy, button) {
     }
     if (state.tool === 'upgrade') {
         const cost = upgradeCost(gx, gy);
-        if (upgradeMachine(gx, gy)) {
+        const m = grid[gx][gy].machine;
+        if (history.run(BUILD_HELP.what.upgrade(m?.type, (m?.tier ?? 0) + 1), () => upgradeMachine(gx, gy))) {
             state.lastBuildPulseMs = 120;
             audio.cue('upgrade');
             if (cost) renderer.floatAt(gx, gy, `−${cost}`, SPEND_COLOR);
@@ -888,7 +944,7 @@ function actAt(gx, gy, button) {
         return;
     }
     if (buildableTools.has(state.tool)) {
-        if (buildMachine(gx, gy, state.tool, state.dir, lastRecipe[state.tool])) {
+        if (history.run(BUILD_HELP.what.build(state.tool), () => buildMachine(gx, gy, state.tool, state.dir, lastRecipe[state.tool]))) {
             state.lastBuildPulseMs = 120;
             audio.cue('build', { size: BUILD_SIZE[state.tool] ?? 1 });
             renderer.floatAt(gx, gy, `−${machineCost(state.tool)}`, SPEND_COLOR);
@@ -905,7 +961,7 @@ const CONVEYOR_TOOLS = new Set(['belt', 'splitter', 'merger']);
 
 function demolish(gx, gy) {
     const type = grid[gx][gy].machine?.type;
-    renderer.applyEvents(removeMachine(gx, gy), 0);
+    renderer.applyEvents(history.run(BUILD_HELP.what.demolish(1, type), () => removeMachine(gx, gy)), 0);
     if (type && !grid[gx][gy].machine) {
         audio.cue('demolish');
         // Refunds show for real machines; conveyors are torn up by the dozen.
@@ -936,6 +992,12 @@ window.addEventListener('keydown', (e) => {
         if (act === 'mute') toggleMute();
         return;
     }
+    // Undo / redo: Ctrl+Z, and Ctrl+Y or Ctrl+Shift+Z (fixed keys, not in the bindings).
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+        e.preventDefault();
+        stepHistory(e.key.toLowerCase() === 'y' || e.shiftKey);
+        return;
+    }
     // A focused volume slider keeps its arrow keys; every other game key still works.
     if (e.target.matches?.('input[type="range"]') && e.key.startsWith('Arrow')) return;
     const k = e.key.toLowerCase();
@@ -960,6 +1022,7 @@ window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') return clearSelection();
     }
     if (act === 'pipette') pipette();
+    if (act === 'alerts') ui.toggleAlerts();
     if (TOOL_ACTIONS.has(act)) selectTool(act);
     if (k === 'delete' || k === 'backspace') selectTool('erase');
     if (e.key === 'Escape') {
@@ -1018,8 +1081,8 @@ function dragStep(cell) {
     const drag = state.drag;
     if (drag.mode === 'lay') {
         const dir = drag.last ? dirBetween(drag.last, cell) : state.dir;
-        if (drag.last) placeBelt(drag.last.x, drag.last.y, dir); // re-point the cell we leave
-        if (placeBelt(cell.x, cell.y, dir) === 'built') {
+        if (drag.last) history.run(BUILD_HELP.what.edit, () => placeBelt(drag.last.x, drag.last.y, dir)); // re-point the cell we leave
+        if (history.run(BUILD_HELP.what.edit, () => placeBelt(cell.x, cell.y, dir)) === 'built') {
             state.lastBuildPulseMs = 120;
             audio.cue('belt');
         }
@@ -1084,6 +1147,7 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     if (e.button === 2 || state.tool === 'erase') {
         state.drag = { last: null, mode: 'erase' };
+        history.begin((cells) => BUILD_HELP.what.demolish(cells.length, cells[0]?.before?.spec.type));
         dragTo(cell);
         return;
     }
@@ -1096,6 +1160,7 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     if (state.tool === 'belt') {
         state.drag = { last: null, mode: 'lay' };
+        history.begin((cells) => BUILD_HELP.what.belts(cells.length));
         dragTo(cell);
         return;
     }
@@ -1103,6 +1168,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 const endDrag = (e) => {
+    if (state.drag) history.end(); // the whole drag is one step
     state.drag = null;
     if (state.selDrag) finishSelection();
     if (panDrag) renderer.rig.endPan(); // let the view glide on
@@ -1133,6 +1199,8 @@ if (import.meta.env.DEV) {
     window.__saves = saves;
     window.__account = account;
     window.__menus = menus;
+    window.__undo = history; // undo.js: __undo.size(), __undo.undo()
+    window.__alerts = alerts; // alerts.js: __alerts.groups()
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);

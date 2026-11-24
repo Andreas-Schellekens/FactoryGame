@@ -24,7 +24,7 @@ import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS, HQ_
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
-    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT,
+    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP,
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
@@ -124,6 +124,8 @@ export function createUI({
     // Iteration 6: the save slots, settings and leaderboard panels (menus.js), Infinite's shop.
     onOpenSaves = () => {}, onOpenSettings = () => {}, onOpenBoard = () => {}, onBuyLicence = () => false, onBuyPlot = () => false,
     onOpenMenu = () => {},
+    // Iteration 7: the alerts list (a group's next machine; the list was opened).
+    onAlert = () => false, onAlertsOpen = () => {},
     keyMap = DEFAULT_KEYS,
 }) {
     root.innerHTML = '';
@@ -193,10 +195,11 @@ export function createUI({
     /** Open one popover (closing the other), or close it if it's already open. */
     function togglePopover(panel) {
         const opening = panel.classList.contains('hidden');
-        for (const p of [help, prodPanel]) p.classList.add('hidden');
+        for (const p of [help, prodPanel, alertsPanel]) p.classList.add('hidden');
         if (opening) {
             panel.classList.remove('hidden');
             onDeselect();
+            if (panel === alertsPanel) onAlertsOpen();
         }
         cue(opening ? 'open' : 'close');
     }
@@ -207,12 +210,17 @@ export function createUI({
     menuBtn.innerHTML = `${iconSVG(ICON.menu, 15)}<span>Menu</span>`;
     menuBtn.title = 'Menu · Esc';
     menuBtn.addEventListener('click', () => {
-        for (const p of [help, prodPanel]) p.classList.add('hidden');
+        for (const p of [help, prodPanel, alertsPanel]) p.classList.add('hidden');
         onOpenMenu();
     });
+    // The alerts list: a count of the factory's current problems (alerts.js), the list on a click or N.
+    const alertsBtn = textButton('', () => togglePopover(alertsPanel), 'tb-alerts');
+    const alertsCount = el('span', 'tb-alerts-n');
+    alertsBtn.append(el('span', null, BUILD_HELP.alerts.button), alertsCount);
     menuCell.append(
         textButton('Production', () => togglePopover(prodPanel)),
         textButton('Keys', () => togglePopover(help)),
+        alertsBtn,
         menuBtn,
     );
     top.append(brandCell, creditsCell, powerCell, el('div', 'tb-spacer'), simCell, menuCell);
@@ -229,6 +237,7 @@ export function createUI({
             [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection, open the menu'],
             ['WASD', 'move view'], ['Wheel', 'zoom'],
             [`${kl('viewLeft')} / ${kl('viewRight')}`, 'turn view'], [kl('pause'), 'pause'], ['+ / −', 'sim speed'], [kl('mute'), 'sound on / off'],
+            ['Ctrl+Z / Y', 'undo / redo'], [kl('alerts'), 'alerts: what needs fixing'],
         ];
         help.innerHTML = '';
         for (const [k, v] of rows) {
@@ -288,6 +297,55 @@ export function createUI({
             .map(([code, n]) => `${n} ${STATUS_WORDS[code] ?? code}`)
             .join(' · ') || 'No machines yet';
         prodNote.textContent = 'Red: more used than made. Mustard: piling up. Measured over the last minute.';
+    }
+
+    // ---- Alerts list (top bar → Alerts, or N) ---------------------------------------------
+    // Rows are kept per group and updated in place, so a click never lands on a rebuilt button.
+    const alertsPanel = el('div', 'alerts-panel hidden');
+    const alertsRows = el('div', 'al-rows');
+    const alertsNone = el('p', 'prod-note', BUILD_HELP.alerts.none);
+    alertsPanel.append(el('span', 'con-label', BUILD_HELP.alerts.title), alertsRows, alertsNone, el('p', 'prod-note al-foot', BUILD_HELP.alerts.foot));
+    const alertRows = new Map(); // group key → { row, label, n }
+    function alertText(g) {
+        const A = BUILD_HELP.alerts;
+        switch (g.kind) {
+            case 'input': return A.input((g.items ?? []).map((k) => ITEM_NAMES[k] ?? k).join(', '));
+            case 'brownout': return A.brownout(g.pct);
+            case 'order': return A.order(g.left, g.got, g.need, ITEM_NAMES[g.item] ?? g.item);
+            default: return A[g.kind] ?? g.kind;
+        }
+    }
+    function renderAlerts(groups) {
+        const keep = new Set(groups.map((g) => g.key));
+        for (const [key, r] of alertRows) {
+            if (!keep.has(key)) {
+                r.row.remove();
+                alertRows.delete(key);
+            }
+        }
+        groups.forEach((g, i) => {
+            let r = alertRows.get(g.key);
+            if (!r) {
+                const row = el('button', `al-row${g.quiet ? ' quiet' : ''}`);
+                row.type = 'button';
+                row.dataset.kind = g.kind;
+                const label = el('span', 'al-label');
+                const n = el('span', 'al-n');
+                row.append(el('i', 'al-dot'), label, n);
+                row.addEventListener('click', () => {
+                    if (onAlert(g.key)) return;
+                    // No machine to go to (the breaker, a brownout): point at the power gauge.
+                    bump(powerCell, 'pinged', 900);
+                    toast(BUILD_HELP.alerts.gauge);
+                });
+                r = { row, label, n };
+                alertRows.set(g.key, r);
+            }
+            r.label.textContent = alertText(g);
+            r.n.textContent = g.cells.length && g.kind !== 'order' ? BUILD_HELP.alerts.machines(g.cells.length) : '';
+            if (alertsRows.children[i] !== r.row) alertsRows.insertBefore(r.row, alertsRows.children[i] ?? null);
+        });
+        alertsNone.classList.toggle('hidden', groups.length > 0);
     }
 
     // (The Sound panel lives in Settings → Audio now: settingsPanel.js.)
@@ -552,6 +610,7 @@ export function createUI({
     // ---- Machine panel (click a machine) -------------------------------------------------
     const mp = el('div', 'mpanel hidden');
     root.appendChild(mp);
+    root.appendChild(alertsPanel); // after the panel: it steps aside when the panel is open (CSS)
     let mpSig = null;
     let mpRefs = {};
     const itemName = (k) => ITEM_NAMES[k] ?? k;
@@ -584,6 +643,26 @@ export function createUI({
         if (rates.kw > 0) row('Power', `draws ${rates.kw} kW`, throttle < 0.999 ? `at ${Math.round(throttle * 100)}%` : '');
         if (rates.kw < 0) row('Power', `supplies ${-rates.kw} kW`, '');
         return box;
+    }
+    /** Ratios (ratios.js): how many suppliers keep this machine busy, how many machines it keeps busy. */
+    function ratioRows(ratios) {
+        const R = BUILD_HELP.ratios;
+        const sec = el('div', 'mp-sec mp-ratios');
+        sec.appendChild(el('span', 'con-label', R.title));
+        const row = (label, item, texts) => {
+            const r = el('div', 'mp-ratio');
+            const v = el('span', 'mp-v');
+            texts.forEach((t, i) => {
+                if (i) v.appendChild(el('span', 'mp-or', ` ${R.or} `));
+                v.appendChild(el('span', null, t));
+            });
+            r.append(el('span', 'mp-k', label), el('span', 'mp-item', itemName(item)), v);
+            sec.appendChild(r);
+        };
+        for (const { item, options } of ratios.needs) row(R.needs, item, options.map((o) => R.supply(o.n, o.type, o.tier)));
+        for (const { item, options } of ratios.feeds) row(R.feeds, item, options.map((o) => R.feed(o.n, o.type, o.tier, o.product ? itemName(o.product) : null)));
+        sec.appendChild(el('p', 'mp-note', R.note));
+        return sec;
     }
     function buildPanel(sel) {
         mp.innerHTML = '';
@@ -657,6 +736,7 @@ export function createUI({
             mpRefs.holds = holds;
             mp.appendChild(sec);
         }
+        if (sel.ratios) mp.appendChild(ratioRows(sel.ratios));
 
         const actions = el('div', 'mp-actions');
         if (sel.upgrade) {
@@ -1514,6 +1594,10 @@ export function createUI({
         }
 
         if (!prodPanel.classList.contains('hidden')) renderProduction(s.production);
+        const nAlerts = s.alerts?.count ?? 0;
+        alertsCount.textContent = nAlerts ? String(nAlerts) : '';
+        alertsBtn.classList.toggle('has', nAlerts > 0);
+        if (!alertsPanel.classList.contains('hidden')) renderAlerts(s.alerts?.groups ?? []);
         updatePanel(s.selected, s.money);
         renderSelection(s.selection);
 
@@ -1538,6 +1622,8 @@ export function createUI({
     return {
         update, say, isBusy, showBanner, showTitle, showEnding, showCredits, toast,
         setKeys,
+        /** Open or close the alerts list (key N). */
+        toggleAlerts: () => togglePopover(alertsPanel),
         /** The Text speed setting: 1 normal, higher is faster (99: at once). */
         setTextSpeed: (x) => {
             textSpeed = Math.max(0.3, Number(x) || 1);
