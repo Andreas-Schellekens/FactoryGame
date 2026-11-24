@@ -11,7 +11,7 @@ export const DEFAULT_KEYS = {
     fabricator: '7', lab: '8', mixer: '9', generator: '0',
     splitter: 't', merger: 'y', upgrade: 'u', erase: 'x', select: 'v',
     pipette: 'f', rotate: 'r', viewLeft: 'q', viewRight: 'e', pause: ' ', mute: 'm',
-    move: 'g', copy: 'c',
+    move: 'g', copy: 'c', alerts: 'n',
 };
 /** Keys that can't be bound: camera panning, Escape, the speed keys. */
 export const RESERVED_KEYS = new Set([

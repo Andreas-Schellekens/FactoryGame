@@ -3,7 +3,7 @@
 // (settings.js) and the sound engine's volumes; main.js applies the values.
 
 import { DEFAULT_KEYS, RESERVED_KEYS, keyLabel } from './settings.js';
-import { BUILDING_NAMES } from './story.js';
+import { BUILDING_NAMES, BUILD_HELP } from './story.js';
 
 function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -15,12 +15,13 @@ function el(tag, cls, text) {
 const ACTION_NAMES = {
     upgrade: 'Upgrade tool', erase: 'Demolish tool', select: 'Select tool', pipette: 'Pipette (build what is under the cursor)',
     rotate: 'Rotate before placing', viewLeft: 'Turn the view left', viewRight: 'Turn the view right', pause: 'Pause',
-    mute: 'Sound on / off', move: 'Move the selection', copy: 'Copy the selection',
+    mute: 'Sound on / off', move: 'Move the selection', copy: 'Copy the selection', alerts: BUILD_HELP.alerts.actionName,
 };
 const actionName = (a) => ACTION_NAMES[a] ?? BUILDING_NAMES[a] ?? a;
 const FIXED_KEYS = [
     ['WASD / arrows', 'move the view'], ['Wheel', 'zoom'], ['Middle drag', 'pan'], ['Right click', 'demolish (refunds)'],
     ['Delete', 'demolish tool'], ['+ / −', 'sim speed'], ['Esc', 'close a panel, drop a selection'],
+    [BUILD_HELP.keysRow[0], BUILD_HELP.keysRow[1]],
 ];
 
 /**

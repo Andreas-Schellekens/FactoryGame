@@ -1319,3 +1319,74 @@ export function updateFactoryLogic() {
 
     return events;
 }
+
+// ---- Undo / redo support (undo.js keeps the history; these two are its only way in) -----
+/** What undo puts back of a machine: type, direction, tier, recipe and on/off. Never its contents. */
+export function machineSpec(m) {
+    if (!m) return null;
+    const s = { type: m.type, dir: m.dir, tier: m.tier };
+    if (m.recipe) s.recipe = m.recipe;
+    if (m.off) s.off = true;
+    return s;
+}
+
+/**
+ * Undo/redo's primitive: rewrite some cells and move `credits` (positive: paid to the player) in
+ * one go, with no checks of its own (undo.js checks the cells and the credits first). Each change
+ * is { x, y, spec, carry }: `spec` null clears the cell; `carry` is a machine standing on one of
+ * these cells, set down here (turned to `spec`) with the item on it; otherwise a fresh machine is
+ * built from `spec`, with an empty buffer. Items on machines that are gone are consumed. The
+ * Dispatch Pad is never touched.
+ * @returns {{ events: FactoryEvent[], placed: (Machine|null)[] }} item events, and the machine set down per change
+ */
+export function rewriteCells(changes, credits = 0) {
+    const events = [];
+    const ok = (c) => inBounds(c.x, c.y) && grid[c.x][c.y].machine?.type !== 'sink';
+    const lifted = new Map(); // machine → { item, at }
+    for (const c of changes) {
+        if (!ok(c)) continue;
+        const cell = grid[c.x][c.y];
+        if (cell.machine) lifted.set(cell.machine, { item: cell.item, at: { x: c.x, y: c.y } });
+        else if (cell.item) events.push({ kind: 'consume', item: cell.item, at: { x: c.x, y: c.y } });
+        cell.machine = null;
+        cell.item = null;
+    }
+    const placed = changes.map((c) => {
+        if (!ok(c) || !c.spec) return null;
+        const cell = grid[c.x][c.y];
+        const s = c.spec;
+        const was = c.carry ? lifted.get(c.carry) : null;
+        let m;
+        if (was) {
+            lifted.delete(c.carry);
+            m = c.carry;
+            m.dir = s.dir;
+            m.tier = s.tier;
+            if (s.recipe && m.recipe !== s.recipe) {
+                // Like setRecipe: inputs the recipe doesn't use are scrapped, the operation restarts.
+                const r = RECIPES[m.type]?.find((q) => q.id === s.recipe);
+                if (r) for (const k of Object.keys(m.buffer)) if (!(k in r.inputs)) delete m.buffer[k];
+                m.recipe = s.recipe;
+                m.progress = 0;
+            }
+            if (s.off) m.off = true;
+            else delete m.off;
+            if (was.item) {
+                cell.item = was.item;
+                if (was.at.x !== c.x || was.at.y !== c.y) events.push({ kind: 'move', item: was.item, from: was.at, to: { x: c.x, y: c.y } });
+            }
+        } else {
+            const extra = s.type === 'splitter' || s.type === 'merger' ? { toggle: 0 } : s.type === 'generator' ? { fuelTicks: 0 } : {};
+            if (s.recipe) extra.recipe = s.recipe;
+            if (s.off) extra.off = true;
+            m = makeMachine(s.type, s.dir, extra);
+            m.tier = s.tier ?? 1;
+        }
+        if (m.type === 'extractor') m.produces = cell.resource;
+        cell.machine = m;
+        return m;
+    });
+    for (const { item, at } of lifted.values()) if (item) events.push({ kind: 'consume', item, at });
+    score += credits;
+    return { events, placed };
+}
