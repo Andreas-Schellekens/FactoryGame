@@ -19,11 +19,17 @@ async function device() {
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('dialog', (d) => d.accept());
     await page.goto(URL, { waitUntil: 'networkidle' });
-    await page.waitForSelector('text=Start Infinite', { timeout: 90000 });
+    await page.waitForSelector('text=Start Infinite', { timeout: 240000 }); // slow: two WebGL games in one software-rendered browser
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForSelector('text=Start Infinite', { timeout: 90000 });
+    await page.waitForSelector('text=Start Infinite', { timeout: 240000 }); // slow: two WebGL games in one software-rendered browser
     return page;
+}
+/** Save through the in-game menu (top bar → Menu → Save game), then close it. */
+async function save(page) {
+    await page.click('.tb-menu-btn');
+    await page.click('.gm-item:has-text("Save game")');
+    await page.keyboard.press('Escape');
 }
 const name = `cl_${Date.now().toString(36).slice(-6)}`;
 const password = 'two devices one account';
@@ -52,14 +58,14 @@ await b.waitForFunction(() => window.__state.started, null, { timeout: 15000 });
 const openedB = await b.evaluate(() => ({ mode: window.__sim.game.mode, active: window.__saves.activeId() }));
 check('Continue on B downloads and plays it', openedB.mode === 'infinite' && openedB.active === slotId);
 await b.evaluate(() => window.__sim.buildMachine(14, 11, 'extractor', 'right'));
-await b.click('.tbtn:has-text("Save") >> nth=0');
+await save(b);
 await b.waitForTimeout(2000);
 const rev2 = await b.evaluate((id) => window.__saves.get(id).cloud?.rev, slotId);
 check('B saves it as a new revision', rev2 > rev1, `rev ${rev2}`);
 
 // A still thinks the cloud is at rev1: its save must not silently overwrite B's.
 await a.evaluate(() => window.__sim.buildMachine(15, 17, 'extractor', 'up'));
-await a.click('.tbtn:has-text("Save") >> nth=0');
+await save(a);
 await a.waitForTimeout(3000);
 const afterA = await a.evaluate((id) => ({
     names: window.__saves.list().map((s) => s.name),

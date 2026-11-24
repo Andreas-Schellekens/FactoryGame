@@ -49,6 +49,7 @@ const ICON = {
     erase: 'M3 21l9-9M14.5 3.5l6 6-4 4-6-6z',
     rotate: 'M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5',
     gear: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1',
+    menu: 'M4 7h16M4 12h16M4 17h16',
     pause: 'M8 5v14M16 5v14',
     play: 'M7 5l12 7-12 7z',
     faster: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -122,6 +123,7 @@ export function createUI({
     onGroupAction = () => {},
     // Iteration 6: the save slots, settings and leaderboard panels (menus.js), Infinite's shop.
     onOpenSaves = () => {}, onOpenSettings = () => {}, onOpenBoard = () => {}, onBuyLicence = () => false, onBuyPlot = () => false,
+    onOpenMenu = () => {},
     keyMap = DEFAULT_KEYS,
 }) {
     root.innerHTML = '';
@@ -198,31 +200,20 @@ export function createUI({
         }
         cue(opening ? 'open' : 'close');
     }
-    const gearBtn = el('button', 'tbtn tb-gear');
-    gearBtn.type = 'button';
-    gearBtn.setAttribute('aria-label', 'Settings');
-    gearBtn.title = 'Settings';
-    gearBtn.innerHTML = iconSVG(ICON.gear, 16);
-    gearBtn.addEventListener('click', () => {
+    // The game's own panels here; saves, settings, the leaderboard, the account and the way back
+    // to the title screen are all behind Menu (menus.js openGameMenu, also on Esc).
+    const menuBtn = el('button', 'tbtn tb-menu-btn');
+    menuBtn.type = 'button';
+    menuBtn.innerHTML = `${iconSVG(ICON.menu, 15)}<span>Menu</span>`;
+    menuBtn.title = 'Menu · Esc';
+    menuBtn.addEventListener('click', () => {
         for (const p of [help, prodPanel]) p.classList.add('hidden');
-        onOpenSettings();
+        onOpenMenu();
     });
     menuCell.append(
-        textButton('Save', () => {
-            cue('click');
-            toast(onSave() ? 'Saved' : 'Save failed');
-        }),
-        textButton('Saves', () => {
-            for (const p of [help, prodPanel]) p.classList.add('hidden');
-            onOpenSaves();
-        }),
         textButton('Production', () => togglePopover(prodPanel)),
-        textButton('Board', () => {
-            for (const p of [help, prodPanel]) p.classList.add('hidden');
-            onOpenBoard();
-        }),
         textButton('Keys', () => togglePopover(help)),
-        gearBtn,
+        menuBtn,
     );
     top.append(brandCell, creditsCell, powerCell, el('div', 'tb-spacer'), simCell, menuCell);
     root.appendChild(top);
@@ -235,7 +226,7 @@ export function createUI({
             ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
             [kl('rotate'), 'rotate before placing'], [chain, 'buildings, in chain order'], [`${kl('splitter')} / ${kl('merger')}`, 'splitter / merger'],
             [`${kl('upgrade')} / ${kl('erase')}`, 'upgrade / demolish tool'], [kl('select'), 'select: drag a box round machines'],
-            [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection'],
+            [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection, open the menu'],
             ['WASD', 'move view'], ['Wheel', 'zoom'],
             [`${kl('viewLeft')} / ${kl('viewRight')}`, 'turn view'], [kl('pause'), 'pause'], ['+ / −', 'sim speed'], [kl('mute'), 'sound on / off'],
         ];

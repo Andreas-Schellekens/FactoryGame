@@ -25,6 +25,11 @@ const check = (name, ok, detail = '') => {
 };
 const js = (fn, arg) => page.evaluate(fn, arg);
 const wait = (ms) => page.waitForTimeout(ms);
+/** Top bar → Menu, then one of its items (Save game, Saves, Settings, Leaderboard, Account, Main menu). */
+async function menu(item) {
+    await page.click('.tb-menu-btn');
+    await page.click(`.gm-item:has-text("${item}")`);
+}
 async function boot() {
     await page.waitForSelector('text=Start Infinite', { timeout: 90000 });
     await wait(300);
@@ -73,8 +78,21 @@ await page.click('.inf-buy:has-text("Buy land")');
 await wait(300);
 check('buying land moves the plot out', await js(() => window.__sim.game.plot === 1));
 
+// ---- The in-game menu: Esc opens it and pauses the game, Resume carries on --------------------
+await page.keyboard.press('Escape');
+await wait(300);
+const t0 = await js(() => window.__sim.tickCount);
+await wait(800);
+const paused = await js(() => ({ open: !!document.querySelector('.game-menu'), paused: window.__state.paused, items: [...document.querySelectorAll('.gm-label')].map((e) => e.textContent) }));
+check('Esc opens the menu and pauses the game', paused.open && paused.paused && (await js(() => window.__sim.tickCount)) === t0, paused.items.join(' · '));
+await page.click('.gm-item:has-text("Resume")');
+await wait(800);
+check('Resume closes it and the game runs on', await js(() => !document.querySelector('.mm-panel') && !window.__state.paused));
+check('the top bar keeps only the game\'s own buttons', (await js(() => [...document.querySelectorAll('.tb-menu .tbtn')].map((b) => b.textContent).join(','))) === 'Production,Keys,Menu');
+
 // ---- Settings: apply, rebind ----------------------------------------------------------------
-await page.click('.tb-gear');
+await menu('Settings');
+check('Settings from the menu keep the game paused', await js(() => window.__state.paused && !!document.querySelector('.set-body')));
 await page.click('.mm-tab:has-text("Graphics")');
 await page.click('.set-row:has-text("Shadows") .set-toggle');
 await page.click('.mm-tab:has-text("Controls")');
@@ -95,9 +113,10 @@ check('a rebound key works in play (J → Smelter) and its keycap says so', set1
 check('graphics and accessibility settings apply', set1.shadows === false && set1.zoom === '1.15' && set1.cb, `zoom ${set1.zoom}`);
 
 // ---- Save slots ----------------------------------------------------------------------------
-await page.click('.tbtn:has-text("Save") >> nth=0');
+await menu('Save game');
 await wait(200);
-await page.click('.tbtn:has-text("Saves")');
+check('Save game in the menu saves', /Saved just now/.test(await page.textContent('.gm-item:has-text("Save game")')));
+await page.click('.gm-item:has-text("Saves")');
 await page.fill('.mm-inline', 'Verify B');
 await page.click('button:has-text("Save as new slot")');
 await wait(300);
@@ -120,8 +139,7 @@ const name = `v6_${Date.now().toString(36).slice(-6)}`;
 const password = 'correct horse battery';
 let recoveryCode = null;
 if (apiUp) {
-    await page.click('.tbtn:has-text("Saves")');
-    await page.click('.mm-chip');
+    await menu('Account');
     await page.click('.mm-tab:has-text("Create account")');
     await page.fill('.mm-field:has-text("Name") input', name);
     await page.fill('.mm-field:has-text("Password (8") input', password);
@@ -141,7 +159,7 @@ if (apiUp) {
     check('settings sync to the account', remote.data?.graphics?.particles === 'low' && remote.data?.keys?.smelter === 'j');
 
     // The leaderboard: the server rebuilds the factory and scores it.
-    await page.click('.tbtn:has-text("Board")');
+    await menu('Leaderboard');
     await page.click('button:has-text("Test here first")');
     await page.waitForFunction(() => /Expected/.test(document.querySelector('.lb-result')?.textContent ?? ''), null, { timeout: 20000 });
     const preview = await page.textContent('.lb-result');
@@ -190,13 +208,12 @@ const back = await js(() => ({
 check('Continue restores the Infinite factory', back.mode === 'infinite' && back.plot === 1 && back.licences.includes('press') && back.machines === SMALL.machines.length, `${back.machines} machines`);
 check('settings survive a reload', back.shadows === false && back.smelterKey === 'j');
 
-// ---- Story still starts as before ------------------------------------------------------------
-await js(() => {
-    window.__settings.reset();
-    sessionStorage.setItem('selene.boot', JSON.stringify({ action: 'title' }));
-});
-await page.reload({ waitUntil: 'networkidle' });
+// ---- Main menu: back to the title screen, then switch to Story ---------------------------------
+await js(() => window.__settings.reset());
+await menu('Main menu');
+await page.waitForLoadState('networkidle');
 await boot();
+check('Main menu returns to the title screen (with Continue)', await js(() => !window.__state.started && !!document.querySelector('.btn-continue')));
 await page.click('text=Begin onboarding');
 await wait(600);
 const story = await js(() => ({ mode: window.__sim.game.mode, cannon: window.__sim.hasCannon(), site: !!window.__sim.grid[21][12].blocked, slots: window.__saves.list().length }));

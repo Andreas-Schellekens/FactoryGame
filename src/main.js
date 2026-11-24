@@ -504,6 +504,7 @@ const ui = createUI({
     onOpenSaves: () => openSaves(),
     onOpenSettings: () => settingsPanel.open(),
     onOpenBoard: () => openBoard(),
+    onOpenMenu: () => openGameMenu(),
     onBuyLicence: (type) => {
         const cost = LICENCE_COST[type];
         if (!buyLicence(type)) return false;
@@ -648,7 +649,21 @@ let lastPhase = project.phase;
 let lastWorking = 0;
 let flowClock = 0;
 
+// Any menu (the in-game menu, saves, settings…) pauses the game; closing the last one restores it.
+let menuWasOpen = false;
+let pausedBeforeMenu = false;
+function pauseForMenus() {
+    const open = menus.isOpen() && state.started && !state.cinematic;
+    if (open === menuWasOpen) return;
+    menuWasOpen = open;
+    if (open) {
+        pausedBeforeMenu = state.paused;
+        state.paused = true;
+    } else state.paused = pausedBeforeMenu;
+}
+
 function onFrame(dt) {
+    pauseForMenus();
     // A carried group plans where it would land under the cursor; a selection forgets demolished machines.
     if (state.group) {
         const h = state.hovered;
@@ -756,6 +771,18 @@ function showTitle() {
         onNew: (mode) => beginNew(mode),
         onPlay: (slot) => beginSlot(slot),
         onLeaderboard: () => openBoard(),
+    });
+}
+/** The in-game menu: saves, settings, leaderboard, account, and back to the title screen. */
+function openGameMenu() {
+    menus.openGameMenu({
+        slot: activeSlot ? saves.get(activeSlot.id) : null,
+        onSave: () => saveGame('now'),
+        onSaves: () => openSaves(),
+        onSettings: () => settingsPanel.open(),
+        onLeaderboard: () => openBoard(),
+        // Saved first; the title screen then offers Continue, Story, Infinite and Load.
+        onMainMenu: () => switchTo({ action: 'title' }),
     });
 }
 function openSaves() {
@@ -935,9 +962,11 @@ window.addEventListener('keydown', (e) => {
     if (act === 'pipette') pipette();
     if (TOOL_ACTIONS.has(act)) selectTool(act);
     if (k === 'delete' || k === 'backspace') selectTool('erase');
-    if (e.key === 'Escape' && state.selected) {
-        deselect();
-        audio.cue('close');
+    if (e.key === 'Escape') {
+        if (state.selected) {
+            deselect();
+            audio.cue('close');
+        } else openGameMenu(); // nothing to close: Esc opens the menu
     }
     if (act === 'rotate') rotateDir();
     if (act === 'viewLeft') renderer.rig.rotate(-1);

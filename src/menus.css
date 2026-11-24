@@ -162,6 +162,8 @@
   height: auto;
 }
 
+/* Narrow or short windows: the title screen becomes one column, the NILE lockup on top
+   (instead of over the mission patch) and the badge at the bottom. */
 @media (max-width: 1100px), (max-height: 760px) {
   .made-by {
     position: static;
@@ -170,6 +172,16 @@
   }
   .title-screen {
     flex-direction: column;
+    justify-content: flex-start;
+    padding-top: 24px;
+  }
+  .title-screen .lockup {
+    position: static;
+    flex-shrink: 0;
+    margin: 0 auto 18px;
+  }
+  .title-screen .title-card {
+    flex-shrink: 0;
   }
 }
 
@@ -862,12 +874,15 @@
 }
 
 /* ---- HUD: the gear, Infinite's shop ------------------------------------------------------- */
-.tb-gear {
+.tb-menu-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 34px;
-  padding: 0;
+  gap: 8px;
+  border-color: var(--signal);
+}
+
+.tb-menu-btn:hover {
+  background: rgba(255, 106, 19, 0.14);
 }
 
 .help-more {
@@ -958,4 +973,127 @@ body.reduced-motion *::after {
 
 body.reduced-motion .phase-flash {
   display: none;
+}
+
+/* ---- The in-game menu (top bar → Menu, or Esc) ------------------------------------------- */
+.mm-panel.game-menu {
+  width: min(460px, 100%);
+}
+
+.gm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gm-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 11px 14px;
+  border: 1px solid var(--hair-2);
+  background: var(--console-edge);
+  color: var(--paper);
+  text-align: left;
+  cursor: pointer;
+}
+
+.gm-item:hover,
+.gm-item:focus-visible {
+  border-color: var(--paper-2);
+  background: var(--console);
+}
+
+.gm-label {
+  font: 800 19px var(--f-mission);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.gm-hint {
+  font: 500 11px var(--f-mono);
+  letter-spacing: 0.04em;
+  color: var(--label);
+}
+
+.gm-item.primary {
+  border-color: var(--signal);
+}
+
+.gm-item.primary .gm-label {
+  color: var(--signal);
+}
+
+.gm-item.exit .gm-label {
+  color: var(--mustard);
+}
+
+.gm-sep {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--hair);
+}
+
+/* ---- Phones -------------------------------------------------------------------------------- */
+/* The HUD's panels are wider than a phone: clip the game area to the screen, so a panel that
+   sticks out can't widen the page (and with it every overlay and menu). */
+html,
+#app {
+  overflow: hidden;
+}
+
+.mm-panel.phone-note {
+  width: min(440px, 100%);
+}
+
+@media (max-width: 600px) {
+  .title-corner {
+    position: static;
+    align-self: center;
+    margin: 0 auto 14px;
+  }
+  .title-screen .lockup {
+    margin-bottom: 10px;
+  }
+  .lockup-word {
+    font-size: 30px;
+  }
+  .title-game {
+    font-size: 44px;
+  }
+  .mm-back {
+    padding: 12px 10px;
+  }
+  .mm-title {
+    font-size: 26px;
+  }
+  .mm-head,
+  .mm-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .set-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .set-slider {
+    width: 100%;
+  }
+  .recovery-code {
+    font-size: 17px;
+    letter-spacing: 0.06em;
+  }
+  .mm-actions .btn-secondary,
+  .mm-actions .btn-primary {
+    flex: 1 1 auto;
+  }
+  /* "Play anyway": at least the top bar scrolls sideways, so Menu stays in reach. */
+  .topbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .tb-word {
+    display: none;
+  }
 }

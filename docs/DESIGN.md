@@ -316,4 +316,11 @@ Each iteration should be playable on its own before the next one starts.
       - [x] Live on Railway at selene.schellekensdigital.be; DELTA's Infinite
             lines recorded (34 clips); the "Gemaakt door Schellekens Digital"
             badge on the title screen and at the end of the credits.
+      - [x] One Menu in the top bar (and on Esc) for everything that isn't
+            playing: resume, save, saves, settings, leaderboard, account, and
+            Main menu (back to the title screen to switch between Story and
+            Infinite); the game pauses while it is open. The title screen
+            stacks on narrow windows (the NILE lockup no longer covers the
+            patch), and phones get a notice (made for a computer, play anyway)
+            and menus that fit.
       - [ ] Playtest Infinite's prices (licences, land, request growth).

@@ -1,6 +1,7 @@
 // src/menus.js — the screens around the game, as plain DOM in the HUD's style: the title
-// screen (Continue, Story or Infinite, Load, Leaderboard, Settings, the account chip) and
-// the modal panels for save slots, the account, and the leaderboard. Driven through
+// screen (Continue, Story or Infinite, Load, Leaderboard, Settings, the account chip), the
+// in-game menu (top bar → Menu, or Esc), a notice for phones, and the modal panels for save
+// slots, the account, and the leaderboard. Driven through
 // callbacks from main.js; reads the account (account.js) and the slots (saves.js), and
 // never touches the simulation. The settings panel is settingsPanel.js.
 
@@ -150,6 +151,82 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
         return chip;
     }
 
+    // ---- Phones ----------------------------------------------------------------------------
+    /** A phone (touch, small screen): the game is built for a computer, the menus work anywhere. */
+    const isPhone = () => {
+        let coarse = navigator.maxTouchPoints > 0;
+        try {
+            coarse = coarse || window.matchMedia('(pointer: coarse)').matches;
+        } catch { /* old browser */ }
+        return coarse && Math.min(window.innerWidth, window.innerHeight) < 600;
+    };
+    const PHONE_NOTE = 'selene.phoneNote';
+    function showPhoneNote(onLeaderboard) {
+        try {
+            if (sessionStorage.getItem(PHONE_NOTE)) return;
+            sessionStorage.setItem(PHONE_NOTE, '1');
+        } catch { /* show it anyway */ }
+        const m = openModal({ kicker: 'Heads-up', title: 'Made for a computer' });
+        m.node.querySelector('.mm-panel').classList.add('phone-note');
+        m.body.append(
+            el('p', 'mm-text', 'Protocol: Selene is a factory game you build with a mouse and keyboard, on a computer or a tablet with a mouse.'),
+            el('p', 'mm-text', 'On a phone you can sign in, check the leaderboard and manage your saves and settings. Playing works too, but it is cramped and some things need a mouse.'),
+        );
+        const row = el('div', 'mm-actions');
+        row.append(
+            button('Play anyway', () => {
+                cue('click');
+                closeModal();
+            }, 'btn-primary small'),
+            button('Leaderboard', () => onLeaderboard()),
+        );
+        m.body.appendChild(row);
+    }
+
+    // ---- The in-game menu ------------------------------------------------------------------
+    /**
+     * Everything that isn't playing, in one place (top bar → Menu, or Esc). main.js pauses the
+     * game while any menu is open.
+     * @param {{ slot: any, onSave: () => boolean, onSaves: () => void, onSettings: () => void,
+     *           onLeaderboard: () => void, onMainMenu: () => void }} opts
+     */
+    function openGameMenu({ slot, onSave, onSaves, onSettings, onLeaderboard, onMainMenu }) {
+        const m = openModal({ kicker: slot ? `${slot.name} · ${slotProgress(slot)}` : 'Paused', title: 'Menu' });
+        m.node.querySelector('.mm-panel').classList.add('game-menu');
+        const list = el('div', 'gm-list');
+        const item = (label, hint, action, cls = '') => {
+            const b = el('button', `gm-item${cls ? ` ${cls}` : ''}`);
+            b.type = 'button';
+            b.append(el('span', 'gm-label', label), el('span', 'gm-hint', hint));
+            b.addEventListener('click', action);
+            list.appendChild(b);
+            return b;
+        };
+        item('Resume', 'Esc', () => {
+            cue('close');
+            closeModal();
+        }, 'primary');
+        const save = item('Save game', slot?.savedAt ? `Saved ${fmtAgo(slot.savedAt)}` : 'Not saved yet', () => {
+            const ok = onSave();
+            save.querySelector('.gm-hint').textContent = ok ? 'Saved just now' : 'Save failed';
+            cue(ok ? 'check' : 'deny');
+        });
+        item('Saves', 'Load another game · save as · export · import', onSaves);
+        item('Settings', 'Sound · graphics · gameplay · controls · accessibility', onSettings);
+        item('Leaderboard', 'The most efficient Infinite factories', onLeaderboard);
+        const acc = item('Account', '', () => openAccount());
+        const renderAccount = () => {
+            const s = account.state;
+            acc.querySelector('.gm-hint').textContent = s.user ? `Signed in as ${s.user.name}`
+                : s.checked && !s.online ? 'Offline: saves stay in this browser' : 'Sign in to keep your saves in the cloud';
+        };
+        renderAccount();
+        list.appendChild(el('span', 'gm-sep'));
+        item('Main menu', 'Saves this game and goes back to the title screen, to switch between Story and Infinite', onMainMenu, 'exit');
+        m.body.append(list, el('p', 'mm-note', 'The game is paused while this menu is open.'));
+        m.onClose = account.onChange(renderAccount);
+    }
+
     // ---- Title screen ---------------------------------------------------------------------
     /**
      * @param {{ onNew: (mode: 'story'|'infinite') => void, onPlay: (slot: any) => void, onLeaderboard: () => void }} opts
@@ -223,6 +300,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
         overlay.append(lockup, corner, card, madeBy());
         document.body.appendChild(overlay);
         overlay._off = offSaves;
+        if (isPhone()) showPhoneNote(onLeaderboard);
         card.querySelector('.btn-continue, .btn-primary')?.focus();
     }
 
@@ -655,6 +733,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
 
     return {
         showTitle,
+        openGameMenu,
         openSlots,
         openAccount,
         openLeaderboard,
