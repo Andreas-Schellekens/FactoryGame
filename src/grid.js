@@ -127,6 +127,8 @@ export const project = {
     phase: 0,
     delivered: {},
     complete: false,
+    ending: null,   // null | 'moon' | 'hq': the target chosen at the end
+    company: null,  // the player's company name after the 'hq' ending
 };
 
 // Lifetime counters the story director reads to trigger tutorial steps and
@@ -146,6 +148,15 @@ export function isBuildingUnlocked(type) {
         if (PHASES[i].unlocks.includes(type)) return true;
     }
     return false;
+}
+
+/** The target chosen at the end: 'moon' or 'hq' (NIHIL's headquarters). */
+export function setEnding(kind) {
+    if (kind === 'moon' || kind === 'hq') project.ending = kind;
+}
+/** Name the player's company (after the 'hq' ending). */
+export function setCompany(name) {
+    project.company = String(name ?? '').trim().slice(0, 28) || null;
 }
 
 /** The active phase definition, or null once the campaign is complete. */
@@ -445,7 +456,7 @@ export function serialize() {
         tickCount,
         order: { ...order },
         research: { points: research.points, unlocked: { ...research.unlocked } },
-        project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
+        project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company },
         stats: structuredClone(stats),
         market: { pressure: { ...market.pressure } },
         cells,
@@ -499,6 +510,8 @@ export function loadState(data) {
     project.phase = data.project?.phase ?? 0;
     project.delivered = { ...(data.project?.delivered ?? {}) };
     project.complete = data.project?.complete ?? false;
+    project.ending = data.project?.ending ?? null;
+    project.company = data.project?.company ?? null;
     applyRiver(project.phase);
     revealOre(project.phase);
     stats.produced = { ...(data.stats?.produced ?? {}) };

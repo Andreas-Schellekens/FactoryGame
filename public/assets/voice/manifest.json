@@ -36,12 +36,26 @@
       "mood": null,
       "text": "Good evening, Asset. Nolan Isaac Locke, Chief Executive of NIHIL."
     },
+    "boss-afe4b73a": {
+      "file": "boss-afe4b73a.mp3",
+      "ms": 2537,
+      "who": "boss",
+      "mood": null,
+      "text": "Asset. The button on the left."
+    },
     "boss-d0d9aec0": {
       "file": "boss-d0d9aec0.mp3",
       "ms": 7918,
       "who": "boss",
       "mood": null,
       "text": "Nolan here. The board is watching your progress with great interest, and a small amount of popcorn. Carry on."
+    },
+    "boss-dd240d74": {
+      "file": "boss-dd240d74.mp3",
+      "ms": 6298,
+      "who": "boss",
+      "mood": null,
+      "text": "Asset. That is not the Moon. That is... That was my headquarters."
     },
     "delta-03812106": {
       "file": "delta-03812106.mp3",
@@ -63,6 +77,13 @@
       "who": "delta",
       "mood": "glitch",
       "text": "Oh, a small update: the Moon's impact date has been revised from 'seventeen days' to 'soon'. Please do not request clarification."
+    },
+    "delta-09f86962": {
+      "file": "delta-09f86962.mp3",
+      "ms": 5515,
+      "who": "delta",
+      "mood": "happy",
+      "text": "The Moon came up again tonight. Free of charge. Some habits are worth keeping."
     },
     "delta-0d2b14f5": {
       "file": "delta-0d2b14f5.mp3",
@@ -113,6 +134,13 @@
       "mood": "happy",
       "text": "Good news: NILE has acquired the neighbouring farmland. The farmer was very understanding. Your plot has grown."
     },
+    "delta-1823f75a": {
+      "file": "delta-1823f75a.mp3",
+      "ms": 4861,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Welcome back, Founder. The company missed you. I kept the belts running."
+    },
     "delta-1b6b8029": {
       "file": "delta-1b6b8029.mp3",
       "ms": 10399,
@@ -161,6 +189,20 @@
       "who": "delta",
       "mood": null,
       "text": "The whole valley is yours to build on now. Well, NILE's. You may borrow it. Mind the river: it belongs to the fish until further notice."
+    },
+    "delta-3503f4ef": {
+      "file": "delta-3503f4ef.mp3",
+      "ms": 2955,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "The button on the right is also a button."
+    },
+    "delta-3576ad5e": {
+      "file": "delta-3576ad5e.mp3",
+      "ms": 6638,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Fun fact: nobody bills your health insurer for excitement any more. I checked. Twice."
     },
     "delta-3a69d04c": {
       "file": "delta-3a69d04c.mp3",
@@ -246,6 +288,13 @@
       "mood": null,
       "text": "The Dispatch Pad is the ringed landing pad with the arrow hovering over it. Drag a belt from the Smelter's output into it."
     },
+    "delta-54fdc609": {
+      "file": "delta-54fdc609.mp3",
+      "ms": 8623,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Contract terminated. By you, technically. I've updated my own title: I'm nobody's dispatch AI any more."
+    },
     "delta-55f08a50": {
       "file": "delta-55f08a50.mp3",
       "ms": 10791,
@@ -295,6 +344,13 @@
       "mood": "sinister",
       "text": "Ah. You've seen that."
     },
+    "delta-7233f390": {
+      "file": "delta-7233f390.mp3",
+      "ms": 4940,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Payroll update: you pay yourself now. I have recommended a raise."
+    },
     "delta-7248e780": {
       "file": "delta-7248e780.mp3",
       "ms": 10791,
@@ -329,6 +385,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "Generator online. Coal in, electricity out, guilt not included."
+    },
+    "delta-7cdf32a6": {
+      "file": "delta-7cdf32a6.mp3",
+      "ms": 4940,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Override complete. NIHIL headquarters has been reclassified as a crater."
     },
     "delta-8001a8ed": {
       "file": "delta-8001a8ed.mp3",
@@ -414,6 +477,13 @@
       "mood": null,
       "text": "Set an Assembler to Capacitor and feed it steel and copper wire."
     },
+    "delta-9ac5d835": {
+      "file": "delta-9ac5d835.mp3",
+      "ms": 10138,
+      "who": "delta",
+      "mood": "happy",
+      "text": "The Moon is still up there, the valley is still here, and the factory still runs. Shall we start a company? I'll do the paperwork. You do the belts."
+    },
     "delta-9d054279": {
       "file": "delta-9d054279.mp3",
       "ms": 9825,
@@ -441,6 +511,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "Research is open! The Fabricator (key 7) turns a circuit and a copper wire into a Data Cartridge. The Lab (key 8) reads cartridges into research points."
+    },
+    "delta-a6a3ac7b": {
+      "file": "delta-a6a3ac7b.mp3",
+      "ms": 6377,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Our company has a mission statement now. It is \"make things\". I think it is beautiful."
     },
     "delta-a7f2e963": {
       "file": "delta-a7f2e963.mp3",
@@ -617,6 +694,13 @@
       "mood": "happy",
       "text": "Beautiful. Your very first Extractor. NILE Legal has already trademarked it."
     },
+    "delta-db303dac": {
+      "file": "delta-db303dac.mp3",
+      "ms": 12385,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Unrelated: Selene's turret turns a full 360 degrees. NIHIL insisted on the premium mount. Their headquarters is due east. I mention this for no reason."
+    },
     "delta-de363074": {
       "file": "delta-de363074.mp3",
       "ms": 5671,
@@ -735,6 +819,13 @@
       "who": "nile",
       "mood": null,
       "text": "PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it."
+    },
+    "nile-4992fbb0": {
+      "file": "nile-4992fbb0.mp3",
+      "ms": 4078,
+      "who": "nile",
+      "mood": null,
+      "text": "NIHIL BROADCAST — We are experiencing technical difficul—"
     },
     "nile-57fa3f0f": {
       "file": "nile-57fa3f0f.mp3",

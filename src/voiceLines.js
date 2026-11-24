@@ -6,7 +6,7 @@
 // A key hashes speaker, mood and text, so editing a line (or its mood) makes
 // it a new key: the old clip simply stops matching and the generator records
 // the new one. Lines are enumerated exactly as director.js builds them.
-import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, welcomeBack } from './story.js';
+import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack } from './story.js';
 
 /** Speakers with a voice. Memos are read, not spoken. */
 export const VOICED = new Set(['delta', 'nile', 'boss']);
@@ -39,6 +39,7 @@ export function collectVoiceLines() {
 
     add(welcomeBack(0));
     add(welcomeBack(4));
+    add(welcomeBack(5, 'hq'));
     for (const beat of BEATS) {
         let prev = null;
         for (const line of beat.lines) {
@@ -50,10 +51,13 @@ export function collectVoiceLines() {
     for (const text of AMBIENT.early) add(delta(text));
     for (const t of AMBIENT.late) add(typeof t === 'string' ? delta(t, 'sinister') : t);
     for (const text of [...REACTIONS.orderCompleted, ...REACTIONS.orderFailed]) add(delta(text));
-    let prev = null;
-    for (const line of ENDING.lines) {
-        add(line, prev && prev.who === line.who ? prev.text : null);
-        prev = line;
+    for (const text of AMBIENT.free) add(delta(text, 'happy'));
+    for (const lines of [CHOICE.lines, ENDING.lines, ENDING_HQ.lines]) {
+        let prev = null;
+        for (const line of lines) {
+            add(line, prev && prev.who === line.who ? prev.text : null);
+            prev = line;
+        }
     }
     return [...out.values()];
 }

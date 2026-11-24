@@ -31,9 +31,10 @@ Self-hosted through [Fontsource](https://fontsource.org), all under the
 
 All music, sound effects and ambience are synthesized at runtime with the Web
 Audio API (`src/synth.js`, `src/music.js`, `src/sfx.js`, `src/ambience.js`);
-there are no sample files. DELTA's voice, once recorded, is generated with
-[ElevenLabs](https://elevenlabs.io) text-to-speech under the account holder's
-plan terms.
+there are no sample files. The voices of DELTA, the NILE announcer and Nolan
+Isaac Locke are generated with [ElevenLabs](https://elevenlabs.io)
+text-to-speech (voices made with Voice Design) under the account holder's plan
+terms.
 
 ## Code and art
 

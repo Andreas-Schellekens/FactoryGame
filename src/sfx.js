@@ -46,6 +46,7 @@ export const CUE_META = {
     begin: { gap: 1000, gain: 0.9 },
     ending: { gap: 30000, gain: 1 },
     endingFinal: { gap: 2000, gain: 0.9 },
+    endingFree: { gap: 2000, gain: 0.9 },
 };
 
 export const CUES = {
@@ -227,7 +228,7 @@ export const CUES = {
      * the Moon breaking, debris, the Moon+ billboard flickering on (adAt, 6 s)
      * with its ad jingle, and the closing chord under the report (finalAt).
      */
-    ending(kit, t, { fireAt = 3.0, adAt = 6.0, finalAt = 16.5 } = {}) {
+    ending(kit, t, { fireAt = 3.0, adAt = 6.0, finalAt = 16.5, variant = 'moon', impactAt = null } = {}) {
         const { ctx, out, wet } = kit;
         const shot = t + fireAt;
         sweep(ctx, out, t, 45, 62, fireAt + 0.2, { type: 'sine', gain: 0.16, cutoff: 300, attack: fireAt * 0.5 });
@@ -236,13 +237,19 @@ export const CUES = {
         kick(ctx, out, shot, { gain: 0.6, from: 140, to: 40, dur: 0.5 });
         sweep(ctx, out, shot, 2200, 180, 0.55, { type: 'square', gain: 0.06, cutoff: 5000 });
         noise(ctx, out, shot, { dur: 0.5, gain: 0.12, type: 'highpass', freq: 3000 });
-        const boom = shot + 0.15;
+        // At the Moon the beam hits at once; at NIHIL HQ a shell whistles over first.
+        const boom = variant === 'hq' ? t + (impactAt ?? fireAt + 1.15) : shot + 0.15;
+        if (variant === 'hq') sweep(ctx, out, shot + 0.1, 1900, 520, Math.max(0.2, boom - shot - 0.1), { type: 'sine', gain: 0.05, cutoff: 4200 });
         kick(ctx, out, boom, { gain: 0.95, from: 70, to: 22, dur: 3 });
         noise(ctx, out, boom, { dur: 3.6, gain: 0.32, type: 'lowpass', freq: 1400, freqEnd: 70, attack: 0.01 });
         noise(ctx, wet, boom, { dur: 4.5, gain: 0.2, type: 'lowpass', freq: 600, freqEnd: 60 });
         metal(ctx, wet, boom + 0.05, 95, { vel: 1, decay: 3.2 });
         for (let i = 0; i < 12; i++) {
             metal(ctx, wet, boom + 0.3 + Math.random() * 2.3, 600 + Math.random() * 2200, { vel: 0.18, decay: 0.3, pan: (Math.random() - 0.5) * 1.6 });
+        }
+        if (variant === 'hq') {
+            CUES.endingFree(kit, t + finalAt);
+            return;
         }
         // Moon+ switches on: a flicker of glitches, then a relentlessly cheerful ad jingle.
         const ad = t + adAt;
@@ -253,6 +260,12 @@ export const CUES = {
         });
         bell(ctx, wet, ad + 1.65, degreeFreq(0, 14, 0), { vel: 0.6, decay: 2.5 });
         CUES.endingFinal(kit, t + finalAt);
+    },
+    /** The other closing chord: a warm major triad, the valley is yours. */
+    endingFree({ ctx, out, wet }, t) {
+        pad(ctx, out, t, [degreeFreq(0, 0, -1), degreeFreq(0, 2, -1), degreeFreq(0, 4, -1), degreeFreq(0, 0, 0)], 5, { type: 'triangle', cutoff: 1500, gain: 0.05, attack: 1.2, release: 4 });
+        bell(ctx, wet, t + 0.4, degreeFreq(0, 4, 1), { vel: 0.4, decay: 4 });
+        bell(ctx, wet, t + 0.95, degreeFreq(0, 7, 1), { vel: 0.35, decay: 4.5 });
     },
     /** The closing chord under the mission report (also played on its own when the ending is skipped). */
     endingFinal({ ctx, out, wet }, t) {

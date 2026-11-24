@@ -19,7 +19,7 @@ import {
     initGrid, buildMachine, removeMachine, upgradeMachine, upgradeCost, placeBelt, dirBetween,
     serialize, loadState, isBuildingUnlocked, machineCost, machinePorts, machineIO,
     RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
-    salePrice, flow, UPGRADABLE, SAVE_VERSION, machinesIn, planGroup, applyGroup, removeGroup,
+    salePrice, flow, UPGRADABLE, SAVE_VERSION, machinesIn, planGroup, applyGroup, removeGroup, setEnding, setCompany,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
 import { BUILDING_NAMES, ITEM_NAMES } from './story.js';
@@ -131,6 +131,7 @@ function snapshot() {
             const need = req.reduce((a, [, n]) => a + n, 0);
             return need ? req.reduce((a, [k, n]) => a + Math.min(n, project.delivered[k] ?? 0), 0) / need : 1;
         })(),
+        ending: project.ending,
         minPrice: Math.min(1, ...Object.keys(SINK_VALUE).map((k) => salePrice(k) / SINK_VALUE[k])),
         order: { status: order.status, startTick: order.startTick },
     };
@@ -251,7 +252,7 @@ function loadGame() {
     state.selected = null;
     flowSamples.length = 0;
     nextOrderTick = null; // let the restored order resume cleanly
-    director.load(data.story, tickCount, project.phase);
+    director.load(data.story, tickCount, project.phase, project.ending);
     state.started = true;
     return true;
 }
@@ -363,42 +364,56 @@ const director = createDirector({
     say: (line) => ui.say(line),
     banner: (i) => ui.showBanner(i),
     isBusy: () => ui.isBusy(),
-    ending: () => {
-        saveGame();
-        let machines = 0;
-        for (const col of grid) for (const c of col) if (c.machine && c.machine.type !== 'sink') machines++;
-        ui.showEnding({
-            stats: {
-                seconds: tickCount / TICK_RATE,
-                delivered: Object.values(stats.delivered).reduce((a, b) => a + b, 0),
-                machines,
-            },
-            // The ending plays in the world: the HUD drives these at its timeline's beats.
-            stage: {
-                start(opts) {
-                    state.cinematic = true;
-                    state.drag = null;
-                    held.clear();
-                    return renderer.frameCannon(opts);
-                },
-                charge: (level) => renderer.chargeCannon(level),
-                fire: () => renderer.fireCannon(),
-                muzzle: () => renderer.muzzlePage(),
-                end() {
-                    state.cinematic = false;
-                    renderer.releaseCinematic();
-                },
-            },
-            onContinue: () => {},
-            onNewGame: () => {
-                try {
-                    localStorage.removeItem(SAVE_KEY);
-                } catch { /* ignore */ }
-                location.reload();
-            },
-        });
-    },
+    ending: () => playEnding(),
 });
+
+/** The end: choose the target (unless a save already chose), the cinematic, the report. */
+function playEnding() {
+    saveGame();
+    state.cinematic = true;
+    state.drag = null;
+    state.sel = null;
+    state.group = null;
+    state.selected = null;
+    held.clear();
+    let machines = 0;
+    for (const col of grid) for (const c of col) if (c.machine && c.machine.type !== 'sink') machines++;
+    ui.showEnding({
+        stats: {
+            seconds: tickCount / TICK_RATE,
+            delivered: Object.values(stats.delivered).reduce((a, b) => a + b, 0),
+            machines,
+        },
+        decided: project.ending,
+        onChoose: (kind) => {
+            setEnding(kind);
+            saveGame();
+        },
+        onFound: (name) => {
+            setCompany(name);
+            saveGame();
+        },
+        // The ending plays in the world: the HUD drives these at its timeline's beats.
+        stage: {
+            lookAtCannon: () => renderer.lookAtCannon(),
+            start: (opts) => renderer.frameCannon(opts),
+            charge: (level) => renderer.chargeCannon(level),
+            fire: (opts) => renderer.fireCannon(opts),
+            muzzle: () => renderer.muzzlePage(),
+            end() {
+                state.cinematic = false;
+                renderer.releaseCinematic();
+            },
+        },
+        onContinue: () => saveGame(),
+        onNewGame: () => {
+            try {
+                localStorage.removeItem(SAVE_KEY);
+            } catch { /* ignore */ }
+            location.reload();
+        },
+    });
+}
 
 // --- HUD ---
 const ui = createUI({
@@ -473,7 +488,7 @@ const ui = createUI({
                 blocked: state.group?.plan?.bad.length ?? 0,
             } : null,
             research: { points: research.points, unlocked: { ...research.unlocked } },
-            project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete },
+            project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company },
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
             objectives: director.objectives(),
         };
@@ -552,7 +567,8 @@ function onFrame(dt) {
         }
     }
     audio.update(dt, {
-        mood: project.complete ? 5 : project.phase,
+        // After the NIHIL HQ ending the bright early mood comes back (once the cinematic is over).
+        mood: project.complete ? (project.ending === 'hq' && !state.cinematic ? 1 : 5) : project.phase,
         playing: state.started,
         paused: state.paused && state.started,
         throttle: power.throttle,
@@ -584,8 +600,10 @@ ui.showTitle({
         }
         lastPhase = project.phase;
         state.paused = false;
-        audio.begin(project.complete ? 5 : project.phase);
-        if (director.ended()) ui.toast('Protocol: Selene is complete. Sandbox mode');
+        audio.begin(project.complete ? (project.ending === 'hq' ? 1 : 5) : project.phase);
+        // Saved after the last phase but before choosing the target: choose now.
+        if (project.complete && !project.ending) playEnding();
+        else if (director.ended()) ui.toast(project.ending === 'hq' ? `${project.company ?? 'Your company'} · the valley is yours` : 'Protocol: Selene is complete. Sandbox mode');
     },
 });
 

@@ -31,6 +31,19 @@ export function markSVG(evil = false, size = 30) {
 
 let patchId = 0;
 /** The Protocol: Selene mission patch. Defaced after the reveal. */
+/**
+ * Your own company's mark: its initials (letters and digits only, so a typed name can never
+ * inject markup) in a square frame.
+ */
+export function companyMarkSVG(name = '', size = 30) {
+    const words = String(name).toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+    const initials = (words.length >= 2 ? words[0][0] + words[1][0] : (words[0] ?? 'S').slice(0, 2)) || 'S';
+    return `<svg width="${size}" height="${size}" viewBox="0 0 74 74" aria-hidden="true">
+        <rect x="5" y="5" width="64" height="64" fill="none" stroke="${C.paper}" stroke-width="5" />
+        <text x="37" y="51" text-anchor="middle" font-family="'Big Shoulders Display', Impact, sans-serif" font-weight="800" font-size="36" fill="${C.signal}">${initials}</text>
+    </svg>`;
+}
+
 export function patchSVG(evil = false, size = 46, { text = true } = {}) {
     const id = `patch${patchId++}`;
     const sky = evil ? '#4a2228' : C.sunset;

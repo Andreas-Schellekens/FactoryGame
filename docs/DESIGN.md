@@ -99,11 +99,24 @@ Coal feeds three things (generators, foundries, mixers), so splitting a coal
 line is the mid-game puzzle; motors and shells take three inputs, one per
 side of an assembler.
 
-**Ending (current):** played in the valley itself: the cannon swivels to the
-Moon and fires, the Moon shatters, *Moon+* (an ad-supported orbital billboard)
-switches on where it hung and stays there for the rest of the sandbox. "Congratulations, Asset. You have
-saved Earth from free things."
-*Planned:* an ending choice (fire at the Moon, or retarget NIHIL HQ).
+**The ending: a choice.** In the last phase DELTA lets slip that Selene's
+turret turns a full circle and that NIHIL's headquarters is due east, and a
+leaked memo says the targeting override is stored in DELTA. When the last
+delivery lands, the player chooses the target (Nolan: "The button on the
+left." DELTA: "The button on the right is also a button.").
+- **The Moon** (as contracted): played in the valley itself: the cannon
+  swivels to the Moon and fires, the Moon shatters, *Moon+* (an ad-supported
+  orbital billboard) switches on where it hung and stays there for the rest
+  of the sandbox. "Congratulations, Asset. You have saved Earth from free
+  things."
+- **NIHIL HQ** (the override): Selene turns east, the shell arcs over the
+  valley into NIHIL's tower on the east rim, which comes down in fire and
+  dust ("That was my headquarters."). The Moon stays, the sky turns to dawn,
+  NIHIL's red drains from the HUD, the birds and the bright early music come
+  back, DELTA becomes your co-founder, and you name your own company; the
+  sandbox goes on under that name and mark.
+- Both end in a report (a mission report, or a founding report) and the
+  credits roll.
 
 ## Visual arc: from cozy to NIHIL
 
@@ -258,5 +271,12 @@ Each iteration should be playable on its own before the next one starts.
               price), or demolish it (X). Pipette (F): build what is under
               the cursor, same direction and recipe.
         - [ ] Record DELTA's lines about the plot, the river and the tip.
-- [ ] **Iteration 5 — finale & polish.** Ending choice, credits, save slots,
-      settings. (The firing cinematic was done in 3b.)
+- [ ] **Iteration 5 — finale.**
+      - [x] The ending choice: fire at the Moon, or override and destroy
+            NIHIL HQ (a tower on the east rim, NILE's sign until the reveal);
+            the HQ cinematic (aim east, a shell in an arc, the tower comes
+            down), dawn, naming your company, a founding report; a credits
+            roll from either report. Foreshadowed in the last phase.
+      - [ ] Record the new lines (the choice, the HQ ending, the founder's
+            chatter).
+      (Save slots and settings moved to iteration 6.)

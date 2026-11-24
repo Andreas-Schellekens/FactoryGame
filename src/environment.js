@@ -17,6 +17,8 @@ import { haloSprite } from './effects.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const RIM = 6; // cells of landscape around the buildable area
+// NILE's (later NIHIL's) headquarters: a tower on the east rim, level with the pad.
+const HQ = { x: W + 3.6, z: PAD_POS.y + 0.5 };
 
 // The land per phases completed (0..5): ground tint (multiplies the
 // greyscale ground texture), shared nature material colours, river water.
@@ -958,6 +960,7 @@ export function buildEnvironment(scene, assets, effects) {
             const cx = x + 0.5 + (rand(x, y, 1) - 0.5) * 0.4;
             const cz = y + 0.5 + (rand(x, y, 2) - 0.5) * 0.4;
             if (nearRiver(x, y) || inFarm(x, y) || inCamp(x, y)) continue;
+            if (Math.hypot(x + 0.5 - HQ.x, y + 0.5 - HQ.z) < 2.4) continue; // the HQ's plaza
 
             if (inCompound(x, y)) {
                 const lattice = (((x - W) % 3) + 3) % 3 === 2 && (y + RIM) % 3 === 1 && rd >= 2;
@@ -980,6 +983,178 @@ export function buildEnvironment(scene, assets, effects) {
             else if (f < 0.31) addProp(f < 0.3 ? 'stoneA' : 'stoneSmall', cx, cz, 0, 5, { rot: h * 6 });
         }
     }
+    // ---- The headquarters tower ----------------------------------------------------------
+    // A plain corporate tower (lit window grid, crown, antenna with a beacon) wearing NILE's
+    // sign, then NIHIL's from the reveal. ruinHQ() brings it down: it tilts and sinks into its
+    // own dust, then stays a smoking, burning stump with rubble.
+    const hq = (() => {
+        const g = new THREE.Group();
+        g.position.set(HQ.x, 0, HQ.z);
+        root.add(g);
+        const tex = (draw, w, h) => {
+            const c = document.createElement('canvas');
+            c.width = w;
+            c.height = h;
+            draw(c.getContext('2d'), w, h);
+            const t = new THREE.CanvasTexture(c);
+            t.colorSpace = THREE.SRGBColorSpace;
+            return t;
+        };
+        const windows = (burnt) => tex((x, w, h) => {
+            x.fillStyle = burnt ? '#17181c' : '#2c3240';
+            x.fillRect(0, 0, w, h);
+            let seed = burnt ? 7 : 3;
+            const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+            for (let r = 0; r < 16; r++) {
+                for (let col = 0; col < 5; col++) {
+                    const lit = !burnt && rnd() < 0.62;
+                    x.fillStyle = lit ? (rnd() < 0.5 ? '#ffd98a' : '#fff1c4') : burnt ? '#0c0c0e' : '#1b1f29';
+                    x.fillRect(4 + col * 12, 3 + r * 8, 8, 5);
+                }
+            }
+        }, 64, 132);
+        const litTex = windows(false);
+        const facade = new THREE.MeshStandardMaterial({ map: litTex, emissive: 0xffe0a8, emissiveMap: litTex, emissiveIntensity: 0.25, roughness: 0.45, metalness: 0.1 });
+        const burnt = new THREE.MeshStandardMaterial({ map: windows(true), roughness: 0.9, color: 0x77706a });
+        const concrete = new THREE.MeshStandardMaterial({ color: 0xa3a7ae, roughness: 0.85, flatShading: true });
+        const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d35, roughness: 0.6, flatShading: true });
+        const box = (w, h, d, mat, y, parent = g) => {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            m.position.y = y;
+            m.castShadow = true;
+            m.receiveShadow = true;
+            parent.add(m);
+            return m;
+        };
+        box(3.1, 0.3, 3.1, concrete, 0.15); // the plaza
+        const stack = new THREE.Group(); // everything that falls
+        g.add(stack);
+        box(2.0, 4.6, 2.0, facade, 0.3 + 2.3, stack);
+        box(2.3, 0.28, 2.3, dark, 5.04, stack);
+        box(1.35, 0.8, 1.35, facade, 5.58, stack);
+        box(1.55, 0.12, 1.55, dark, 6.04, stack);
+        const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.06, 1.3, 8), dark);
+        mast.position.y = 6.75;
+        stack.add(mast);
+        const beacon = haloSprite(0xff3b30, 0.7);
+        beacon.position.y = 7.45;
+        stack.add(beacon);
+        // The sign on all four faces, just under the crown: NILE's, then NIHIL's.
+        const sign = (evil) => tex((x, w, h) => {
+            x.fillStyle = evil ? '#16070a' : '#0e1a2c';
+            x.fillRect(0, 0, w, h);
+            x.strokeStyle = evil ? '#ff3b30' : '#ff6a13';
+            x.lineWidth = 5;
+            if (evil) {
+                x.beginPath();
+                x.moveTo(18, h / 2);
+                x.lineTo(62, h / 2);
+                x.stroke();
+            } else {
+                x.beginPath();
+                x.moveTo(40, 16);
+                x.lineTo(40, h - 16);
+                x.moveTo(40, 16);
+                x.bezierCurveTo(40, 40, 26, 50, 20, h - 16);
+                x.moveTo(40, 16);
+                x.bezierCurveTo(40, 40, 54, 50, 60, h - 16);
+                x.stroke();
+            }
+            x.fillStyle = evil ? '#ff3b30' : '#f2e8d5';
+            x.font = '800 54px "Big Shoulders Display", Impact, sans-serif';
+            x.textBaseline = 'middle';
+            x.fillText(evil ? 'NIHIL' : 'NILE', 78, h / 2 + 2);
+        }, 256, 80);
+        const signMats = {
+            nile: new THREE.MeshBasicMaterial({ map: sign(false) }),
+            nihil: new THREE.MeshBasicMaterial({ map: sign(true) }),
+        };
+        const signs = [];
+        for (let i = 0; i < 4; i++) {
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.53), signMats.nile);
+            const a = (i * Math.PI) / 2;
+            m.position.set(Math.sin(a) * 1.012, 4.45, Math.cos(a) * 1.012);
+            m.rotation.y = a;
+            stack.add(m);
+            signs.push(m);
+        }
+        // The ruin, hidden until the strike: a broken stump, slabs and rubble, and fires.
+        const ruin = new THREE.Group();
+        ruin.visible = false;
+        g.add(ruin);
+        const stump = box(2.0, 1.5, 2.0, burnt, 0.3 + 0.75, ruin);
+        stump.rotation.set(0.08, 0.2, -0.12);
+        const slab = box(2.4, 0.22, 1.2, concrete, 0.55, ruin);
+        slab.position.set(-1.3, 0.5, 0.6);
+        slab.rotation.set(0.3, 0.6, 0.45);
+        let seed = 11;
+        const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+        for (let i = 0; i < 14; i++) {
+            const r = box(0.25 + rnd() * 0.4, 0.18 + rnd() * 0.3, 0.25 + rnd() * 0.4, rnd() < 0.5 ? concrete : dark, 0.15, ruin);
+            const a = rnd() * Math.PI * 2;
+            const d = 1.1 + rnd() * 1.4;
+            r.position.set(Math.cos(a) * d, 0.12 + rnd() * 0.15, Math.sin(a) * d);
+            r.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+        }
+        const fires = [[0.3, 1.6, 0.2], [-0.6, 1.2, -0.4], [0.5, 0.9, 0.8], [-1.2, 0.7, 0.5]].map(([x, y, z], i) => {
+            const f = haloSprite(i % 2 ? 0xff7a1a : 0xffb040, 1.1 + (i % 3) * 0.25);
+            f.position.set(x, y, z);
+            ruin.add(f);
+            return f;
+        });
+        return { g, stack, ruin, signs, signMats, beacon, facade, fires, fall: null, ruined: false, smoke: 0 };
+    })();
+
+    /** Stand the tower up again, or show it ruined (instantly; e.g. on load). */
+    function setHQRuined(ruined) {
+        hq.ruined = ruined;
+        hq.fall = null;
+        hq.stack.visible = !ruined;
+        hq.stack.position.y = 0;
+        hq.stack.rotation.set(0, 0, 0);
+        hq.ruin.visible = ruined;
+        hq.ruin.scale.setScalar(1);
+    }
+    /** Bring the tower down: it tilts and sinks into its dust, and the ruin smokes on. */
+    function ruinHQ() {
+        if (hq.ruined) return;
+        hq.ruined = true;
+        hq.fall = { t: 0 };
+        hq.ruin.visible = true;
+        hq.ruin.scale.setScalar(0.01);
+        for (let i = 0; i < 6; i++) effects.puff(new THREE.Vector3(HQ.x + (Math.random() - 0.5) * 2.6, 0.4, HQ.z + (Math.random() - 0.5) * 2.6), { count: 10, size: 0.8, spread: 1.4, color: 0x8a8278 });
+    }
+    function updateHQ(dt) {
+        // NILE's sign until the reveal, then NIHIL's; the beacon blinks; windows glow at night.
+        const mat = phase >= 4 ? hq.signMats.nihil : hq.signMats.nile;
+        for (const s of hq.signs) if (s.material !== mat) s.material = mat;
+        hq.beacon.material.opacity = (Math.sin(clock / 260) > 0 ? 0.95 : 0.15) * (hq.stack.visible ? 1 : 0);
+        hq.facade.emissiveIntensity = 0.15 + Math.min(1, Math.max(0, phase - 2) * 0.35);
+        if (hq.fall) {
+            const f = hq.fall;
+            f.t = Math.min(1, f.t + dt / 2400);
+            const k = f.t * f.t;
+            hq.stack.rotation.z = -0.55 * k;
+            hq.stack.rotation.x = 0.18 * k;
+            hq.stack.position.y = -4.2 * k;
+            hq.ruin.scale.setScalar(Math.max(0.01, Math.min(1, (f.t - 0.25) / 0.6)));
+            if (Math.random() < dt / 90) effects.puff(new THREE.Vector3(HQ.x + (Math.random() - 0.5) * 3, 0.3, HQ.z + (Math.random() - 0.5) * 3), { count: 6, size: 0.7, spread: 1.2, color: 0x9a9088 });
+            if (f.t >= 1) {
+                hq.fall = null;
+                hq.stack.visible = false;
+            }
+        }
+        if (hq.ruined) {
+            hq.fires.forEach((fl, i) => (fl.material.opacity = 0.55 + 0.35 * Math.sin(clock / (70 + i * 17) + i)));
+            hq.smoke += dt;
+            if (hq.smoke > 260) {
+                hq.smoke = 0;
+                const fl = hq.fires[Math.floor(Math.random() * hq.fires.length)];
+                effects.smoke(new THREE.Vector3(HQ.x + fl.position.x, fl.position.y + 0.3, HQ.z + fl.position.z), { color: 0x3a3634, size: 0.5, rise: 1.2, opacity: 0.6 });
+            }
+        }
+    }
+
     // NILE's compound: nearer the pad appears sooner. Until then a tree
     // stands on the slot; Nile clears it the phase the building arrives.
     bigSlots.sort((a, b) => a.d - b.d);
@@ -1365,6 +1540,7 @@ export function buildEnvironment(scene, assets, effects) {
     /** Per frame: staggered transitions, falling trees, colour easing, the river, the fence, fire, lamps. */
     function update(dt) {
         clock += dt;
+        updateHQ(dt);
         for (let i = pending.length - 1; i >= 0; i--) {
             if (clock >= pending[i].at) {
                 pending[i].run();
@@ -1481,6 +1657,11 @@ export function buildEnvironment(scene, assets, effects) {
     return {
         setPhase,
         update,
+        /** The point to aim at on the headquarters tower (world). */
+        hqPoint: () => new THREE.Vector3(HQ.x, 3.4, HQ.z),
+        /** The tower comes down (animated), or is set standing / ruined at once (`setHQRuined`). */
+        ruinHQ,
+        setHQRuined,
         paveCell,
         scorch,
         /** Hide (or restore) a cell's flowers without paving it — under conveyors. */

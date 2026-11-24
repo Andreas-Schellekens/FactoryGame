@@ -86,11 +86,13 @@ export function createDirector({ say, banner, ending, isBusy }) {
         lastAmbient = w.tick;
         // Plain strings are DELTA; a line object (Nolan's memo) speaks as itself.
         const textOf = (t) => (typeof t === 'string' ? t : t.text);
-        const pool = (w.phase >= 4 ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${textOf(t)}`));
+        const free = w.ending === 'hq';
+        const pool = (free ? AMBIENT.free : w.phase >= 4 ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${textOf(t)}`));
         if (!pool.length) return;
         const line = pick(pool);
         flags.add(`amb:${textOf(line)}`);
-        say(typeof line === 'string' ? { who: 'delta', text: line, mood: w.phase >= 4 ? 'sinister' : undefined } : line);
+        const mood = free ? 'happy' : w.phase >= 4 ? 'sinister' : undefined;
+        say(typeof line === 'string' ? { who: 'delta', text: line, mood } : line);
     }
 
     return {
@@ -117,13 +119,13 @@ export function createDirector({ say, banner, ending, isBusy }) {
         save: () => ({ flags: [...flags] }),
 
         /** Restore after loading a game; `tick` is the restored sim clock, `phase` the campaign phase. */
-        load(data, tick, phase = 0) {
+        load(data, tick, phase = 0, ending = null) {
             flags = new Set(data?.flags ?? []);
             lastAmbient = tick;
             stuck = { key: null, since: tick };
             lastHintAt.clear();
             lastOrderKey = null;
-            if (flags.size) say(welcomeBack(phase));
+            if (flags.size) say(welcomeBack(phase, ending));
         },
     };
 }

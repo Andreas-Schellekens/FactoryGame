@@ -20,12 +20,13 @@
 // Sound goes through the optional `sound` object (audio.js): the HUD only
 // tells it what happened (a comms line starts, a panel opens, the ending
 // plays) and reads/writes its settings; it never touches audio itself.
-import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS } from './config.js';
+import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS, HQ_FLIGHT_MS } from './config.js';
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
+    CHOICE, ENDING_HQ, COMPANY, CREDITS,
 } from './story.js';
-import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG } from './brand.js';
+import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -129,7 +130,10 @@ export function createUI({
     billboard.append(el('span', 'mp-name', ENDING.billboard.name), el('span', 'mp-tag', ENDING.billboard.tag));
     view?.insertBefore(billboard, view.querySelector('canvas'));
     let phaseShown = -1; // phase the phase-dependent DOM was last built for
+    let phaseSig = '';   // phase|ending|company the brand and console were built for
     let brandPhase = 0;  // for comms headers / portraits
+    let brandEnding = null;
+    let brandCompany = null;
 
     // ---- Top bar ----------------------------------------------------------------
     const top = el('header', 'topbar');
@@ -436,12 +440,12 @@ export function createUI({
     let voiceEnds = 0;        // performance.now() when the current line's voice clip ends, 0 = no voice
 
     function speaker(line) {
-        const b = brandFor(brandPhase);
-        const evil = brandPhase >= 4;
+        const b = brandFor(brandPhase, brandEnding, brandCompany);
+        const evil = brandPhase >= 4 && !b.own;
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
         if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: `not for ${b.player} eyes`, svg: memoSVG() };
         if (line.who === 'boss') return { name: BOSS.name.toUpperCase(), role: BOSS.title, svg: bossSVG() };
-        return { name: `${AI.name} ▸ CAPCOM`, role: `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
+        return { name: `${AI.name} ▸ CAPCOM`, role: b.own ? `co-founder · ${b.full}` : `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
     }
 
     // Typing is time-based (so a throttled timer can't slow DELTA down), then
@@ -787,20 +791,23 @@ export function createUI({
         begin.focus();
     }
 
-    // ---- The ending: a cinematic in the world, then the mission report --------------------------
-    // Timeline (seconds): letterbox and a cut to the cannon (0), countdown and charge (0–3), the
-    // shot (3.0), the Moon breaks and the sky turns (3.15), Moon+ switches on (6.0), DELTA's last
-    // lines as subtitles, the mission report. audio.js plays the score of it on the same times. The
-    // `lines` times are the earliest each line may start: with voice clips, a line waits for the one
-    // before to finish, and the report waits for the last.
+    // ---- The ending: a choice, a cinematic in the world, then the report -----------------------
+    // First the player picks the target (CHOICE). Moon timeline (seconds): letterbox and a cut to
+    // the cannon (0), countdown and charge (0–3), the shot (3.0), the Moon breaks and the sky turns
+    // (3.15), Moon+ switches on (6.0). NIHIL HQ timeline: the same countdown, the shell lands at
+    // `hit` (HQ_FLIGHT_MS after the shot), dawn comes at `dawn`. Either way the closing lines run
+    // as subtitles, each waiting for the previous voice clip, then the report (and for NIHIL HQ,
+    // first: naming your company). audio.js plays the score on the same times.
     const END = { fire: 3.0, hit: 3.15, ad: 6.0, report: 20.0, lines: [0.3, 7.0, 10.4, 13.8, 17.2] };
+    const END_HQ = { fire: 3.0, hit: 3.0 + HQ_FLIGHT_MS / 1000, dawn: 5.8, report: 22.0, lines: [0.3, 5.0, 8.4, 11.6, 14.6, 18.0] };
 
     /**
-     * @param {{ stats: any, onContinue: () => void, onNewGame: () => void,
-     *   stage?: { start(moon: {x:number,y:number}): void, charge(level: number): void, fire(): void,
-     *             muzzle(): {x:number,y:number}, end(): void } }} opts
+     * @param {{ stats: any, onChoose?: (kind: 'moon'|'hq') => void, onFound?: (name: string) => void,
+     *   onContinue: () => void, onNewGame: () => void, decided?: 'moon'|'hq'|null,
+     *   stage?: { lookAtCannon(): void, start(opts: { radius: number, top: number, target?: string }): {x:number,y:number}|null,
+     *             charge(level: number): void, fire(opts?: { target?: string }): void, muzzle(): {x:number,y:number}, end(): void } }} opts
      */
-    function showEnding({ stats: s, onContinue, onNewGame, stage }) {
+    function showEnding({ stats: s, onChoose, onFound, onContinue, onNewGame, stage, decided = null }) {
         cinematic = true;
         // Whatever DELTA was saying waits until after the ending.
         if (current && (typeTimer || holdTimer)) {
@@ -809,41 +816,25 @@ export function createUI({
             queue.unshift(current);
         }
         comms.classList.add('idle');
-        document.body.classList.add('cinematic', 'moonplus-wait');
+        document.body.classList.add('cinematic');
         skyOverride = 4;
         document.body.dataset.phase = '4';
 
-        // Where the Moon hangs in the CSS sky, in page coordinates. The camera cuts to the
-        // cannon and finds clear sky along the barrel; the Moon moves there under the cut.
         const vr = view.getBoundingClientRect();
-        const cs = getComputedStyle(view);
-        let moon = {
-            x: vr.left + (vr.width * parseFloat(cs.getPropertyValue('--moon-x'))) / 100,
-            y: vr.top + (vr.height * parseFloat(cs.getPropertyValue('--moon-y'))) / 100,
-        };
         const vmin = Math.min(vr.width, vr.height);
-        const aim = stage?.start({ radius: vmin * 0.066, top: vr.top + vr.height * 0.12 + vmin * 0.07 });
-        if (aim) {
-            moon = aim;
-            view.style.setProperty('--moon-x', `${(((aim.x - vr.left) / vr.width) * 100).toFixed(2)}%`);
-            view.style.setProperty('--moon-y', `${(((aim.y - vr.top) / vr.height) * 100).toFixed(2)}%`);
-            document.body.classList.add('sky-cut'); // the sky's Moon jumps with the cut, not glides
-            requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
-        }
-
         const lb = el('div', 'letterbox');
         const top = el('div', 'lb-bar lb-top');
-        const clock = el('span', 'lb-clock', 'T−03.0');
-        top.append(el('span', 'lb-caption', ENDING.caption), clock);
+        const caption = el('span', 'lb-caption', CHOICE.kicker);
+        const clock = el('span', 'lb-clock', '');
+        top.append(caption, clock);
         const bottom = el('div', 'lb-bar lb-bottom');
         const subWho = el('span', 'lb-who');
         const subText = el('span', 'lb-text');
         bottom.append(subWho, subText);
         lb.append(top, bottom);
-        const catcher = el('div', 'end-catch'); // a click anywhere skips
+        const catcher = el('div', 'end-catch done'); // a click anywhere skips (once the shot is under way)
         document.body.append(catcher, lb);
         requestAnimationFrame(() => lb.classList.add('in'));
-
         // Sky effects: the Moon's pieces behind the 3D canvas, the beam and the flash in front.
         const back = el('div', 'end-fx end-back');
         view.insertBefore(back, view.querySelector('canvas'));
@@ -853,159 +844,369 @@ export function createUI({
 
         const timers = [];
         const at = (sec, fn) => timers.push(setTimeout(fn, sec * 1000));
-        const t0 = performance.now();
-        let fired = false;
-        let hitDone = false;
-        const countdown = setInterval(() => {
-            const t = (performance.now() - t0) / 1000;
-            if (t >= END.fire) return clearInterval(countdown);
-            clock.textContent = `T−${(END.fire - t).toFixed(1).padStart(4, '0')}`;
-            stage?.charge(t / END.fire);
-        }, 50);
+        let countdown = null;
+        let kind = decided;
+        let panel = null; // the choice / company panel on screen
+        let report = null;
+        let skip = () => {};
 
-        function fire(withBeam = true) {
-            if (fired) return;
-            fired = true;
-            clearInterval(countdown);
-            clock.textContent = ENDING.status.fire;
-            stage?.fire();
-            if (!withBeam) return;
-            const m = local(stage?.muzzle() ?? moon);
-            const target = local(moon);
-            const beam = el('div', 'end-beam');
-            beam.style.left = `${m.x}px`;
-            beam.style.top = `${m.y}px`;
-            beam.style.width = `${Math.hypot(target.x - m.x, target.y - m.y)}px`;
-            beam.style.transform = `rotate(${Math.atan2(target.y - m.y, target.x - m.x)}rad)`;
-            front.appendChild(beam);
-        }
-        function hit(withShards = true) {
-            if (hitDone) return;
-            hitDone = true;
-            if (withShards) {
-                // The Moon breaks into wedges that tumble away, under a white flash.
-                const p = local(moon);
-                const pieces = el('div', 'moon-shards');
-                pieces.style.left = `${p.x}px`;
-                pieces.style.top = `${p.y}px`;
-                const n = 9;
-                for (let i = 0; i < n; i++) {
-                    const a0 = (i / n) * Math.PI * 2 + 0.2;
-                    const a1 = ((i + 1) / n) * Math.PI * 2 + 0.2;
-                    const am = (a0 + a1) / 2;
-                    const pt = (a) => `${(50 + 50 * Math.cos(a)).toFixed(1)}% ${(50 + 50 * Math.sin(a)).toFixed(1)}%`;
-                    const shard = el('span', 'shard');
-                    shard.style.clipPath = `polygon(50% 50%, ${pt(a0)}, ${pt(am)}, ${pt(a1)})`;
-                    const dist = 18 + Math.random() * 22; // vmin
-                    shard.style.setProperty('--tx', `${(Math.cos(am) * dist).toFixed(1)}vmin`);
-                    shard.style.setProperty('--ty', `${(Math.sin(am) * dist + 6).toFixed(1)}vmin`);
-                    shard.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 300)}deg`);
-                    pieces.appendChild(shard);
-                }
-                pieces.appendChild(el('span', 'moon-ring'));
-                front.appendChild(pieces);
-                front.appendChild(el('div', 'end-flash'));
-            }
-            // The sky turns to the aftermath at once (the flash hides the cut).
-            document.body.classList.add('sky-cut');
-            skyOverride = null;
-            document.body.dataset.phase = '5';
-            requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
-            clock.textContent = ENDING.status.hit;
-        }
-        function ad() {
-            document.body.classList.remove('moonplus-wait'); // Moon+ flickers on (CSS)
-            clock.textContent = ENDING.status.ad;
-        }
         function subtitle(line) {
-            subWho.textContent = line.who === 'nile' ? `${BRAND.nihil.name} BROADCAST` : line.who === 'boss' ? BOSS.name.toUpperCase() : `${AI.name} ▸ CAPCOM`;
+            subWho.textContent = line.who === 'nile'
+                ? `${BRAND.nihil.name} BROADCAST`
+                : line.who === 'boss' ? BOSS.name.toUpperCase() : `${AI.name} ▸ CAPCOM`;
             subWho.className = `lb-who who-${line.who}`;
             subText.textContent = line.text;
             bottom.classList.remove('show');
             void bottom.offsetWidth;
             bottom.classList.add('show');
         }
-
-        // The mission report, in the console's style.
-        const R = ENDING.report;
-        const report = el('div', 'report hidden');
-        const head = el('div', 'rep-head');
-        const patch = el('span', 'rep-patch');
-        patch.innerHTML = patchSVG(true, 64, { text: false });
-        const headText = el('div', 'rep-headtext');
-        headText.append(el('span', 'rep-kicker', R.kicker), el('span', 'rep-title', R.title), el('span', 'rep-sub', `${GAME_TITLE} · ${BRAND.nihil.byline} · ${BRAND.nihil.motto}`));
-        head.append(patch, headText);
-        const grid = el('div', 'rep-grid');
-        for (const [key, value] of [
-            ['seconds', fmtTime(s.seconds)], ['delivered', s.delivered], ['machines', s.machines],
-            ['moons', 1], ['subscribers', R.subscribers],
-        ]) {
-            const cell = el('div', `rep-stat stat-${key}`);
-            cell.append(el('span', 'rep-value', String(value)), el('span', 'rep-label', R.labels[key]));
-            grid.appendChild(cell);
+        /** Start times for lines (no earlier than `earliest`), each waiting for the previous voice clip. */
+        function spaceLines(lines, earliest) {
+            const times = [];
+            let free = 0;
+            lines.forEach((line, i) => {
+                const ms = sound?.clipMs?.(line);
+                const t = Math.max(earliest[i] ?? 3 + 3 * i, free);
+                times.push(t);
+                free = t + (ms ? ms / 1000 + 0.35 : 3.2);
+            });
+            return { times, free };
         }
-        const actions = el('div', 'rep-actions');
-        const keep = el('button', 'btn-primary', R.keep);
-        keep.type = 'button';
-        const fresh = el('button', 'btn-secondary', R.fresh);
-        fresh.type = 'button';
-        actions.append(keep, fresh);
-        report.append(head, grid, el('p', 'rep-note', R.note), actions);
-        document.body.appendChild(report);
-        const showReport = () => {
-            report.classList.remove('hidden');
-            catcher.classList.add('done');
-            keep.focus();
-        };
+        function startCountdown(t0) {
+            countdown = setInterval(() => {
+                const t = (performance.now() - t0) / 1000;
+                if (t >= END.fire) return clearInterval(countdown);
+                clock.textContent = `T−${(END.fire - t).toFixed(1).padStart(4, '0')}`;
+                stage?.charge(t / END.fire);
+            }, 50);
+        }
 
-        // Space the lines by their voice clips (text-only lines get ~3 s), then the report.
-        const lineAt = [];
-        let free = 0;
-        ENDING.lines.forEach((line, i) => {
-            const ms = sound?.clipMs?.(line);
-            const t = Math.max(END.lines[i] ?? 3 + 3 * i, free);
-            lineAt.push(t);
-            free = t + (ms ? ms / 1000 + 0.35 : 3.2);
-        });
-        const reportAt = Math.max(END.report, free + 0.8);
-        at(END.fire, () => fire());
-        at(END.hit, () => hit());
-        at(END.ad, ad);
-        ENDING.lines.forEach((line, i) => at(lineAt[i], () => subtitle(line)));
-        at(reportAt, showReport);
-        sound?.ending(ENDING.lines, lineAt, { ...END, report: reportAt });
+        // ---- 1. The choice --------------------------------------------------------------
+        function showChoice() {
+            stage?.lookAtCannon?.();
+            panel = el('div', 'end-choice');
+            panel.append(el('span', 'ec-kicker', CHOICE.kicker), el('span', 'ec-title', CHOICE.title));
+            const row = el('div', 'ec-row');
+            for (const [k, key] of [['moon', '1'], ['hq', '2']]) {
+                const b = el('button', `ec-btn ec-${k}`);
+                b.type = 'button';
+                b.append(el('span', 'ec-key', key), el('b', null, CHOICE[k].label), el('span', 'ec-note', CHOICE[k].note));
+                b.addEventListener('click', () => pick(k));
+                row.appendChild(b);
+            }
+            panel.appendChild(row);
+            document.body.appendChild(panel);
+            requestAnimationFrame(() => panel.classList.add('in'));
+            // Nolan and DELTA weigh in while you decide.
+            let t = 0.8;
+            for (const line of CHOICE.lines) {
+                const when = t;
+                at(when, () => {
+                    subtitle(line);
+                    sound?.lineStart?.(line, { fresh: false });
+                });
+                t = when + (sound?.clipMs?.(line) ?? 2600) / 1000 + 0.6;
+            }
+            window.addEventListener('keydown', onChoiceKey, true);
+        }
+        function onChoiceKey(e) {
+            if (e.key === '1' || e.key === '2') {
+                e.preventDefault();
+                e.stopPropagation();
+                pick(e.key === '1' ? 'moon' : 'hq');
+            }
+        }
+        function pick(k) {
+            if (kind) return;
+            kind = k;
+            window.removeEventListener('keydown', onChoiceKey, true);
+            timers.forEach(clearTimeout);
+            timers.length = 0;
+            sound?.lineStop?.();
+            cue('click');
+            panel.classList.remove('in');
+            const old = panel;
+            setTimeout(() => old.remove(), 400);
+            panel = null;
+            onChoose?.(k);
+            run();
+        }
+        function run() {
+            catcher.classList.remove('done');
+            if (kind === 'hq') runHQ();
+            else runMoon();
+        }
+
+        // ---- 2a. The Moon ------------------------------------------------------------------
+        function runMoon() {
+            document.body.classList.add('moonplus-wait');
+            caption.textContent = ENDING.caption;
+            // Where the Moon hangs in the CSS sky, in page coordinates. The camera cuts to the
+            // cannon and finds clear sky along the barrel; the Moon moves there under the cut.
+            const cs = getComputedStyle(view);
+            let moon = {
+                x: vr.left + (vr.width * parseFloat(cs.getPropertyValue('--moon-x'))) / 100,
+                y: vr.top + (vr.height * parseFloat(cs.getPropertyValue('--moon-y'))) / 100,
+            };
+            const aim = stage?.start({ radius: vmin * 0.066, top: vr.top + vr.height * 0.12 + vmin * 0.07 });
+            if (aim) {
+                moon = aim;
+                view.style.setProperty('--moon-x', `${(((aim.x - vr.left) / vr.width) * 100).toFixed(2)}%`);
+                view.style.setProperty('--moon-y', `${(((aim.y - vr.top) / vr.height) * 100).toFixed(2)}%`);
+                document.body.classList.add('sky-cut'); // the sky's Moon jumps with the cut, not glides
+                requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
+            }
+            let fired = false;
+            let hitDone = false;
+            startCountdown(performance.now());
+            function fire(withBeam = true) {
+                if (fired) return;
+                fired = true;
+                clearInterval(countdown);
+                clock.textContent = ENDING.status.fire;
+                stage?.fire();
+                if (!withBeam) return;
+                const m = local(stage?.muzzle() ?? moon);
+                const target = local(moon);
+                const beam = el('div', 'end-beam');
+                beam.style.left = `${m.x}px`;
+                beam.style.top = `${m.y}px`;
+                beam.style.width = `${Math.hypot(target.x - m.x, target.y - m.y)}px`;
+                beam.style.transform = `rotate(${Math.atan2(target.y - m.y, target.x - m.x)}rad)`;
+                front.appendChild(beam);
+            }
+            function hit(withShards = true) {
+                if (hitDone) return;
+                hitDone = true;
+                if (withShards) {
+                    // The Moon breaks into wedges that tumble away, under a white flash.
+                    const p = local(moon);
+                    const pieces = el('div', 'moon-shards');
+                    pieces.style.left = `${p.x}px`;
+                    pieces.style.top = `${p.y}px`;
+                    const n = 9;
+                    for (let i = 0; i < n; i++) {
+                        const a0 = (i / n) * Math.PI * 2 + 0.2;
+                        const a1 = ((i + 1) / n) * Math.PI * 2 + 0.2;
+                        const am = (a0 + a1) / 2;
+                        const pt = (a) => `${(50 + 50 * Math.cos(a)).toFixed(1)}% ${(50 + 50 * Math.sin(a)).toFixed(1)}%`;
+                        const shard = el('span', 'shard');
+                        shard.style.clipPath = `polygon(50% 50%, ${pt(a0)}, ${pt(am)}, ${pt(a1)})`;
+                        const dist = 18 + Math.random() * 22; // vmin
+                        shard.style.setProperty('--tx', `${(Math.cos(am) * dist).toFixed(1)}vmin`);
+                        shard.style.setProperty('--ty', `${(Math.sin(am) * dist + 6).toFixed(1)}vmin`);
+                        shard.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 300)}deg`);
+                        pieces.appendChild(shard);
+                    }
+                    pieces.appendChild(el('span', 'moon-ring'));
+                    front.appendChild(pieces);
+                    front.appendChild(el('div', 'end-flash'));
+                }
+                // The sky turns to the aftermath at once (the flash hides the cut).
+                document.body.classList.add('sky-cut');
+                skyOverride = null;
+                document.body.dataset.phase = '5';
+                requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
+                clock.textContent = ENDING.status.hit;
+            }
+            function ad() {
+                document.body.classList.remove('moonplus-wait'); // Moon+ flickers on (CSS)
+                clock.textContent = ENDING.status.ad;
+            }
+            const { times, free } = spaceLines(ENDING.lines, END.lines);
+            const reportAt = Math.max(END.report, free + 0.8);
+            at(END.fire, () => fire());
+            at(END.hit, () => hit());
+            at(END.ad, ad);
+            ENDING.lines.forEach((line, i) => at(times[i], () => subtitle(line)));
+            at(reportAt, () => showReport());
+            sound?.ending(ENDING.lines, times, { ...END, report: reportAt });
+            skip = () => {
+                fire(false);
+                hit(false);
+                ad();
+                subtitle(ENDING.lines[ENDING.lines.length - 1]);
+                showReport();
+                sound?.endingSkip();
+            };
+        }
+
+        // ---- 2b. NIHIL HQ ------------------------------------------------------------------
+        function runHQ() {
+            caption.textContent = ENDING_HQ.caption;
+            stage?.start({ radius: vmin * 0.066, top: vr.top + vr.height * 0.12, target: 'hq' });
+            let fired = false;
+            let dawned = false;
+            startCountdown(performance.now());
+            function fire() {
+                if (fired) return;
+                fired = true;
+                clearInterval(countdown);
+                clock.textContent = ENDING_HQ.status.fire;
+                stage?.fire({ target: 'hq' });
+            }
+            function hit() {
+                front.appendChild(el('div', 'end-flash end-flash-warm'));
+                clock.textContent = ENDING_HQ.status.hit;
+            }
+            function dawn() {
+                if (dawned) return;
+                dawned = true;
+                skyOverride = null;
+                document.body.dataset.phase = '6';
+                document.body.classList.remove('evil');
+                clock.textContent = ENDING_HQ.status.free;
+            }
+            const { times, free } = spaceLines(ENDING_HQ.lines, END_HQ.lines);
+            const companyAt = Math.max(END_HQ.report, free + 0.8);
+            at(END_HQ.fire, fire);
+            at(END_HQ.hit, hit);
+            at(END_HQ.dawn, dawn);
+            ENDING_HQ.lines.forEach((line, i) => at(times[i], () => subtitle(line)));
+            at(companyAt, showCompany);
+            sound?.ending(ENDING_HQ.lines, times, { ...END_HQ, report: companyAt, variant: 'hq' });
+            skip = () => {
+                fire();
+                dawn();
+                subtitle(ENDING_HQ.lines[ENDING_HQ.lines.length - 1]);
+                showCompany();
+                sound?.endingSkip('hq');
+            };
+        }
+
+        // ---- 3. Your company (NIHIL HQ only) ---------------------------------------------
+        function showCompany() {
+            if (panel || report) return;
+            catcher.classList.add('done');
+            const C = ENDING_HQ.company;
+            panel = el('div', 'end-company');
+            const input = el('input', 'ecp-input');
+            input.type = 'text';
+            input.maxLength = 28;
+            input.placeholder = COMPANY.defaultName;
+            input.setAttribute('aria-label', C.title);
+            const confirm = el('button', 'btn-primary', C.confirm);
+            confirm.type = 'button';
+            panel.append(el('span', 'ec-kicker', C.kicker), el('span', 'ec-title', C.title), input, el('span', 'ec-note', C.hint), confirm);
+            document.body.appendChild(panel);
+            requestAnimationFrame(() => panel.classList.add('in'));
+            setTimeout(() => input.focus(), 50);
+            const found = () => {
+                const name = input.value.trim().replace(/\s+/g, ' ') || COMPANY.defaultName;
+                cue('click');
+                onFound?.(name);
+                panel.remove();
+                panel = null;
+                showReport(name);
+            };
+            confirm.addEventListener('click', found);
+            input.addEventListener('keydown', (e) => {
+                e.stopPropagation(); // typing a name must not trigger game keys
+                if (e.key !== 'Enter') return;
+                e.preventDefault(); // or the same Enter would press the report's first button
+                found();
+            });
+        }
+
+        // ---- 4. The report, in the console's style ----------------------------------------------
+        function showReport(company = null) {
+            if (report) return;
+            const hq = kind === 'hq';
+            const R = ENDING.report;
+            const RH = ENDING_HQ.report;
+            report = el('div', 'report');
+            const head = el('div', 'rep-head');
+            const patch = el('span', 'rep-patch');
+            patch.innerHTML = hq ? companyMarkSVG(company ?? COMPANY.defaultName, 64) : patchSVG(true, 64, { text: false });
+            const headText = el('div', 'rep-headtext');
+            const sub = hq ? `${company ?? COMPANY.defaultName} · ${COMPANY.byline} · ${COMPANY.motto}` : `${GAME_TITLE} · ${BRAND.nihil.byline} · ${BRAND.nihil.motto}`;
+            headText.append(el('span', 'rep-kicker', hq ? RH.kicker : R.kicker), el('span', 'rep-title', hq ? RH.title : R.title), el('span', 'rep-sub', sub));
+            head.append(patch, headText);
+            const grid = el('div', 'rep-grid');
+            const stats = hq
+                ? [['seconds', fmtTime(s.seconds)], ['delivered', s.delivered], ['machines', s.machines], ['moons', 0], ['hq', 1]]
+                : [['seconds', fmtTime(s.seconds)], ['delivered', s.delivered], ['machines', s.machines], ['moons', 1], ['subscribers', R.subscribers]];
+            for (const [key, value] of stats) {
+                const cell = el('div', `rep-stat stat-${key}`);
+                cell.append(el('span', 'rep-value', String(value)), el('span', 'rep-label', (hq ? RH.labels : R.labels)[key]));
+                grid.appendChild(cell);
+            }
+            const actions = el('div', 'rep-actions');
+            const keep = el('button', 'btn-primary', R.keep);
+            keep.type = 'button';
+            const credits = el('button', 'btn-secondary', R.credits);
+            credits.type = 'button';
+            const fresh = el('button', 'btn-secondary', R.fresh);
+            fresh.type = 'button';
+            actions.append(keep, credits, fresh);
+            report.append(head, grid, el('p', 'rep-note', hq ? RH.note : R.note), actions);
+            document.body.appendChild(report);
+            catcher.classList.add('done');
+            requestAnimationFrame(() => keep.focus()); // after any key that brought us here has finished
+            keep.addEventListener('click', () => {
+                finish();
+                sound?.afterEnding(hq);
+                onContinue();
+            });
+            credits.addEventListener('click', () => showCredits(kind));
+            fresh.addEventListener('click', onNewGame);
+        }
 
         catcher.addEventListener('click', () => {
-            if (!report.classList.contains('hidden')) return;
+            if (report || panel || !kind) return;
             timers.forEach(clearTimeout);
-            fire(false);
-            hit(false);
-            ad();
-            subtitle(ENDING.lines[ENDING.lines.length - 1]);
-            showReport();
-            sound?.endingSkip();
+            skip();
         });
 
         function finish() {
             timers.forEach(clearTimeout);
             clearInterval(countdown);
+            window.removeEventListener('keydown', onChoiceKey, true);
             lb.classList.remove('in');
             setTimeout(() => lb.remove(), 700);
-            for (const n of [catcher, back, front, report]) n.remove();
+            for (const n of [catcher, back, front, report, panel]) n?.remove();
             document.body.classList.remove('cinematic', 'moonplus-wait');
             view.style.removeProperty('--moon-x'); // Moon+ goes back to the Moon's usual spot in the sky
             view.style.removeProperty('--moon-y');
             skyOverride = null;
             cinematic = false;
+            phaseSig = ''; // repaint the brand, the sky and the console for how it ended
             stage?.end();
             if (queue.length && !typeTimer && !holdTimer) nextLine();
         }
-        keep.addEventListener('click', () => {
-            finish();
-            sound?.afterEnding();
-            onContinue();
-        });
-        fresh.addEventListener('click', onNewGame);
+
+        if (kind) run();
+        else showChoice();
+    }
+
+    /** The credits roll: console-style names rising up the screen; a click or Esc closes it. */
+    function showCredits(kind = 'moon') {
+        const roll = el('div', 'credits-roll');
+        const inner = el('div', 'cr-inner');
+        inner.appendChild(el('span', 'cr-title', CREDITS.title));
+        for (const [heading, ...names] of CREDITS.sections) {
+            const sec = el('div', 'cr-sec');
+            sec.appendChild(el('span', 'cr-head', heading));
+            names.forEach((n, i) => sec.appendChild(el('span', i === 0 ? 'cr-name' : 'cr-small', n)));
+            inner.appendChild(sec);
+        }
+        inner.append(el('p', 'cr-end', CREDITS.end[kind === 'hq' ? 'hq' : 'moon']), el('p', 'cr-thanks', CREDITS.thanks));
+        roll.appendChild(inner);
+        document.body.appendChild(roll);
+        cue('open');
+        const close = () => {
+            roll.remove();
+            window.removeEventListener('keydown', onKey, true);
+        };
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                close();
+            }
+        };
+        roll.addEventListener('click', close);
+        window.addEventListener('keydown', onKey, true);
+        inner.addEventListener('animationend', close);
     }
 
     // ---- Per-frame refresh -------------------------------------------------------------------
@@ -1049,17 +1250,22 @@ export function createUI({
         return title ? { title, body: lines.join('\n') } : null;
     }
 
-    function buildPhaseDom(phase, complete) {
+    function buildPhaseDom(phase, complete, ending = null, company = null) {
         phaseShown = phase;
+        phaseSig = `${phase}|${ending}|${company}`;
         brandPhase = phase;
-        const evil = phase >= 4;
-        const b = brandFor(phase);
+        brandEnding = ending;
+        brandCompany = company;
+        const free = ending === 'hq';
+        const evil = phase >= 4 && !free;
+        const b = brandFor(phase, ending, company);
         document.body.classList.toggle('evil', evil);
-        document.body.dataset.phase = String(skyOverride ?? Math.min(phase, 5)); // sky layers (style.css)
-        brandMark.innerHTML = markSVG(evil, 28);
+        // Sky layers (style.css): one per phase, the aftermath (5), or the freed valley's dawn (6).
+        document.body.dataset.phase = String(skyOverride ?? (free ? 6 : Math.min(phase, 5)));
+        brandMark.innerHTML = free ? companyMarkSVG(company, 28) : markSVG(evil, 28);
         brandWord.textContent = b.name;
         brandCell.title = `${b.name} · ${b.full} · ${b.motto}`;
-        patchBox.innerHTML = patchSVG(evil, 48, { text: false });
+        patchBox.innerHTML = free ? companyMarkSVG(company, 48) : patchSVG(evil, 48, { text: false });
         reqList.innerHTML = '';
         reqRows = {};
         const done = complete || phase >= PHASES.length;
@@ -1070,7 +1276,7 @@ export function createUI({
             ribbonExtra.textContent = '';
         }
         if (done) {
-            unlockLine.textContent = 'The sky is now a subscription. Keep building, if you like.';
+            unlockLine.textContent = free ? ENDING_HQ.report.note : 'The sky is now a subscription. Keep building, if you like.';
             return;
         }
         const def = PHASES[phase];
@@ -1157,7 +1363,7 @@ export function createUI({
         lastUpdate = now;
         if (!soundPanel.classList.contains('hidden') && sound && muteBtn.classList.contains('off') !== sound.settings().muted) refreshSoundPanel();
         const { project } = s;
-        if (project.phase !== phaseShown) buildPhaseDom(project.phase, project.complete);
+        if (`${project.phase}|${project.ending ?? null}|${project.company ?? null}` !== phaseSig && !cinematic) buildPhaseDom(project.phase, project.complete, project.ending ?? null, project.company ?? null);
 
         // Credits count toward the real value and flash mustard (earned) or red (spent).
         if (shownMoney === null) shownMoney = s.money;
@@ -1249,5 +1455,5 @@ export function createUI({
     }
 
     update();
-    return { update, say, isBusy, showBanner, showTitle, showEnding, toast };
+    return { update, say, isBusy, showBanner, showTitle, showEnding, showCredits, toast };
 }

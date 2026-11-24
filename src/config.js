@@ -147,6 +147,9 @@ export const PROCESS_TICKS = {
 export const MARKET_SATURATION = 20;      // recent sales that halve a price
 export const MARKET_HALF_LIFE_TICKS = 240; // one minute of sim time
 
+// The NIHIL HQ ending: how long Selene's shell flies from the muzzle to the tower.
+export const HQ_FLIGHT_MS = 1100;
+
 // Max units of each input type a processor will hold in its buffer.
 export const BUFFER_CAP = 4;
 

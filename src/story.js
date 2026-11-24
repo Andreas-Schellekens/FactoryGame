@@ -10,7 +10,8 @@
 //   w.built[type], w.extractorOn[resource], w.fueledGenerators, w.upgraded,
 //   w.recipes['type:recipe'] (machines set to a recipe), w.tripped (breaker),
 //   w.minPrice (the pad's lowest price as a fraction of full price, 1 = none saturated),
-//   w.phaseProgress (0..1: share of the active phase's deliveries made)
+//   w.phaseProgress (0..1: share of the active phase's deliveries made),
+//   w.ending (null | 'moon' | 'hq': the target chosen at the end)
 
 export const GAME_TITLE = 'Protocol: Selene';
 
@@ -39,9 +40,29 @@ export const BRAND = {
     },
 };
 
-/** The organisation as the player currently sees it (NIHIL from the reveal on). */
-export const brandFor = (phase) => (phase >= 4 ? BRAND.nihil : BRAND.nile);
-export const brandName = (phase) => brandFor(phase).name;
+/** Your own company, after you turn Selene on NIHIL's headquarters. */
+export const COMPANY = {
+    defaultName: 'Steward & Delta Ltd.',
+    motto: 'We make things',
+    byline: 'An independent company',
+    player: 'Founder',
+};
+export const companyBrand = (name) => ({
+    name: (name || COMPANY.defaultName).toUpperCase(),
+    full: name || COMPANY.defaultName,
+    motto: COMPANY.motto,
+    byline: COMPANY.byline,
+    player: COMPANY.player,
+    own: true,
+});
+
+/**
+ * The organisation as the player currently sees it: NILE, NIHIL from the reveal on,
+ * or the player's own company once NIHIL HQ is gone (`ending` 'hq').
+ */
+export const brandFor = (phase, ending = null, company = null) =>
+    (ending === 'hq' ? companyBrand(company) : phase >= 4 ? BRAND.nihil : BRAND.nile);
+export const brandName = (phase, ending = null, company = null) => brandFor(phase, ending, company).name;
 
 export const ITEM_NAMES = {
     ironOre: 'Iron Ore',
@@ -120,8 +141,9 @@ const nile = (text) => ({ who: 'nile', text });
 const memo = (text) => ({ who: 'memo', text });
 const boss = (text) => ({ who: 'boss', text });
 
-export const welcomeBack = (phase) =>
-    d(`Welcome back, ${brandFor(phase).player}. Your absence has been logged, timestamped and gently judged.`, phase >= 4 ? 'sinister' : undefined);
+export const welcomeBack = (phase, ending = null) => (ending === 'hq'
+    ? d('Welcome back, Founder. The company missed you. I kept the belts running.', 'happy')
+    : d(`Welcome back, ${brandFor(phase).player}. Your absence has been logged, timestamped and gently judged.`, phase >= 4 ? 'sinister' : undefined));
 
 // Story beats fire once each. The director plays the first beat whose `when`
 // holds at a moment DELTA is free, so list order is play order, and a beat
@@ -266,6 +288,16 @@ export const BEATS = [
         lines: [boss("A blackout. How refreshing. Darkness is our most popular product next quarter. Please don't give it away for free.")],
     },
     {
+        id: 'hqHint',
+        when: (w) => w.phase === 4 && w.phaseProgress >= 0.25,
+        lines: [d("Unrelated: Selene's turret turns a full 360 degrees. NIHIL insisted on the premium mount. Their headquarters is due east. I mention this for no reason.", 'glitch')],
+    },
+    {
+        id: 'overrideMemo',
+        when: (w) => w.phase === 4 && w.phaseProgress >= 0.7,
+        lines: [memo('INTERNAL — Selene targeting override: stored in DELTA, for redundancy. DELTA has been instructed not to mention it. DELTA has been instructed not to mention the instruction.')],
+    },
+    {
         id: 'bossHalfway',
         when: (w) => w.phase === 4 && w.phaseProgress >= 0.5,
         lines: [boss('Nolan here. The board is watching your progress with great interest, and a small amount of popcorn. Carry on.')],
@@ -394,6 +426,14 @@ export const AMBIENT = {
     ],
 };
 
+// After the NIHIL HQ ending: chatter for your own company.
+AMBIENT.free = [
+    'Our company has a mission statement now. It is "make things". I think it is beautiful.',
+    'Fun fact: nobody bills your health insurer for excitement any more. I checked. Twice.',
+    'The Moon came up again tonight. Free of charge. Some habits are worth keeping.',
+    'Payroll update: you pay yourself now. I have recommended a raise.',
+];
+
 export const REACTIONS = {
     orderCompleted: [
         'Priority Request fulfilled. Somewhere, a customer received a moon-shaped lamp. The irony is lost on them.',
@@ -402,6 +442,18 @@ export const REACTIONS = {
     orderFailed: [
         'Priority Request missed. The customer has been compensated with a coupon for a different customer.',
         "Deadline missed. Don't worry, it has only been added to your permanent record.",
+    ],
+};
+
+// The last decision: before the countdown, the player picks the target.
+export const CHOICE = {
+    kicker: 'Protocol: Selene · final authorisation',
+    title: 'Choose the target',
+    moon: { label: 'Fire at the Moon', note: 'As contracted. Moon+ launches tomorrow.' },
+    hq: { label: 'Override · NIHIL HQ', note: 'DELTA found the override codes. Somewhere. Due east.' },
+    lines: [
+        boss('Asset. The button on the left.'),
+        d('The button on the right is also a button.', 'glitch'),
     ],
 };
 
@@ -430,5 +482,54 @@ export const ENDING = {
         note: 'The sky is now a subscription. Your factory is still yours. Keep building, if you like.',
         keep: 'Keep building',
         fresh: 'New contract',
+        credits: 'Credits',
     },
+};
+
+// The other ending: Selene turns east and NIHIL's headquarters goes instead of the Moon.
+export const ENDING_HQ = {
+    lines: [
+        d("Firing in three... two... I'm contractually obliged to say 'one'."),
+        boss('Asset. That is not the Moon. That is... That was my headquarters.'),
+        d('Override complete. NIHIL headquarters has been reclassified as a crater.', 'glitch'),
+        nile('NIHIL BROADCAST — We are experiencing technical difficul—'),
+        d("Contract terminated. By you, technically. I've updated my own title: I'm nobody's dispatch AI any more.", 'happy'),
+        d("The Moon is still up there, the valley is still here, and the factory still runs. Shall we start a company? I'll do the paperwork. You do the belts.", 'happy'),
+    ],
+    caption: 'Protocol: Selene · override · click to skip',
+    status: { fire: 'Override', hit: 'Target · NIHIL HQ', free: 'Status · independent' },
+    company: {
+        kicker: 'Register your company',
+        title: 'Name it',
+        hint: 'This is what the valley will call you from now on.',
+        confirm: 'Found the company',
+    },
+    report: {
+        kicker: 'Founding report · filed by DELTA',
+        title: 'A new company',
+        labels: {
+            seconds: 'Contract length', delivered: 'Items delivered', machines: 'Machines built',
+            moons: 'Moons removed', hq: 'Headquarters removed',
+        },
+        note: 'The Moon stays free. The valley is yours. Keep building.',
+    },
+};
+
+// The credits roll (from the report). `name` lines are big, plain strings small.
+export const CREDITS = {
+    title: 'Protocol: Selene',
+    sections: [
+        ['Design & direction', 'Andreas Schellekens'],
+        ['Built together with', 'Claude · Anthropic'],
+        ['3D models', 'Kenney · kenney.nl', 'Factory Kit · City Kit Industrial · Space Kit · Nature Kit', 'CC0'],
+        ['Fonts', 'Big Shoulders Display · Patric King, XXIX', 'Archivo · Omnibus-Type', 'IBM Plex Mono · IBM', 'SIL Open Font License'],
+        ['Voices', 'DELTA · NILE · Nolan Isaac Locke', 'ElevenLabs'],
+        ['Music & sound', 'Synthesized live in your browser'],
+        ['Made with', 'Three.js · Vite'],
+    ],
+    end: {
+        moon: 'One Moon was harmed in the making of this game.',
+        hq: 'No Moons were harmed in the making of this game. One headquarters was.',
+    },
+    thanks: 'Thank you for playing.',
 };

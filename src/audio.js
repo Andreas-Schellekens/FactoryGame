@@ -373,20 +373,21 @@ export function createAudio() {
             bus.connect(n.sfx);
             wetBus.connect(n.sfxWet);
             n.ending = [bus, wetBus];
-            cue('ending', { bus, wetBus, fireAt: times.fire, adAt: times.ad, finalAt: times.report });
+            cue('ending', { bus, wetBus, fireAt: times.fire, adAt: times.ad, finalAt: times.report, variant: times.variant, impactAt: times.hit });
             speakSequence(lines, delaysSec);
         },
-        endingSkip() {
+        endingSkip(variant = 'moon') {
             if (!n?.ending) return;
             for (const b of n.ending) b.gain.setTargetAtTime(0, ctx.currentTime, 0.15);
             n.ending = null;
-            cue('endingFinal');
+            cue(variant === 'hq' ? 'endingFree' : 'endingFinal');
         },
-        afterEnding() {
+        /** After the report: the aftermath's music, or (NIHIL HQ gone) the bright early mood, birds and all. */
+        afterEnding(free = false) {
             if (!ctx) return;
             awaitingEnding = false;
-            music.resume(5);
-            amb.setMood(5);
+            music.resume(free ? 1 : 5);
+            amb.setMood(free ? 1 : 5);
         },
 
         // ---- Settings ----

@@ -10,7 +10,7 @@
 // "down" (+y) is world +z. Model forward is +z, so dir → yaw via YAW.
 import * as THREE from 'three';
 import {
-    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, PROCESS_TICKS,
+    GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, HQ_FLIGHT_MS, PROCESS_TICKS,
 } from './config.js';
 import {
     grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
@@ -49,6 +49,9 @@ const MOODS = [
     { sky: 0xffa0b0, ground: 0x3a2028, hemi: 0.95, sun: 0xffd0d6, sunI: 2.2, dir: [-0.55, 1, -0.4], rim: 0xff4a3a, rimI: 1.25, exposure: 1.1, env: 0.25 },
     { sky: 0xff7484, ground: 0x2a1014, hemi: 0.9, sun: 0xff9c8c, sunI: 2.0, dir: [-0.55, 1, -0.4], rim: 0xff2a1a, rimI: 1.45, exposure: 1.1, env: 0.22 },
 ];
+
+// After the NIHIL HQ ending: the valley's dawn (the Moon stays; the light comes back).
+const FREED = { sky: 0xffd9bf, ground: 0x5f6044, hemi: 1.05, sun: 0xffcf9a, sunI: 2.6, dir: [0.95, 0.42, -0.25], rim: 0xffb27a, rimI: 0.6, exposure: 1.02, env: 0.36 };
 
 // Conveyors are laid by the hundred: they don't pave the grass (only real
 // buildings leave concrete), they just hide the flowers under them.
@@ -1151,7 +1154,8 @@ export async function createRenderer(container, { onProgress } = {}) {
     const tmpV = new THREE.Vector3();
     let evilShown = null;
     function applyMood(dt, instant) {
-        const m = MOODS[Math.min(project.phase, MOODS.length - 1)];
+        const freed = project.ending === 'hq' && !hqPending;
+        const m = freed ? FREED : MOODS[Math.min(project.phase, MOODS.length - 1)];
         const k = instant ? 1 : 1 - Math.exp(-dt / 2200);
         hemi.color.lerp(tmpC.setHex(m.sky), k);
         hemi.groundColor.lerp(tmpC.setHex(m.ground), k);
@@ -1165,7 +1169,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         renderer.toneMappingExposure += (m.exposure - renderer.toneMappingExposure) * k;
         scene.environmentIntensity += (m.env - scene.environmentIntensity) * k;
 
-        const evil = project.phase >= 4;
+        const evil = project.phase >= 4 && !freed;
         if (evil === evilShown) return;
         evilShown = evil;
         for (const v of views.values()) {
@@ -1248,6 +1252,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
 
     function reset() {
+        hqPending = false;
         for (const id of [...items.keys()]) removeItem(id);
         quiet = true; // the next sync rebuilds a loaded factory: no juice
         shownPhase = -1;
@@ -1923,6 +1928,12 @@ export async function createRenderer(container, { onProgress } = {}) {
         animateOre(dt);
         syncMachines();
         animateMachines(dtSim, dt);
+        const wantRuin = project.ending === 'hq' && !hqPending;
+        if (wantRuin !== hqRuinShown) {
+            hqRuinShown = wantRuin;
+            env.setHQRuined(wantRuin);
+        }
+        updateShots(dt);
         env.update(dt);
         cannon.update(dt, performance.now());
         effects.update(dt, rig.target, phase, { width: W, height: H });
@@ -1970,9 +1981,17 @@ export async function createRenderer(container, { onProgress } = {}) {
      * patch is found. `radius` is the Moon's in px, `top` the highest y it may
      * sit at (below the letterbox). Returns the Moon's page point, or null.
      */
-    function frameCannon({ radius, top }) {
+    function frameCannon({ radius, top, target = 'moon' }) {
         const cx = CANNON_AREA.x + CANNON_AREA.w / 2;
         const cz = CANNON_AREA.y + CANNON_AREA.h / 2;
+        if (target === 'hq') {
+            // Seen from the south-west, so east (the HQ) is up and to the right of the cannon.
+            hqPending = true;
+            const hp = env.hqPoint();
+            rig.snap({ x: (cx + hp.x) / 2, z: (cz + hp.z) / 2 + 1.5, zoom: 0.64, azimuth: -Math.PI / 4 });
+            aimAtWorld(hp, false);
+            return toPage(hp);
+        }
         const r = renderer.domElement.getBoundingClientRect();
         const targets = scene.children.filter((o) => o !== overlay && o.name !== 'cannon' && !o.isLight);
         const clear = (p, rad) => {
@@ -2007,6 +2026,101 @@ export async function createRenderer(container, { onProgress } = {}) {
         return null; // no clear sky: the HUD keeps the Moon where it is
     }
 
+    // ---- The other ending: NIHIL HQ ---------------------------------------------------------
+    let hqPending = false;    // the HQ shot is under way: keep the tower standing, the night on
+    let hqRuinShown = false;  // what the environment shows (standing / ruined)
+    const shots = [];
+    const flashes = [];
+
+    /** While the player chooses the target: a calm look at the cannon. */
+    function lookAtCannon() {
+        rig.snap({ x: CANNON_AREA.x + CANNON_AREA.w / 2, z: CANNON_AREA.y + CANNON_AREA.h / 2, zoom: 0.8 });
+    }
+
+    /** Turn the turret so the barrel points (in plan) at the world point `p`. */
+    function aimAtWorld(p, instant) {
+        const pv = cannon.pivot();
+        const want = Math.atan2(p.z - pv.z, p.x - pv.x);
+        let best = 0;
+        let bestErr = Infinity;
+        for (let i = 0; i < 720; i++) {
+            const y = (i / 720) * Math.PI * 2 - Math.PI;
+            const d = cannon.directionAt(y);
+            let err = Math.abs(Math.atan2(d.z, d.x) - want);
+            if (err > Math.PI) err = Math.PI * 2 - err;
+            if (err < bestErr) {
+                bestErr = err;
+                best = y;
+            }
+        }
+        cannon.aim(best, instant);
+    }
+
+    /** A glowing shell on a ballistic arc with a smoke trail; `onHit` when it lands. */
+    function launchShell(from, to, ms, onHit) {
+        const obj = new THREE.Group();
+        const glow = haloSprite(0xff8a2a, 1.3);
+        const core = haloSprite(0xfff4d0, 0.45);
+        obj.add(glow, core);
+        obj.position.copy(from);
+        scene.add(obj);
+        shots.push({ obj, from: from.clone(), to: to.clone(), t: 0, ms, trail: 0, onHit, apex: 3 + from.distanceTo(to) * 0.18 });
+    }
+    function updateShots(dt) {
+        for (let i = shots.length - 1; i >= 0; i--) {
+            const sh = shots[i];
+            sh.t += dt;
+            const k = Math.min(1, sh.t / sh.ms);
+            sh.obj.position.lerpVectors(sh.from, sh.to, k);
+            sh.obj.position.y += 4 * k * (1 - k) * sh.apex;
+            sh.trail += dt;
+            if (sh.trail > 35) {
+                sh.trail = 0;
+                effects.smoke(sh.obj.position.clone(), { color: 0x8a8480, size: 0.22, rise: 0.15, opacity: 0.5 });
+            }
+            if (k >= 1) {
+                scene.remove(sh.obj);
+                shots.splice(i, 1);
+                sh.onHit?.();
+            }
+        }
+        for (let i = flashes.length - 1; i >= 0; i--) {
+            const f = flashes[i];
+            f.t += dt;
+            const k = Math.min(1, f.t / f.ms);
+            if (f.light) f.light.intensity = f.peak * (1 - k) * (1 - k);
+            if (f.ring) {
+                f.ring.scale.setScalar(0.5 + k * 9);
+                f.ring.material.opacity = 0.85 * (1 - k);
+            }
+            if (k >= 1) {
+                if (f.light) scene.remove(f.light);
+                if (f.ring) scene.remove(f.ring);
+                flashes.splice(i, 1);
+            }
+        }
+    }
+    /** The shell lands on NIHIL HQ: fireball, flash, shockwave, the tower comes down. */
+    function hitHQ() {
+        const p = env.hqPoint();
+        effects.puff(p, { count: 44, size: 1.15, spread: 2.8, color: 0x5e5550 });
+        effects.puff(p.clone().setY(0.6), { count: 30, size: 0.9, spread: 3.4, color: 0x9a8a78 });
+        effects.sparkle(p, { count: 70 });
+        const light = new THREE.PointLight(0xffb060, 0, 0, 2);
+        light.position.copy(p).add(new THREE.Vector3(0, 1.5, 0));
+        scene.add(light);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 48).rotateX(-Math.PI / 2),
+            new THREE.MeshBasicMaterial({ color: 0xffd0a0, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+        ring.position.set(p.x, 0.08, p.z);
+        scene.add(ring);
+        flashes.push({ light, peak: 900, ring, t: 0, ms: 1100 });
+        rig.shake(1);
+        rig.punch(0.08);
+        hqPending = false;
+        hqRuinShown = true;
+        env.ruinHQ();
+    }
+
     /** Swivel the turret so the barrel's on-screen line runs from its pivot through `p`. */
     function aimAt(p, instant) {
         const pv = cannon.pivot();
@@ -2035,10 +2149,11 @@ export async function createRenderer(container, { onProgress } = {}) {
         cannon.charge(level);
         rig.shake(level * 0.05);
     }
-    function fireCannon() {
+    function fireCannon({ target = 'moon' } = {}) {
         cannon.fire();
-        rig.shake(1);
+        rig.shake(target === 'hq' ? 0.6 : 1);
         rig.punch(0.1);
+        if (target === 'hq') launchShell(cannon.muzzle(1).pos, env.hqPoint(), HQ_FLIGHT_MS, hitHQ);
     }
     /** After the ending: ease back out to a wider view of the valley. */
     function releaseCinematic() {
@@ -2056,7 +2171,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         quietNext: () => { quiet = true; },
         /** Build-menu icons: { [machineType]: PNG data URL } rendered from the real models. */
         icons,
-        nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic,
+        nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic, lookAtCannon,
         /** Render cost of the last frame (draw calls, triangles) — for profiling. */
         stats: () => ({ ...renderer.info.render }),
         /** Visual state worth keeping in a save: the concrete scars. */

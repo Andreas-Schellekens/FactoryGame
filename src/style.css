@@ -99,7 +99,8 @@ body[data-phase="1"] .sky[data-sky="1"],
 body[data-phase="2"] .sky[data-sky="2"],
 body[data-phase="3"] .sky[data-sky="3"],
 body[data-phase="4"] .sky[data-sky="4"],
-body[data-phase="5"] .sky[data-sky="5"] {
+body[data-phase="5"] .sky[data-sky="5"],
+body[data-phase="6"] .sky[data-sky="6"] {
   opacity: 1;
 }
 
@@ -2373,4 +2374,207 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
 
 .sel-btn.danger b {
   color: var(--alarm);
+}
+
+/* ---- After NIHIL HQ: the freed valley's dawn, the Moon still up ------------------- */
+.sky[data-sky="6"] {
+  background:
+    radial-gradient(circle at var(--moon-x) var(--moon-y), rgba(255, 255, 255, 0.78) 0 4.6vmin, transparent 4.8vmin),
+    radial-gradient(circle at var(--moon-x) var(--moon-y), rgba(255, 240, 220, 0.25) 0 8vmin, transparent 18vmin),
+    radial-gradient(ellipse 70% 40% at 20% 100%, rgba(255, 196, 120, 0.85) 0%, transparent 70%),
+    linear-gradient(180deg, #4d5f9a 0%, #9d8fb8 38%, #f2b894 74%, #ffd9a6 100%);
+}
+
+/* ---- The choice, and naming your company --------------------------------------------- */
+.end-choice,
+.end-company {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 50;
+  transform: translate(-50%, -46%);
+  opacity: 0;
+  transition: opacity 0.35s, transform 0.35s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 24px;
+  width: min(640px, calc(100% - 32px));
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--hair-2), 4px 4px 0 rgba(5, 10, 20, 0.7);
+}
+
+.end-choice.in,
+.end-company.in {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+.ec-kicker {
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+.ec-title {
+  font: 900 40px/1 var(--f-mission);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.ec-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.ec-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 112px;
+  padding: 16px 16px 14px;
+  border: 0;
+  background: var(--console);
+  box-shadow: inset 0 -4px 0 var(--console-edge);
+  color: var(--paper);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+
+.ec-btn:hover {
+  transform: translate(-1px, -1px);
+  background: var(--console-hover);
+}
+
+.ec-btn b {
+  font: 800 25px/1.05 var(--f-mission);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.ec-moon b {
+  color: #ff8a80;
+}
+
+.ec-hq b {
+  color: var(--mustard);
+}
+
+.ec-hq {
+  box-shadow: inset 0 -4px 0 var(--console-edge), inset 0 0 0 1px rgba(243, 178, 60, 0.45);
+}
+
+.ec-key {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font: 600 11px var(--f-mono);
+  color: var(--label);
+}
+
+.ec-note {
+  font: 400 12px/1.45 var(--f-mono);
+  color: var(--paper-2);
+}
+
+.ecp-input {
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--hair-2);
+  background: var(--console);
+  color: var(--paper);
+  font: 700 22px var(--f-text);
+  outline: none;
+}
+
+.ecp-input:focus {
+  border-color: var(--signal);
+}
+
+.end-company .btn-primary {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.end-flash-warm {
+  background: #ffd8a0;
+}
+
+/* ---- The credits roll ---------------------------------------------------------------- */
+.credits-roll {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  background: rgba(8, 12, 22, 0.94);
+  cursor: pointer;
+}
+
+.cr-inner {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: min(560px, calc(100% - 32px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 34px;
+  text-align: center;
+  animation: credits-roll 34s linear forwards;
+}
+
+@keyframes credits-roll {
+  to { transform: translate(-50%, calc(-100% - 100vh)); }
+}
+
+.cr-title {
+  font: 900 64px/1 var(--f-mission);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+.cr-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cr-head {
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+.cr-name {
+  font: 800 30px/1.1 var(--f-mission);
+  letter-spacing: 0.03em;
+  color: var(--paper);
+}
+
+.cr-small {
+  font: 400 13px/1.5 var(--f-mono);
+  color: var(--paper-2);
+}
+
+.cr-end {
+  margin: 30px 0 0;
+  font: 500 14px/1.6 var(--f-mono);
+  color: var(--mustard);
+}
+
+.cr-thanks {
+  margin: 0 0 40vh;
+  font: 900 34px var(--f-mission);
+  text-transform: uppercase;
+  color: var(--paper);
 }
