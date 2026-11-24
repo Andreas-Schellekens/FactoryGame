@@ -3,10 +3,11 @@
 //! Railway's private network), so the browser sees one site and the session cookie works.
 //!
 //!   selene-api                    serve (DATABASE_URL, HOST, PORT, COOKIE_SECURE)
-//!   selene-api bench <cases.json> run the leaderboard test on sample layouts and time it
+//!   selene-api bench <cases.json> run the leaderboard test (or the weekly challenge's) on sample layouts and time it
 
 mod auth;
 mod blueprints;
+mod challenge;
 mod error;
 mod limits;
 mod passkeys;
@@ -88,6 +89,8 @@ pub fn router(state: AppState) -> Router {
         .route("/factories/{id}", get(blueprints::factory))
         .merge(profile::routes())
         .merge(passkeys::routes())
+        .route("/challenge", get(challenge::board))
+        .route("/challenge/submit", post(challenge::submit))
         .layer(middleware::from_fn(require_header))
         .layer(DefaultBodyLimit::max(6 * 1024 * 1024))
         .with_state(state);
@@ -113,15 +116,20 @@ async fn connect(url: &str) -> PgPool {
 
 fn bench_cli(path: &str) {
     let cases: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).expect("read cases")).expect("parse cases");
-    for case in cases.as_array().expect("an array of cases") {
+    // The leaderboard's cases (an array), or the weekly challenge's (tests/challenge-cases.json: `runs`, each with its week).
+    let list = cases.get("runs").unwrap_or(&cases);
+    for case in list.as_array().expect("an array of cases") {
         let layout = serde_json::to_string(&case["layout"]).unwrap();
         let t0 = Instant::now();
-        let out = sim::run_benchmark(&layout, Duration::from_secs(60));
+        let out = match case["key"].as_str() {
+            Some(week) => sim::run_challenge(&layout, week, Duration::from_secs(60)),
+            None => sim::run_benchmark(&layout, Duration::from_secs(60)),
+        };
         let ms = t0.elapsed().as_millis();
         match out {
             Ok(text) => {
                 let got: serde_json::Value = serde_json::from_str(&text).unwrap();
-                println!("{}: {ms} ms, perMinute {} (Node: {})", case["name"], got["perMinute"], case["expect"]["perMinute"]);
+                println!("{}: {ms} ms, perMinute {} (Node: {})", case.get("name").unwrap_or(&case["key"]), got["perMinute"], case["expect"]["perMinute"]);
             }
             Err(e) => println!("{}: error {e}", case["name"]),
         }
@@ -146,6 +154,7 @@ async fn main() {
     let db = connect(&url).await;
     sqlx::migrate!("./migrations").run(&db).await.expect("database migrations failed");
     let bench_version = tokio::task::spawn_blocking(sim::bench_version).await.unwrap().expect("the simulation does not load");
+    let challenge_version = tokio::task::spawn_blocking(challenge::version).await.unwrap();
 
     // Expired sessions are swept every hour.
     let sweeper = db.clone();
@@ -167,7 +176,7 @@ async fn main() {
     };
     let addr = if host.contains(':') { format!("[{host}]:{port}") } else { format!("{host}:{port}") };
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap_or_else(|e| panic!("could not listen on {addr}: {e}"));
-    println!("selene-api listening on {addr} (benchmark v{bench_version}; {})", passkeys::describe());
+    println!("selene-api listening on {addr} (benchmark v{bench_version}, weekly challenge v{challenge_version}; {})", passkeys::describe());
     axum::serve(listener, router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

@@ -6,7 +6,7 @@
 // never touches the simulation. The settings panel is settingsPanel.js.
 
 import { markSVG, patchSVG } from './brand.js';
-import { BRAND, GAME_TITLE, INFINITE_TEXT, ITEM_NAMES } from './story.js';
+import { BRAND, GAME_TITLE, INFINITE_TEXT, ITEM_NAMES, CHALLENGE_TEXT } from './story.js';
 import { PHASES } from './campaign.js';
 import { PLOTS } from './config.js';
 import { passkeySection, passkeySignInButton } from './passkeys.js';
@@ -67,6 +67,7 @@ function fmtAgo(ms) {
 /** "STORY · PHASE 03/05" or "INFINITE · LAND 2/4". */
 export function slotProgress(slot) {
     if (slot.mode === 'infinite') return `Infinite · Land ${(slot.plot ?? 0) + 1}/${PLOTS.length}`;
+    if (slot.mode === 'challenge') return CHALLENGE_TEXT.slotProgress(slot.week ?? '');
     if (slot.complete) return 'Story · complete';
     return `Story · Phase ${pad2(Math.min((slot.phase ?? 0) + 1, PHASES.length))}/${pad2(PHASES.length)}`;
 }
@@ -235,9 +236,10 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
 
     // ---- Title screen ---------------------------------------------------------------------
     /**
-     * @param {{ onNew: (mode: 'story'|'infinite') => void, onPlay: (slot: any) => void, onLeaderboard: () => void }} opts
+     * @param {{ onNew: (mode: 'story'|'infinite') => void, onPlay: (slot: any) => void, onLeaderboard: () => void,
+     *           challengeCard?: (leave: (fn: Function) => Function) => HTMLElement }} opts
      */
-    function showTitle({ onNew, onPlay, onLeaderboard }) {
+    function showTitle({ onNew, onPlay, onLeaderboard, challengeCard = null }) {
         const overlay = el('div', 'overlay title-screen');
         titleNode = overlay;
         const lockup = el('div', 'lockup');
@@ -287,6 +289,7 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
             button('Start Infinite', leave(() => onNew('infinite')), 'btn-primary'),
         );
         modes.append(story, inf);
+        if (challengeCard) modes.appendChild(challengeCard(leave)); // the weekly challenge (challengeUi.js)
 
         const row = el('div', 'title-row');
         row.append(

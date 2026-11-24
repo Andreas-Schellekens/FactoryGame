@@ -132,6 +132,9 @@ export function createAccount() {
         putBlueprint: (id, body) => call(`/blueprints/${encodeURIComponent(id)}`, { method: 'PUT', body }),
         deleteBlueprint: (id) => call(`/blueprints/${encodeURIComponent(id)}`, { method: 'DELETE', body: {} }),
         factory: (id) => call(`/factories/${encodeURIComponent(id)}`),
+        // The weekly challenge (iteration 7): a week's board, and a factory for this week's.
+        challengeBoard: (week = null) => call(`/challenge${week ? `?week=${encodeURIComponent(week)}` : ''}`),
+        submitChallenge: (week, layout) => call('/challenge/submit', { method: 'POST', body: { week, layout } }),
     };
 }
 

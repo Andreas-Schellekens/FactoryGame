@@ -24,7 +24,7 @@ import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS, HQ_
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
-    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX,
+    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX, CHALLENGE_TEXT, challengeName,
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
@@ -130,6 +130,8 @@ export function createUI({
     // Iteration 7: the alerts list (a group's next machine; the list was opened).
     onAlert = () => false, onAlertsOpen = () => {},
     keyMap = DEFAULT_KEYS,
+    // The weekly challenge: fills the console while one is played (challengeUi.js consoleView).
+    challengeConsole = null,
 }) {
     root.innerHTML = '';
     let keysBound = { ...keyMap }; // action → key, from the Controls settings
@@ -719,6 +721,12 @@ export function createUI({
         mp.appendChild(head);
         mpRefs.status = status;
 
+        if (sel.type === 'sink' && sel.challenge) {
+            const sec = el('div', 'mp-sec');
+            sec.append(el('span', 'con-label', CHALLENGE_TEXT.kicker), el('p', 'mp-note', CHALLENGE_TEXT.padNote(sel.challenge)));
+            mp.appendChild(sec);
+            return;
+        }
         if (sel.type === 'sink') {
             const sec = el('div', 'mp-sec');
             sec.appendChild(el('span', 'con-label', 'Market · credits per item'));
@@ -810,7 +818,7 @@ export function createUI({
         let text = STATUS_TEXT[st.code] ?? st.code;
         if (st.code === 'input') text += ' ' + (st.missing ?? []).map(itemName).join(', ');
         if (st.code === 'slow') text += ` · ${Math.round((sel.throttle ?? 1) * 100)}%`;
-        if (sel.type === 'sink') text = sel.infinite ? 'Buys goods at market prices' : 'Takes deliveries for the cannon and buys goods';
+        if (sel.type === 'sink') text = sel.challenge ? CHALLENGE_TEXT.padStatus(sel.challenge) : sel.infinite ? 'Buys goods at market prices' : 'Takes deliveries for the cannon and buys goods';
         mpRefs.status.textContent = text;
         mpRefs.status.dataset.code = sel.type === 'sink' ? 'working' : st.code;
         if (mpRefs.holds) {
@@ -1476,6 +1484,33 @@ export function createUI({
         unlockLine.textContent = inf.licences.every((l) => l.owned) ? INFINITE_TEXT.allLicences : 'Licences open up in the story’s order.';
     }
 
+    // ---- A weekly challenge: its numbers in the console (challengeUi.js builds them) ----------
+    let chView = null;
+    let chKey = null;
+    function buildChallengeDom(ch) {
+        phaseShown = -3;
+        phaseSig = 'challenge';
+        brandPhase = 0;
+        brandEnding = null;
+        brandCompany = null;
+        const b = brandFor(0);
+        document.body.classList.toggle('evil', false);
+        document.body.dataset.phase = String(skyOverride ?? 0);
+        brandMark.innerHTML = markSVG(false, 28);
+        brandWord.textContent = b.name;
+        brandCell.title = `${b.name} · ${b.full} · ${b.motto}`;
+        patchBox.innerHTML = patchSVG(false, 48, { text: false });
+        headSub.textContent = `${CHALLENGE_TEXT.kicker} · ${ch.key}`;
+        if (!celebrating) {
+            ribbonKicker.textContent = CHALLENGE_TEXT.ribbon(ch.key);
+            ribbonTitle.textContent = challengeName(ch.rules);
+            ribbonExtra.textContent = '';
+        }
+        reqRows = {};
+        chKey = ch.key;
+        chView = challengeConsole?.(reqList, unlockLine, ch, onOpenBoard) ?? null;
+    }
+
     let planDone = new Set();
     let planIds = new Set();
     function renderPlan(list) {
@@ -1543,7 +1578,11 @@ export function createUI({
         lastUpdate = now;
         const { project } = s;
         const infinite = s.mode === 'infinite';
-        if (infinite) {
+        const challenge = s.mode === 'challenge';
+        if (challenge) {
+            if (phaseShown !== -3 || chKey !== s.challenge.key) buildChallengeDom(s.challenge);
+            chView?.update(s.challenge);
+        } else if (infinite) {
             const sig = JSON.stringify([s.infinite.plot, s.infinite.nextPlotCost, s.infinite.licences, s.infinite.visualPhase]);
             if (sig !== infSig || phaseShown !== -2) {
                 infSig = sig;
@@ -1605,8 +1644,9 @@ export function createUI({
             // unlockPhaseOf is the phase whose completion unlocks it; show the phase it arrives in.
             // In Infinite a locked building is waiting for its licence.
             const arrives = unlockPhaseOf(tool) + 2;
-            sub.textContent = !unlocked ? (infinite ? 'LICENCE' : `PH ${pad2(arrives)}`) : s.tool === tool ? BUILDING_NAMES[tool].toUpperCase() : `CR ${MACHINE_COST[tool]}`;
+            sub.textContent = !unlocked ? (challenge ? CHALLENGE_TEXT.keyBanned : infinite ? 'LICENCE' : `PH ${pad2(arrives)}`) : s.tool === tool ? BUILDING_NAMES[tool].toUpperCase() : `CR ${MACHINE_COST[tool]}`;
             btn.title = unlocked ? `${BUILDING_NAMES[tool]} · ${BUILDING_DESC[tool]}`
+                : challenge ? CHALLENGE_TEXT.refusal.banned(BUILDING_NAMES[tool])
                 : infinite ? `${BUILDING_NAMES[tool]} · license it in the console` : `${BUILDING_NAMES[tool]} · arrives in phase ${arrives}`;
             // Pictured keys stay pictured (greyed, with a lock badge, via CSS); glyph keys swap to a lock.
             if (!btn.classList.contains('has-img')) btn.querySelector('svg path').setAttribute('d', unlocked ? ICON[tool] : ICON.lock);

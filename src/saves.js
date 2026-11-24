@@ -124,8 +124,8 @@ export function createSaves({ account, isLoadable }) {
     }
 
     function metaOf(slot) {
-        const { mode, world, phase, plot, complete, playSec, savedAt, thumb } = slot;
-        return { mode, world, phase, plot, complete, playSec, savedAt, thumb };
+        const { mode, world, phase, plot, complete, playSec, savedAt, thumb, week } = slot;
+        return { mode, world, phase, plot, complete, playSec, savedAt, thumb, week };
     }
 
     return {

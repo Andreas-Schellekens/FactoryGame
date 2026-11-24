@@ -4,9 +4,11 @@
 import { runBenchmark } from './benchmark.js';
 
 self.onmessage = (e) => {
+    // A layout, or { layout, options } (options.challenge: the weekly challenge's test).
+    const { layout, options } = e.data?.layout ? e.data : { layout: e.data, options: {} };
     let result;
     try {
-        result = runBenchmark(e.data);
+        result = runBenchmark(layout, options);
     } catch (err) {
         result = { ok: false, error: String(err?.message ?? err) };
     }

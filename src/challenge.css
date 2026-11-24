@@ -1,0 +1,158 @@
+/* src/challenge.css — the weekly challenge's card on the title screen, its board and its
+   console section (challengeUi.js). Uses the design tokens of style.css. */
+
+/* ---- The title screen's card: under the two mode cards, across both columns ---- */
+.mode-card.ch-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 22px;
+  box-shadow: inset 0 0 0 1px var(--hair-2), inset 0 3px 0 var(--mustard);
+}
+
+.ch-main,
+.ch-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ch-card .mode-title {
+  font-size: 26px;
+}
+
+.ch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ch-chip {
+  padding: 3px 7px;
+  background: var(--console-edge);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  font: 600 10px var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-2);
+}
+
+.ch-top {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: ch;
+}
+
+.ch-top li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font: 500 12px var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-top li.me .ch-top-name {
+  color: var(--signal);
+}
+
+.ch-top-name {
+  overflow: hidden;
+  font-family: var(--f-text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ch-top-val {
+  color: var(--mustard);
+}
+
+.ch-top li.ch-empty {
+  color: var(--label);
+  font-family: var(--f-text);
+}
+
+.ch-best {
+  font: 500 11px var(--f-mono);
+  color: var(--label);
+}
+
+.ch-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ch-card .ch-acts .btn-primary {
+  margin-top: 0;
+}
+
+/* ---- The board ---- */
+.ch-rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 18px;
+  margin: 0 0 4px;
+  padding: 0;
+  list-style: none;
+  font: 500 12px var(--f-mono);
+  color: var(--paper-2);
+}
+
+.ch-rules li::before {
+  content: '▸ ';
+  color: var(--mustard);
+}
+
+.lb-row.ch-row {
+  grid-template-columns: 44px 1fr 150px 70px 80px;
+}
+
+.ch-podium {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ch-podium:empty {
+  display: none;
+}
+
+/* ---- The console ---- */
+.req.ch-rate .req-count {
+  color: var(--mustard);
+  font-size: 15px;
+}
+
+.console .ch-chips {
+  margin: 4px 0 2px;
+}
+
+.ch-board-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .mode-card.ch-card {
+    grid-template-columns: 1fr;
+  }
+  .ch-rules {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .lb-row.ch-row {
+    grid-template-columns: 34px 1fr 90px;
+  }
+}
