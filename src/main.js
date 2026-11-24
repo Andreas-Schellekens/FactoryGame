@@ -38,6 +38,8 @@ import { createMenus } from './menus.js';
 import { createSettingsPanel } from './settingsPanel.js';
 import { blueprintThumb } from './blueprint.js';
 import { layoutOf } from './benchmark.js';
+import { createAchievements } from './achievements.js';
+import { createProfile, avatarForAchievement } from './profile.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -58,6 +60,8 @@ const settings = createSettings({ audioDefaults: audio.settings() });
 audio.setSettings(settings.get().audio);
 const account = createAccount();
 const saves = createSaves({ account, isLoadable: isLoadableSave });
+// Achievements (iteration 7): polled from the world once a second, a toast in the HUD.
+const achievements = createAchievements({ account, sound: audio, avatarFor: avatarForAchievement, quiet: () => state.cinematic });
 
 // --- 3D view (loads the Kenney models first; the loader shows progress) ---
 initGrid();
@@ -272,7 +276,7 @@ let activeSlot = null; // the slot card of the running game
 let playMs = 0;        // real time played in this slot (paused time doesn't count)
 
 function saveData() {
-    return { ...serialize(), story: director.save(), visual: renderer.saveVisual(), playMs: Math.round(playMs) };
+    return { ...serialize(), story: director.save(), visual: renderer.saveVisual(), playMs: Math.round(playMs), achv: achievements.saveRun() };
 }
 function slotMeta() {
     let thumb = null;
@@ -321,6 +325,7 @@ function applySave(data) {
     nextOrderTick = null; // let the restored order resume cleanly
     playMs = data.playMs ?? 0;
     director.load(data.story, tickCount, project.phase, project.ending);
+    achievements.loadRun(data.achv);
     state.started = true;
     return true;
 }
@@ -691,6 +696,7 @@ function onFrame(dt) {
             const w = snapshot();
             lastWorking = w.working;
             director.update(w);
+            achievements.update(w);
             state.focus = director.objectives().find((o) => !o.done)?.focus ?? null;
         }
         if (!state.paused && document.visibilityState === 'visible') playMs += dt;
@@ -720,12 +726,16 @@ function onFrame(dt) {
     panWithKeys(dt);
     ui.update();
 }
-startGameLoop(renderer, state, onFrame, (events) => audio.onEvents(events));
+startGameLoop(renderer, state, onFrame, (events) => {
+    audio.onEvents(events);
+    achievements.onEvents(events);
+});
 window.addEventListener('beforeunload', () => saveGame('later'));
 
 // --- Menus: title screen, saves, account, leaderboard, settings (menus.js, settingsPanel.js) ---
-const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open() });
+const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open(), people: () => profile });
 const settingsPanel = createSettingsPanel({ settings, sound: audio, menus, account });
+const profile = createProfile({ account, menus, achievements, saves, icons: renderer.icons, sound: audio, onLeaderboard: () => openBoard() });
 
 /** Start playing (the title screen is gone): a new game in a new slot, or a slot's save. */
 function beginNew(mode) {
@@ -735,6 +745,7 @@ function beginNew(mode) {
     }
     activeSlot = saves.create({ mode });
     playMs = 0;
+    achievements.loadRun(null);
     state.started = true;
     state.paused = false;
     lastPhase = project.phase;
@@ -869,6 +880,12 @@ const bootSlot = boot?.action === 'load' ? saves.get(boot.slot) : null;
 if (bootSlot) beginSlot(bootSlot);
 else if (boot?.action === 'new') beginNew(boot.mode);
 else showTitle();
+// A shared profile link (?player=<name>) opens that player's profile over the title screen.
+const sharedPlayer = new URLSearchParams(location.search).get('player');
+if (sharedPlayer) {
+    profile.openPlayer(sharedPlayer.slice(0, 20));
+    history.replaceState(null, '', location.pathname + location.search.replace(/([?&])player=[^&]*&?/, '$1').replace(/[?&]$/, '') + location.hash);
+}
 
 // --- Input: build tools ---
 function actAt(gx, gy, button) {
@@ -1133,6 +1150,8 @@ if (import.meta.env.DEV) {
     window.__saves = saves;
     window.__account = account;
     window.__menus = menus;
+    window.__achievements = achievements; // __achievements.grant('circuit') earns one
+    window.__profile = profile;
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);
