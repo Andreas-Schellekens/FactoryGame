@@ -12,6 +12,7 @@ export const DEFAULT_KEYS = {
     splitter: 't', merger: 'y', upgrade: 'u', erase: 'x', select: 'v',
     pipette: 'f', rotate: 'r', viewLeft: 'q', viewRight: 'e', pause: ' ', mute: 'm',
     move: 'g', copy: 'c', alerts: 'n',
+    codex: 'k',
 };
 /** Keys that can't be bound: camera panning, Escape, the speed keys. */
 export const RESERVED_KEYS = new Set([
@@ -31,7 +32,7 @@ export function defaults() {
     return {
         audio: { master: 0.8, music: 0.6, sfx: 0.8, voice: 1, muted: false },
         graphics: { shadows: true, renderScale: 1, particles: 'high', shake: true },
-        gameplay: { autosave: 60, hints: true, textSpeed: 1, voice: true },
+        gameplay: { autosave: 60, hints: true, textSpeed: 1, voice: true, highlights: true },
         keys: { ...DEFAULT_KEYS },
         access: { colorblind: false, reducedMotion: prefersReducedMotion(), uiScale: 1 },
     };

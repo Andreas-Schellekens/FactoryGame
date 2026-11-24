@@ -11,10 +11,11 @@
 import * as THREE from 'three';
 import {
     GRID_WIDTH as W, GRID_HEIGHT as H, TICK_RATE, MAX_TIER, POWER_DRAW, PAD_POS, CANNON_AREA, HQ_FLIGHT_MS, PROCESS_TICKS,
+    MACHINE_COST,
 } from './config.js';
 import {
     grid, power, research, project, canBuildMachine, canUpgrade, machineProgressFraction, UPGRADABLE, cellHash, machinePorts,
-    machineStatus, machineRecipe, oreRevision, visualPhase, plotLevel, hasCannon,
+    machineStatus, machineRecipe, oreRevision, visualPhase, plotLevel, hasCannon, RECIPES,
 } from './grid.js';
 import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
 import { buildEnvironment } from './environment.js';
@@ -1325,37 +1326,48 @@ export async function createRenderer(container, { onProgress } = {}) {
         color: 0x7dd3fc, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
     });
     const focusGeo = new THREE.RingGeometry(0.44, 0.5, 40);
+    const focusGeoWide = new THREE.RingGeometry(0.62, 0.7, 48); // round a building: outside its footprint
     let focusShown = null;
     let focusOre = -1; // the ore revision the rings were laid for (new ore can be a focus)
+    let focusCells = ''; // the building cells the rings were laid for (they come and go as you build)
+    let calm = false;    // reduced motion: the rings hold still
 
+    // `focus`: an ore type (free cells of the field nearest the pad), 'sink', or any building
+    // type (every one of them on the map, e.g. the Smelters whose recipe an objective wants set).
     function updateFocus(focus) {
-        if (focus !== focusShown || focusOre !== oreShown) {
+        const isBuilding = focus === 'sink' || (focus && focus in MACHINE_COST);
+        let cellsKey = '';
+        if (isBuilding) {
+            for (let x = 0; x < W; x++) for (let y = 0; y < H; y++) if (grid[x][y].machine?.type === focus) cellsKey += `${x},${y};`;
+        }
+        if (focus !== focusShown || focusOre !== oreShown || cellsKey !== focusCells) {
             focusShown = focus;
             focusOre = oreShown;
+            focusCells = cellsKey;
             focusGroup.clear();
             if (focus) {
-                // Ring only the field nearest the pad: the tutorial's starter area.
                 const cells = [];
                 for (let x = 0; x < W; x++) {
                     for (let y = 0; y < H; y++) {
                         const c = grid[x][y];
-                        const hit = focus === 'sink' ? c.machine?.type === 'sink' : c.resource === focus && !c.machine;
+                        const hit = isBuilding ? c.machine?.type === focus : c.resource === focus && !c.machine;
                         if (hit) cells.push({ x, y, d: Math.hypot(x - PAD_POS.x, y - PAD_POS.y) });
                     }
                 }
-                const nearest = Math.min(...cells.map((c) => c.d));
+                // Ore: ring only the field nearest the pad, the tutorial's starter area.
+                const nearest = isBuilding ? Infinity : Math.min(...cells.map((c) => c.d));
                 for (const { x, y, d } of cells) {
                     if (d > nearest + 3) continue;
-                    const ring = new THREE.Mesh(focusGeo, focusMat);
+                    const ring = new THREE.Mesh(isBuilding && focus !== 'sink' ? focusGeoWide : focusGeo, focusMat);
                     ring.rotation.x = -Math.PI / 2;
                     ring.position.set(x + 0.5, 0.05, y + 0.5);
                     focusGroup.add(ring);
                 }
             }
         }
-        const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+        const pulse = calm ? 0.6 : 0.5 + 0.5 * Math.sin(performance.now() / 260);
         focusMat.opacity = 0.35 + 0.55 * pulse;
-        focusGroup.children.forEach((r) => r.scale.setScalar(1 + 0.08 * pulse));
+        focusGroup.children.forEach((r) => r.scale.setScalar(calm ? 1 : 1 + 0.08 * pulse));
     }
 
     function updateOverlay(state, dt) {
@@ -1827,6 +1839,18 @@ export async function createRenderer(container, { onProgress } = {}) {
                 const holder = new THREE.Group();
                 if (TOOL_PROPS[type]) {
                     holder.add(TOOL_PROPS[type]());
+                } else if (type.startsWith('item:')) {
+                    // The codex's item pictures: the belt meshes, turned to show their best side;
+                    // ore is a little pile of chunks.
+                    const item = type.slice(5);
+                    const pile = /Ore$/.test(item) ? [[-0.16, 0, 0.06], [0.15, 0, 0.1], [0, 0.12, -0.08]] : [[0, 0, 0]];
+                    pile.forEach(([px, py, pz], i) => {
+                        const it = createItemMesh(item);
+                        it.position.set(px, py, pz);
+                        if (pile.length > 1) it.children.forEach((m) => m.rotation.set(0.6 + i * 1.3, 0.4 + i * 2.1, 0.2 * i));
+                        else it.rotation.y = -0.35;
+                        holder.add(it);
+                    });
                 } else {
                     const { obj } = buildView({ type, dir: 'right', tier: 1, progress: 0, pendingOutput: null, buffer: {} }, 0, 0, 'straight', true);
                     obj.position.set(0, 0, 0);
@@ -1853,9 +1877,9 @@ export async function createRenderer(container, { onProgress } = {}) {
                     sphere.center.z + Math.cos(az) * Math.cos(elev) * 20,
                 );
                 cam.lookAt(sphere.center);
-                if (TOOL_PROPS[type]) {
-                    // Props are spindly (a hammer, an arc): frame their actual silhouette, not their
-                    // bounding sphere, so they fill the key like the chunky machines do.
+                if (TOOL_PROPS[type] || type.startsWith('item:')) {
+                    // Props are spindly (a hammer, an arc) and items small and flat: frame their actual
+                    // silhouette, not their bounding sphere, so they fill the key like the chunky machines do.
                     cam.updateMatrixWorld();
                     const v = new THREE.Vector3();
                     const lo = new THREE.Vector2(Infinity, Infinity);
@@ -1889,7 +1913,7 @@ export async function createRenderer(container, { onProgress } = {}) {
                 // GL's viewport origin is bottom-left: the icon sits in the canvas's bottom-left corner.
                 ctx2d.clearRect(0, 0, size, size);
                 ctx2d.drawImage(canvasEl, 0, canvasEl.height - px, px, px, 0, 0, size, size);
-                out[type] = copy.toDataURL('image/png');
+                out[type.startsWith('item:') ? type.slice(5) : type] = copy.toDataURL('image/png');
                 iconScene.remove(holder);
             }
         } catch (err) {
@@ -1905,8 +1929,11 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
     const icons = renderIcons([
         'belt', 'extractor', 'smelter', 'press', 'foundry', 'assembler', 'splitter', 'merger', 'generator', 'lab', 'fabricator', 'mixer',
-        'upgrade', 'erase', 'select', 'rotate',
+        'upgrade', 'erase', 'select', 'rotate', 'sink',
     ]);
+    // The codex's item pictures (every item any recipe takes or makes), the same way.
+    const itemTypes = [...new Set(Object.values(RECIPES).flat().flatMap((r) => [...Object.keys(r.inputs), r.output]).filter(Boolean))];
+    const itemIcons = renderIcons(itemTypes.map((t) => `item:${t}`), 96);
 
     // ---- Frame ---------------------------------------------------------------------------
     let shownPhase = -1;
@@ -2176,8 +2203,9 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
 
     // ---- Settings (settings.js, applied by main.js) ---------------------------------------
-    /** Graphics: shadows, render scale (0.5–1), particle density, camera shake. */
-    function setGraphics({ shadows = true, renderScale: scale = 1, particles = 'high', shake = true } = {}) {
+    /** Graphics: shadows, render scale (0.5–1), particle density, camera shake; `calm` (reduced motion) stills the focus rings. */
+    function setGraphics({ shadows = true, renderScale: scale = 1, particles = 'high', shake = true, calm: still = false } = {}) {
+        calm = !!still;
         if (renderer.shadowMap.enabled !== shadows) {
             renderer.shadowMap.enabled = shadows;
             sun.castShadow = shadows;
@@ -2220,6 +2248,8 @@ export async function createRenderer(container, { onProgress } = {}) {
         quietNext: () => { quiet = true; },
         /** Build-menu icons: { [machineType]: PNG data URL } rendered from the real models. */
         icons,
+        /** Item pictures for the codex: { [itemType]: PNG data URL }, from the belt meshes. */
+        itemIcons,
         nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic, lookAtCannon,
         setGraphics, setPortPalette,
         /** Render cost of the last frame (draw calls, triangles) — for profiling. */

@@ -725,3 +725,158 @@ export const BUILD_HELP = {
         note: 'At the tier most of yours have (T1 if you have none).',
     },
 };
+// ---- Codex (iteration 7): the in-game reference -----------------------------------------------
+// The words around the numbers; the numbers themselves (recipes, costs, speeds, prices) come
+// from the game's own data in codex.js, so the codex never goes stale. Descriptions of the
+// NIHIL-era things (sulfur, the Mixer, explosives, the Selene Shell) only show once the story
+// has revealed them: before that the codex says `classified`.
+const pad2s = (n) => String(n).padStart(2, '0');
+export const CODEX = {
+    title: 'Codex',
+    kicker: (brand) => `${brand} field manual`,
+    search: 'Search items, buildings, recipes…',
+    tabs: { items: 'Items', buildings: 'Buildings', recipes: 'Recipes', research: 'Research' },
+    empty: 'Nothing in the manual matches that.',
+    back: 'Back',
+    close: 'Close the codex',
+    link: 'Codex',            // the machine panel's button
+    tip: (key) => `${key} FOR CODEX`, // the inspector's last line
+    keyHint: (key) => `${key} · open / close`,
+    kinds: { building: 'Building', tech: 'Research' },
+    tags: { ore: 'Raw ore', part: 'Part', product: 'Product' },
+    labels: {
+        madeBy: 'Made by', mined: 'Mined', usedIn: 'Used in', fuel: 'Fuel', pad: 'Dispatch Pad',
+        recipes: 'Recipes', ports: 'Ports', speed: 'Speed per tier', power: 'Power', cost: 'Cost', unlock: 'Unlock',
+        status: 'For you now', effect: 'What it does', points: 'Research points', market: 'Market · credits per item',
+        tier: 'Tier', time: 'Time', perMin: 'Per min', upgrade: 'Upgrade', machine: 'Machine', recipe: 'Inputs → output',
+    },
+    // Machine sides relative to its arrow: the front is where it sends things out.
+    ports: {
+        front: 'front', back: 'back', sides: 'both sides', all: 'every side',
+        text: (ins, outs) => [ins ? `In · ${ins}` : 'Takes nothing in', outs ? `Out · ${outs}` : 'Sends nothing out'].join('  ·  '),
+        legend: 'Teal goes in, orange comes out. The front is the side its arrow points to; R turns it before you place it.',
+    },
+    status: {
+        available: 'Available',
+        licensed: 'Licensed',
+        pad: 'Already in place. The Pad can’t be built or moved.',
+        phase: (n, title) => `Arrives in Phase ${pad2s(n)} · ${title}`,
+        phaseShort: (n) => `PH ${pad2s(n)}`,
+        licenceNow: (cost) => `Needs its licence · CR ${cost}, in the console now`,
+        licenceLater: (cost) => `Needs its licence · CR ${cost}, once the earlier licences are bought`,
+        licenceShort: 'LICENCE',
+        needsBuilding: (name, why) => `Needs the ${name} · ${why.charAt(0).toLowerCase()}${why.slice(1)}`,
+        needsTech: (label) => `Needs the ${label} research`,
+        techShort: 'RESEARCH',
+        notOnMap: 'Not in the valley yet',
+        withLand: (n) => `Comes with land ${pad2s(n)}`,
+        landShort: 'LAND',
+        online: 'Online',
+        points: (have, need) => `${have} of ${need} research points`,
+        noLab: 'Research points come from a Lab, which you don’t have yet',
+    },
+    from: {
+        start: 'From the start',
+        phase: (n, title) => `Once Phase ${pad2s(n)} · ${title} is complete`,
+        licence: (cost) => `Licence · CR ${cost}`,
+    },
+    pad: {
+        pays: (base) => `Pays up to CR ${base} each`,
+        now: 'Paying now',
+        notBought: 'The Pad doesn’t buy it.',
+        cannonOnly: 'The Pad takes it for the cannon, but pays nothing for it.',
+        note: 'Every sale lowers the price for a while; it recovers over about a minute. Spread your sales.',
+        wanted: (n, title, count) => `Phase ${pad2s(n)} · ${title} needs ${count}`,
+        orders: 'Priority Requests can ask for it.',
+    },
+    notes: {
+        mined: (secs, perMin) => `An Extractor on its ore node mines one every ${secs} at tier 1 (${perMin}/min). Extractors need no power.`,
+        belt: (perSec, fast) => `Moves items ${perSec} tiles a second${fast ? `, ${fast} with Express Belts` : ''}.`,
+        fuel: (secs, kw) => `A Generator burns one every ${secs} and supplies ${kw} kW while it does.`,
+        generator: (secs, kw, base) => `Burns one Coal every ${secs} for ${kw} kW. The starter grid gives ${base} kW for free.`,
+        lab: (points) => `Reads each Data Cartridge into ${points} research points.`,
+        extractor: 'Must stand on an ore node: it mines that ore. Needs no power, so the first chain can never brown out.',
+        draw: (kw) => `Draws ${kw} kW while it works`,
+        supply: (kw) => `Supplies ${kw} kW while it burns coal`,
+        noPower: 'Needs no power',
+        recipeTime: 'Times are for one operation at tier 1; upgrades make it faster.',
+        tier4: 'Tier 4 needs the Tier 4 research.',
+        cartridge: (points) => `A Lab reads each one into ${points} research points.`,
+        researchFrom: (points) => `A Fabricator makes Data Cartridges and a Lab reads each into ${points} points. Spend them in the console’s Research section.`,
+    },
+    tech: {
+        fastBelts: 'Every belt, splitter and merger moves twice per tick.',
+        advancedProduct: 'Unlocks the Advanced Circuit recipe in the Assembler.',
+        tier4: 'Every upgradable building can go one tier higher.',
+    },
+    classified: {
+        mask: '█████████',
+        name: 'Classified',
+        kicker: 'Classified · NILE clearance',
+        text: 'This entry is sealed until a later phase of Protocol: Selene. NILE will update your clearance when you need to know. Not before.',
+    },
+    items: {
+        ironOre: 'Grey crystals straight off the valley floor. Smelt it into iron ingots.',
+        copperOre: 'Glowing orange crystals. Smelt it into copper ingots, then draw those into wire.',
+        coalOre: 'Black crystals. Foundries need it for steel and Generators burn it for power.',
+        sulfurOre: 'Pale yellow crystals, found where the river used to be. Mixed with coal, it makes explosives.',
+        ironIngot: 'Smelted iron ore. The Pad pays a little for it; pressed or cast, it is worth much more.',
+        copperIngot: 'Smelted copper ore. Most of it ends up as wire.',
+        ironPlate: 'An iron ingot, stamped flat by a Press. Half of a circuit and a third of a motor.',
+        copperWire: 'A copper ingot, drawn out by a Press. Everything electric wants some.',
+        steel: 'Iron and coal, melted together in a Foundry. Heavy, valuable and hungry for power to make.',
+        circuit: 'An iron plate and a copper wire, put together. The first thing the Pad pays proper money for.',
+        capacitor: 'Steel wrapped in two copper wires. It holds a charge, and big machines want banks of them.',
+        motor: 'Steel, a plate and a wire, each fed in from its own side of an Assembler. It makes things turn.',
+        advancedCircuit: 'Two circuits on a steel frame: forty thousand transistors and one logo you will never get off.',
+        dataCartridge: 'A circuit and a wire, filled with data by a Fabricator. A Lab reads it into research points.',
+        explosive: 'Sulfur and coal, stirred together in a Mixer. Handle with something.',
+        seleneShell: 'Steel, an explosive and an advanced circuit: the round Protocol: Selene fires. Slow to make.',
+    },
+    buildings: {
+        belt: 'Carries items one tile per tick, the way it points. Drag to lay a line; corners follow your mouse.',
+        splitter: 'Takes one belt in at the back and sends it out of the other three sides in turn. One line, three ways.',
+        merger: 'Pulls from the back and both sides in turn and sends everything out of the front. Three lines into one.',
+        extractor: 'Mines the ore node it stands on and sends the ore out of its front.',
+        smelter: 'Melts ore into ingots. Pick iron or copper in its panel; it only takes the ore of its recipe.',
+        press: 'Stamps iron ingots into plates, or draws copper ingots into wire. Pick which in its panel.',
+        foundry: 'Casts steel from an iron ingot and a lump of coal. Feed the two from different sides.',
+        assembler: 'Puts parts together into finished goods, one recipe at a time. Pick the recipe in its panel; each part can come in from any input side.',
+        fabricator: 'Fills cartridges with data, from a circuit and a copper wire, for the Lab.',
+        lab: 'Reads Data Cartridges into research points. It takes them from every side and makes nothing you can hold.',
+        mixer: 'NIHIL’s vat: stirs sulfur and coal into explosives. Feed the two from different sides.',
+        generator: 'Burns coal to power the grid. Belt coal in from any side; the grid reaches every machine at once, no wires.',
+        sink: 'Buys what you make at market prices. In the story it also takes the deliveries that build the cannon.',
+    },
+};
+
+// ---- Tutorial highlights (iteration 7) -----------------------------------------------------
+// Objectives may carry `key` (the build action whose keycap pulses until you pick that tool)
+// and `ui` (the HUD element that glows: 'recipe:<id>' in the machine panel, 'power',
+// 'production', 'research' or 'research:<tech>', 'order', 'licence:<type>', 'land', 'upgrade',
+// 'menu'). `focus` (rings in the world) takes an ore type, 'sink' or any building type. All
+// three follow the Gameplay setting "Tutorial highlights". They are added onto the objectives
+// above here, so the objectives' text stays where it is.
+const HIGHLIGHTS = [
+    {
+        extractor: { key: 'extractor' }, smelter: { key: 'smelter' }, ingot: { key: 'belt', focus: 'smelter' },
+        deliver: { key: 'belt' }, copperRecipe: { ui: 'recipe:copperIngot', focus: 'smelter' }, copper: { key: 'extractor' },
+    },
+    { plate: { key: 'press' }, wire: { key: 'press', ui: 'recipe:copperWire' }, circuit: { key: 'assembler' }, split: { key: 'splitter' } },
+    { steel: { key: 'foundry' }, generator: { key: 'generator', ui: 'power' }, capacitor: { key: 'assembler', ui: 'recipe:capacitor' } },
+    {
+        cartridge: { key: 'fabricator' }, research: { key: 'lab' }, advTech: { ui: 'research:advancedProduct' },
+        motor: { key: 'assembler', ui: 'recipe:motor' }, advanced: { ui: 'recipe:advancedCircuit', focus: 'assembler' },
+    },
+    { sulfur: { key: 'extractor' }, explosive: { key: 'mixer' }, shell: { key: 'assembler', ui: 'recipe:seleneShell' }, upgrade: { key: 'upgrade', ui: 'upgrade' } },
+];
+const INFINITE_HIGHLIGHTS = [
+    { extractor: { key: 'extractor' }, deliver: { key: 'smelter' }, press: { ui: 'licence:press' }, assembler: { ui: 'licence:assembler' } },
+    { circuit: { key: 'assembler' }, land: { ui: 'land' }, order: { ui: 'order' }, foundry: { ui: 'licence:foundry' } },
+    { steel: { key: 'foundry' }, generator: { key: 'generator', ui: 'power' }, land2: { ui: 'land' }, lab: { ui: 'licence:fabricator' } },
+    { research: { key: 'lab' }, tech: { ui: 'research' }, valley: { ui: 'land' }, mixer: { ui: 'licence:mixer' } },
+    { explosive: { key: 'mixer' }, orders10: { ui: 'order' }, board: { ui: 'menu' } },
+];
+const addHighlights = (phases, table) => phases.forEach((list, i) => list.forEach((o) => Object.assign(o, table[i]?.[o.id] ?? {})));
+addHighlights(OBJECTIVES, HIGHLIGHTS);
+addHighlights(INFINITE.OBJECTIVES, INFINITE_HIGHLIGHTS);
