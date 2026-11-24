@@ -151,10 +151,15 @@ async fn main() {
     let cookie_secure = std::env::var("COOKIE_SECURE").map(|v| v == "1" || v == "true").unwrap_or(false);
     let limit_scale = if std::env::var("RELAX_LIMITS").map(|v| v == "1").unwrap_or(false) { 100 } else { 1 };
 
+    // Each start-up step says so, so a deploy that hangs shows where.
+    println!("selene-api: connecting to the database");
     let db = connect(&url).await;
+    println!("selene-api: running migrations");
     sqlx::migrate!("./migrations").run(&db).await.expect("database migrations failed");
+    println!("selene-api: loading the simulation");
     let bench_version = tokio::task::spawn_blocking(sim::bench_version).await.unwrap().expect("the simulation does not load");
     let challenge_version = tokio::task::spawn_blocking(challenge::version).await.unwrap();
+    println!("selene-api: starting the server");
 
     // Expired sessions are swept every hour.
     let sweeper = db.clone();
