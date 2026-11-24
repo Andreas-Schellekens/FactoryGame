@@ -57,6 +57,13 @@
       "mood": null,
       "text": "Asset. That is not the Moon. That is... That was my headquarters."
     },
+    "delta-010dae1c": {
+      "file": "delta-010dae1c.mp3",
+      "ms": 4313,
+      "who": "delta",
+      "mood": null,
+      "text": "More land. The fence moves out, and so do the flowers."
+    },
     "delta-03812106": {
       "file": "delta-03812106.mp3",
       "ms": 9198,
@@ -112,6 +119,13 @@
       "who": "delta",
       "mood": null,
       "text": "Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose."
+    },
+    "delta-14f7d717": {
+      "file": "delta-14f7d717.mp3",
+      "ms": 7108,
+      "who": "delta",
+      "mood": null,
+      "text": "Licences are in the console on the left. The Press turns ingots into plates and wire, which sell better."
     },
     "delta-156a5bea": {
       "file": "delta-156a5bea.mp3",
@@ -169,12 +183,40 @@
       "mood": null,
       "text": "See the orange arrow on it? That is where a machine sends things out; teal arrows are where it takes things in. Press R to rotate before placing; the ghost shows its arrows too. Now build a Smelter (key 3) a couple of tiles away, in line with that orange arrow."
     },
+    "delta-2a50ac06": {
+      "file": "delta-2a50ac06.mp3",
+      "ms": 5906,
+      "who": "delta",
+      "mood": null,
+      "text": "The Mixer makes explosives from sulfur and coal. The last licence NILE sells."
+    },
     "delta-2ceb0f6b": {
       "file": "delta-2ceb0f6b.mp3",
       "ms": 8310,
       "who": "delta",
       "mood": null,
       "text": "Low on credits? Erasing a building (right-click) refunds its full cost. NILE calls it \"flexible capital\"."
+    },
+    "delta-2d513f69": {
+      "file": "delta-2d513f69.mp3",
+      "ms": 10870,
+      "who": "delta",
+      "mood": null,
+      "text": "The whole valley is yours. The new land on the east rim has sulfur in it: the yellow crystals. A Mixer turns sulfur and coal into explosives."
+    },
+    "delta-2ed16a20": {
+      "file": "delta-2ed16a20.mp3",
+      "ms": 7108,
+      "who": "delta",
+      "mood": null,
+      "text": "Priority Requests ask for a number of one product before the clock runs out, and pay a bonus on top."
+    },
+    "delta-2f52e8fd": {
+      "file": "delta-2f52e8fd.mp3",
+      "ms": 8858,
+      "who": "delta",
+      "mood": null,
+      "text": "Tip: the Production overview in the top bar shows what you make, use and sell per minute. Red means you are short of it."
     },
     "delta-3142e01e": {
       "file": "delta-3142e01e.mp3",
@@ -190,6 +232,13 @@
       "mood": null,
       "text": "The whole valley is yours to build on now. Well, NILE's. You may borrow it. Mind the river: it belongs to the fish until further notice."
     },
+    "delta-347125b9": {
+      "file": "delta-347125b9.mp3",
+      "ms": 7996,
+      "who": "delta",
+      "mood": null,
+      "text": "NILE reminds franchisees that the valley remains the property of NILE. You are merely its most enthusiastic tenant."
+    },
     "delta-3503f4ef": {
       "file": "delta-3503f4ef.mp3",
       "ms": 2955,
@@ -203,6 +252,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "Fun fact: nobody bills your health insurer for excitement any more. I checked. Twice."
+    },
+    "delta-3743c543": {
+      "file": "delta-3743c543.mp3",
+      "ms": 5515,
+      "who": "delta",
+      "mood": null,
+      "text": "The market forgets in about a minute. Spread your sales and every price stays up."
     },
     "delta-3a69d04c": {
       "file": "delta-3a69d04c.mp3",
@@ -239,12 +295,33 @@
       "mood": null,
       "text": "Select Belt (key 1) and drag from just after the Extractor's arrow into the Smelter. Items follow the arrows."
     },
+    "delta-441e64bb": {
+      "file": "delta-441e64bb.mp3",
+      "ms": 6377,
+      "who": "delta",
+      "mood": null,
+      "text": "Big factories need power. A Generator burns coal; split your coal belt to feed it."
+    },
+    "delta-4481d2ab": {
+      "file": "delta-4481d2ab.mp3",
+      "ms": 6141,
+      "who": "delta",
+      "mood": null,
+      "text": "The Assembler makes circuits from a plate and a wire. License it in the console once you can afford it."
+    },
     "delta-44998a68": {
       "file": "delta-44998a68.mp3",
       "ms": 5358,
       "who": "delta",
       "mood": "sinister",
       "text": "NIHIL reminds you: nothing lasts forever. Except your contract."
+    },
+    "delta-45468d06": {
+      "file": "delta-45468d06.mp3",
+      "ms": 6298,
+      "who": "delta",
+      "mood": null,
+      "text": "The Land button again. Land gets dearer each time, and so do the products you can make on it."
     },
     "delta-46dea570": {
       "file": "delta-46dea570.mp3",
@@ -266,6 +343,20 @@
       "who": "delta",
       "mood": "happy",
       "text": "A circuit! So small. So fragile. So billable."
+    },
+    "delta-49969e3b": {
+      "file": "delta-49969e3b.mp3",
+      "ms": 9746,
+      "who": "delta",
+      "mood": null,
+      "text": "When your factory hums, send it to the leaderboard. The server rebuilds it and measures what it really earns. No fibbing. I checked."
+    },
+    "delta-5062be6d": {
+      "file": "delta-5062be6d.mp3",
+      "ms": 7657,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Licence acquired. Somewhere a NILE lawyer just smiled, which is rare and slightly alarming."
     },
     "delta-509ab6c1": {
       "file": "delta-509ab6c1.mp3",
@@ -323,6 +414,13 @@
       "mood": null,
       "text": "Belt Data Cartridges from the Fabricator into a Lab (key 8). The Lab turns them into points."
     },
+    "delta-5b67caa6": {
+      "file": "delta-5b67caa6.mp3",
+      "ms": 5750,
+      "who": "delta",
+      "mood": null,
+      "text": "Spend research points in the console. Express Belts move everything twice as fast."
+    },
     "delta-5c6e7d3e": {
       "file": "delta-5c6e7d3e.mp3",
       "ms": 6141,
@@ -330,12 +428,33 @@
       "mood": null,
       "text": "Click an Assembler and pick Advanced Circuit, then feed it 2 circuits + 1 steel."
     },
+    "delta-5c770396": {
+      "file": "delta-5c770396.mp3",
+      "ms": 13430,
+      "who": "delta",
+      "mood": null,
+      "text": "You start with belts, Extractors and Smelters, a few hundred credits and the fenced land around the Dispatch Pad. Every other building you license, and more land you buy, with what the Pad pays you."
+    },
+    "delta-63e0b6e6": {
+      "file": "delta-63e0b6e6.mp3",
+      "ms": 5436,
+      "who": "delta",
+      "mood": null,
+      "text": "A Fabricator makes cartridges from a circuit and a wire. Belt them into a Lab."
+    },
     "delta-63fd0850": {
       "file": "delta-63fd0850.mp3",
       "ms": 6638,
       "who": "delta",
       "mood": null,
       "text": "Generator is key 0. Split your coal belt: some for the Foundry, some for the Generator."
+    },
+    "delta-6bf81f65": {
+      "file": "delta-6bf81f65.mp3",
+      "ms": 9119,
+      "who": "delta",
+      "mood": null,
+      "text": "Every licence NILE sells, bought. You are now, technically, a franchise. Congratulations, or condolences."
     },
     "delta-6d00571e": {
       "file": "delta-6d00571e.mp3",
@@ -379,6 +498,13 @@
       "mood": null,
       "text": "Push it much further and the breaker trips. Generators arrive after Phase 2. Until then: switch machines off in their panels, or enjoy the slow life."
     },
+    "delta-7b32eea0": {
+      "file": "delta-7b32eea0.mp3",
+      "ms": 5671,
+      "who": "delta",
+      "mood": null,
+      "text": "The Land button in the console moves your fence out. More land, more ore fields."
+    },
     "delta-7c1cc24c": {
       "file": "delta-7c1cc24c.mp3",
       "ms": 5985,
@@ -400,12 +526,26 @@
       "mood": null,
       "text": "Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision."
     },
+    "delta-814d7820": {
+      "file": "delta-814d7820.mp3",
+      "ms": 5175,
+      "who": "delta",
+      "mood": null,
+      "text": "Upgrading a machine is often cheaper than building a second one. Often."
+    },
     "delta-831b30a2": {
       "file": "delta-831b30a2.mp3",
       "ms": 7578,
       "who": "delta",
       "mood": null,
       "text": "Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments."
+    },
+    "delta-86bffa66": {
+      "file": "delta-86bffa66.mp3",
+      "ms": 10713,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Hello, Steward. I'm DELTA. This is Infinite: no Moon to save, no cannon, no deadline. Just you, a valley and a market."
     },
     "delta-8977ecb2": {
       "file": "delta-8977ecb2.mp3",
@@ -463,12 +603,26 @@
       "mood": null,
       "text": "Advanced Circuits cost 60 research points in the Research panel."
     },
+    "delta-9330efff": {
+      "file": "delta-9330efff.mp3",
+      "ms": 7265,
+      "who": "delta",
+      "mood": null,
+      "text": "Data Cartridges from the Fabricator become research in the Lab: faster belts, better circuits, tier 4."
+    },
     "delta-944fc669": {
       "file": "delta-944fc669.mp3",
       "ms": 7657,
       "who": "delta",
       "mood": null,
       "text": "Request complete, bonus credited. NILE appreciates your hustle. NILE also monetises your hustle."
+    },
+    "delta-965b7205": {
+      "file": "delta-965b7205.mp3",
+      "ms": 5097,
+      "who": "delta",
+      "mood": null,
+      "text": "The last piece of land is the dearest, and it has sulfur on the east rim."
     },
     "delta-98bd774d": {
       "file": "delta-98bd774d.mp3",
@@ -497,6 +651,13 @@
       "who": "delta",
       "mood": null,
       "text": "Moving on! Phase 3 is the Power Core: Steel and Capacitors. A Capacitor is one steel and two copper wire, in an Assembler. Faster work is its own reward. It is also the only reward."
+    },
+    "delta-a346e0b6": {
+      "file": "delta-a346e0b6.mp3",
+      "ms": 6795,
+      "who": "delta",
+      "mood": null,
+      "text": "An Assembler needs one iron plate and one copper wire. Belt both into it, any side works."
     },
     "delta-a4176028": {
       "file": "delta-a4176028.mp3",
@@ -532,6 +693,13 @@
       "who": "delta",
       "mood": null,
       "text": "Quick orientation: WASD or the arrow keys move your view, the mouse wheel zooms, Q and E rotate. Middle-drag works too."
+    },
+    "delta-a9144dca": {
+      "file": "delta-a9144dca.mp3",
+      "ms": 5175,
+      "who": "delta",
+      "mood": null,
+      "text": "Sulfur from the east rim and coal into a Mixer. Handle with something."
     },
     "delta-acefbf9d": {
       "file": "delta-acefbf9d.mp3",
@@ -603,6 +771,20 @@
       "mood": null,
       "text": "Delivery confirmed! Credits added to your account, minus processing fees, minus the fee for calculating processing fees."
     },
+    "delta-bbafcaf9": {
+      "file": "delta-bbafcaf9.mp3",
+      "ms": 10556,
+      "who": "delta",
+      "mood": null,
+      "text": "The Pad pays less for anything you flood it with, so a factory that makes many things earns the most. Priority Requests grow every time you fill one."
+    },
+    "delta-bdde2113": {
+      "file": "delta-bdde2113.mp3",
+      "ms": 5906,
+      "who": "delta",
+      "mood": null,
+      "text": "They grow every time. A Splitter in front of the Pad keeps one product flowing for them."
+    },
     "delta-c049b6ab": {
       "file": "delta-c049b6ab.mp3",
       "ms": 4626,
@@ -631,12 +813,26 @@
       "mood": "sinister",
       "text": "Congratulations, Asset. You have saved Earth from free things."
     },
+    "delta-c90d7f03": {
+      "file": "delta-c90d7f03.mp3",
+      "ms": 6455,
+      "who": "delta",
+      "mood": null,
+      "text": "Top bar, Board. The server rebuilds your factory and scores what it earns per minute."
+    },
     "delta-c94a5010": {
       "file": "delta-c94a5010.mp3",
       "ms": 8075,
       "who": "delta",
       "mood": "glitch",
       "text": "Breaker tripped! The grid was overloaded, so everything electric has stopped. Very safe. Very quiet."
+    },
+    "delta-ca573762": {
+      "file": "delta-ca573762.mp3",
+      "ms": 5175,
+      "who": "delta",
+      "mood": null,
+      "text": "Welcome back to the valley. The market missed you. The market misses everyone."
     },
     "delta-ca8c5a30": {
       "file": "delta-ca8c5a30.mp3",
@@ -701,6 +897,13 @@
       "mood": "glitch",
       "text": "Unrelated: Selene's turret turns a full 360 degrees. NIHIL insisted on the premium mount. Their headquarters is due east. I mention this for no reason."
     },
+    "delta-dd742320": {
+      "file": "delta-dd742320.mp3",
+      "ms": 7186,
+      "who": "delta",
+      "mood": null,
+      "text": "A Foundry takes iron ingots on one side and coal on another. Coal is the black crystal field."
+    },
     "delta-de363074": {
       "file": "delta-de363074.mp3",
       "ms": 5671,
@@ -722,6 +925,20 @@
       "mood": null,
       "text": "Click a machine and press Upgrade in its panel (or use the Upgrade tool, key U). Higher tiers work faster. The Moon will not wait. Well, it will. But NIHIL will not."
     },
+    "delta-e19284a7": {
+      "file": "delta-e19284a7.mp3",
+      "ms": 6220,
+      "who": "delta",
+      "mood": null,
+      "text": "Steel, from iron ingots and coal, is worth a lot more than either. The Foundry makes it."
+    },
+    "delta-e1d1e4a1": {
+      "file": "delta-e1d1e4a1.mp3",
+      "ms": 8388,
+      "who": "delta",
+      "mood": null,
+      "text": "An Extractor, a belt, a Smelter (key 3) and a belt into the Dispatch Pad: that is a factory."
+    },
     "delta-e3c822cc": {
       "file": "delta-e3c822cc.mp3",
       "ms": 7421,
@@ -735,6 +952,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "Look at you go! I've unlocked the Press, the Assembler, the Splitter and the Merger."
+    },
+    "delta-e72b1310": {
+      "file": "delta-e72b1310.mp3",
+      "ms": 6455,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Ten Priority Requests filled. They keep growing. So, apparently, do you."
     },
     "delta-e75a7bd9": {
       "file": "delta-e75a7bd9.mp3",
@@ -806,6 +1030,13 @@
       "mood": null,
       "text": "NILE has leased you a small plot for now: the fenced land around the Dispatch Pad. It grows as the cannon does."
     },
+    "delta-fd5a2cd4": {
+      "file": "delta-fd5a2cd4.mp3",
+      "ms": 6377,
+      "who": "delta",
+      "mood": null,
+      "text": "A tripped breaker stops everything powered. Generators, Steward. Generators."
+    },
     "nile-105f7f62": {
       "file": "nile-105f7f62.mp3",
       "ms": 3346,
@@ -819,6 +1050,13 @@
       "who": "nile",
       "mood": null,
       "text": "PHASE 2 COMPLETE — Targeting systems online. The Moon has been located. It was where we left it."
+    },
+    "nile-2df2bee4": {
+      "file": "nile-2df2bee4.mp3",
+      "ms": 6377,
+      "who": "nile",
+      "mood": null,
+      "text": "INCOMING TRANSMISSION — NILE Franchise Programme. Congratulations on your very own valley."
     },
     "nile-4992fbb0": {
       "file": "nile-4992fbb0.mp3",

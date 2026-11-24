@@ -313,5 +313,7 @@ Each iteration should be playable on its own before the next one starts.
             and efficiency (per occupied cell). It does not prove the factory
             was built in play; a Story speedrun board would need a replay of
             every input.
-      - [ ] Deploy to Railway (in progress); playtest Infinite's prices (licences, land,
-            request growth); record DELTA's Infinite lines.
+      - [x] Live on Railway at selene.schellekensdigital.be; DELTA's Infinite
+            lines recorded (34 clips); the "Gemaakt door Schellekens Digital"
+            badge on the title screen and at the end of the credits.
+      - [ ] Playtest Infinite's prices (licences, land, request growth).

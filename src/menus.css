@@ -141,6 +141,46 @@
   }
 }
 
+/* The maker's badge: bottom right on the title screen, in the page's flow on small screens. */
+.made-by {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  display: block;
+  line-height: 0;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+
+.made-by:hover,
+.made-by:focus-visible {
+  opacity: 1;
+}
+
+.made-by img {
+  width: 231px;
+  height: auto;
+}
+
+@media (max-width: 1100px), (max-height: 760px) {
+  .made-by {
+    position: static;
+    align-self: center;
+    margin: 18px auto 0;
+  }
+  .title-screen {
+    flex-direction: column;
+  }
+}
+
+/* The badge at the end of the credits roll. */
+.cr-made-by {
+  display: block;
+  width: 231px;
+  height: auto;
+  margin: 48px auto 0;
+}
+
 /* ---- Account chip ------------------------------------------------------------------------ */
 .mm-chip {
   height: 32px;

@@ -28,6 +28,7 @@ import {
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
+import { MADE_BY } from './menus.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -1201,6 +1202,11 @@ export function createUI({
             inner.appendChild(sec);
         }
         inner.append(el('p', 'cr-end', CREDITS.end[kind === 'hq' ? 'hq' : 'moon']), el('p', 'cr-thanks', CREDITS.thanks));
+        // The maker's badge closes the roll (menus.js MADE_BY).
+        const badge = el('img', 'cr-made-by');
+        badge.src = MADE_BY.src;
+        badge.alt = MADE_BY.alt;
+        inner.appendChild(badge);
         roll.appendChild(inner);
         document.body.appendChild(roll);
         cue('open');

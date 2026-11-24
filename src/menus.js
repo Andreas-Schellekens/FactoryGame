@@ -21,6 +21,23 @@ function button(label, onClick, cls = 'btn-secondary') {
     b.addEventListener('click', onClick);
     return b;
 }
+/** The maker's badge (Schellekens Digital), linking to their site. */
+export const MADE_BY = { src: '/assets/brand/made-by-schellekens-digital.png', alt: 'Gemaakt door Schellekens Digital', href: 'https://schellekensdigital.be' };
+function madeBy() {
+    const a = el('a', 'made-by');
+    a.href = MADE_BY.href;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = 'Schellekens Digital';
+    const img = el('img');
+    img.src = MADE_BY.src;
+    img.alt = MADE_BY.alt;
+    img.width = 231;
+    img.height = 48;
+    a.appendChild(img);
+    return a;
+}
+
 function field(label, type = 'text', attrs = {}) {
     const wrap = el('label', 'mm-field');
     wrap.appendChild(el('span', 'mm-flabel', label));
@@ -203,7 +220,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             row,
             el('p', 'fine-print', `By clicking Begin you accept the ${BRAND.nile.name} ${BRAND.nile.player} Agreement (4,812 pages), including Clause 88.`),
         );
-        overlay.append(lockup, corner, card);
+        overlay.append(lockup, corner, card, madeBy());
         document.body.appendChild(overlay);
         overlay._off = offSaves;
         card.querySelector('.btn-continue, .btn-primary')?.focus();
