@@ -441,6 +441,14 @@ export function createUI({
     let voiceEnds = 0;        // performance.now() when the current line's voice clip ends, 0 = no voice
 
     function speaker(line) {
+        // A line can start in the frame before the HUD repaints (on load, right after the ending):
+        // take the brand from the game as it is now. (Infinite keeps the valley's own.)
+        const now = !cinematic ? getState() : null;
+        if (now && now.mode !== 'infinite') {
+            brandPhase = now.project.phase;
+            brandEnding = now.project.ending ?? null;
+            brandCompany = now.project.company ?? null;
+        }
         const b = brandFor(brandPhase, brandEnding, brandCompany);
         const evil = brandPhase >= 4 && !b.own;
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
