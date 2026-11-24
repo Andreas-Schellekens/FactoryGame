@@ -28,7 +28,8 @@ export const ORE_FIELDS = [
     { type: 'sulfurOre', x: 3, y: 21, r: 1.25, fromPhase: 4 },
     { type: 'sulfurOre', x: 8, y: 22, r: 1.15, fromPhase: 4 },
     // Infinite mode's valley keeps its river, so its sulfur lies on the east rim instead
-    // and comes up with the last land purchase (`fromPlot`: the PLOTS index bought).
+    // and comes up with the last land purchase (`fromPlot`: the PLOTS index bought). Story's
+    // epilogue lays it as well, once NIHIL's compound is cleared (before the river takes the bed's).
     { type: 'sulfurOre', x: 30, y: 8, r: 1.3, only: 'infinite', fromPlot: 3 },
 ];
 

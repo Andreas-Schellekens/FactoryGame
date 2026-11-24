@@ -24,7 +24,7 @@ import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS, HQ_
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
-    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX, CHALLENGE_TEXT, challengeName,
+    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX, CHALLENGE_TEXT, challengeName, EPILOGUE, LOCKE,
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
@@ -524,6 +524,14 @@ export function createUI({
     let voiceEnds = 0;        // performance.now() when the current line's voice clip ends, 0 = no voice
 
     function speaker(line) {
+        // A line can start in the frame before the HUD repaints (on load, right after the ending):
+        // take the brand from the game as it is now. (Infinite keeps the valley's own.)
+        const now = !cinematic ? getState() : null;
+        if (now && now.mode !== 'infinite') {
+            brandPhase = now.project.phase;
+            brandEnding = now.project.ending ?? null;
+            brandCompany = now.project.company ?? null;
+        }
         const b = brandFor(brandPhase, brandEnding, brandCompany);
         const evil = brandPhase >= 4 && !b.own;
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
@@ -850,18 +858,22 @@ export function createUI({
         toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
     }
 
-    /** Phase completion: the ribbon swells into a banner for a few seconds. */
+    /**
+     * Phase completion: the ribbon swells into a banner for a few seconds. An object instead of a
+     * phase index is a banner of its own (an epilogue goal): { kicker, title, extra }.
+     */
     function showBanner(phaseIndex) {
-        const unlocks = PHASES[phaseIndex]?.unlocks ?? [];
+        const own = typeof phaseIndex === 'object' ? phaseIndex : null;
+        const unlocks = own ? [] : PHASES[phaseIndex]?.unlocks ?? [];
         celebrating = true;
         ribbon.classList.add('celebrate');
         // A warm flash at the edges of the screen with the stinger.
         const flash = el('div', 'phase-flash');
         root.appendChild(flash);
         setTimeout(() => flash.remove(), 1600);
-        ribbonKicker.textContent = `Phase ${pad2(phaseIndex + 1)} · accomplished`;
-        ribbonTitle.textContent = PHASE_TEXT[phaseIndex]?.title ?? '';
-        ribbonExtra.textContent = unlocks.length ? `New · ${unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}` : '';
+        ribbonKicker.textContent = own ? own.kicker : `Phase ${pad2(phaseIndex + 1)} · accomplished`;
+        ribbonTitle.textContent = own ? own.title : PHASE_TEXT[phaseIndex]?.title ?? '';
+        ribbonExtra.textContent = own ? own.extra ?? '' : unlocks.length ? `New · ${unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}` : '';
         clearTimeout(celebrateTimer);
         celebrateTimer = setTimeout(() => {
             celebrating = false;
@@ -1336,12 +1348,55 @@ export function createUI({
         inner.addEventListener('animationend', close);
     }
 
+    /**
+     * The epilogue's close (after the NIHIL HQ ending): the company's annual report, in the style
+     * of the mission and founding reports. Keep building returns to the sandbox.
+     * @param {{ stats: { seconds: number, sold: number }, company?: string|null, onContinue: () => void }} opts
+     */
+    function showEpilogueReport({ stats: s, company = null, onContinue }) {
+        const R = EPILOGUE.report;
+        const name = company ?? COMPANY.defaultName;
+        const report = el('div', 'report report-epilogue');
+        const head = el('div', 'rep-head');
+        const patch = el('span', 'rep-patch');
+        patch.innerHTML = companyMarkSVG(name, 64);
+        const headText = el('div', 'rep-headtext');
+        headText.append(el('span', 'rep-kicker', R.kicker), el('span', 'rep-title', R.title), el('span', 'rep-sub', `${name} · ${COMPANY.byline} · ${COMPANY.motto}`));
+        head.append(patch, headText);
+        const grid = el('div', 'rep-grid');
+        for (const [key, value] of [['seconds', fmtTime(s.seconds)], ['sold', s.sold], ['compounds', 1], ['rivers', 1], ['moons', 1]]) {
+            const cell = el('div', `rep-stat stat-${key}`);
+            cell.append(el('span', 'rep-value', String(value)), el('span', 'rep-label', R.labels[key]));
+            grid.appendChild(cell);
+        }
+        const actions = el('div', 'rep-actions');
+        const keep = el('button', 'btn-primary', R.keep);
+        keep.type = 'button';
+        const credits = el('button', 'btn-secondary', R.credits);
+        credits.type = 'button';
+        actions.append(keep, credits);
+        report.append(head, grid, el('p', 'rep-note', R.note), actions);
+        document.body.appendChild(report);
+        cue('open');
+        requestAnimationFrame(() => keep.focus());
+        keep.addEventListener('click', () => {
+            report.remove();
+            cue('close');
+            onContinue?.();
+        });
+        credits.addEventListener('click', () => showCredits('hq'));
+    }
+
     // ---- Per-frame refresh -------------------------------------------------------------------
     /** Inspector text for a cell, or null when there's nothing worth showing. */
     /** Inspector text for a cell: what a machine takes and makes, what it holds, and how it's hooked up. */
     function describe(cell, io, ports) {
         if (!cell) return null;
-        if (cell.blocked) return { title: 'Selene construction site', body: 'Reserved. Deliveries to the pad build the cannon here.' };
+        if (cell.blocked) {
+            // Until the reveal the site's sign carries the Chief Executive's name.
+            const sign = brandPhase < 4 && phaseShown !== -2 ? `\n${LOCKE.siteSign.toUpperCase()}` : '';
+            return { title: 'Selene construction site', body: `Reserved. Deliveries to the pad build the cannon here.${sign}` };
+        }
         const lines = [];
         let title = null;
         const names = (list) => list.map((k) => (ITEM_NAMES[k] ?? k).toUpperCase()).join(' · ');
@@ -1378,9 +1433,11 @@ export function createUI({
         return title ? { title, body: lines.join('\n') } : null;
     }
 
-    function buildPhaseDom(phase, complete, ending = null, company = null) {
+    /** What the brand, sky and console were built for: phase, ending, company, epilogue goal. */
+    const storySig = (p, epi) => `${p.phase}|${p.ending ?? null}|${p.company ?? null}|${epi ? `${epi.stage}${epi.closed ? 'c' : ''}` : '-'}`;
+    function buildPhaseDom(phase, complete, ending = null, company = null, epi = null) {
         phaseShown = phase;
-        phaseSig = `${phase}|${ending}|${company}`;
+        phaseSig = storySig({ phase, ending, company }, epi);
         brandPhase = phase;
         brandEnding = ending;
         brandCompany = company;
@@ -1403,6 +1460,10 @@ export function createUI({
             ribbonTitle.textContent = done ? 'Selene has fired' : PHASE_TEXT[phase].title;
             ribbonExtra.textContent = '';
         }
+        if (done && epi) {
+            buildEpilogueDom(epi, b);
+            return;
+        }
         if (done) {
             unlockLine.textContent = free ? ENDING_HQ.report.note : 'The sky is now a subscription. Keep building, if you like.';
             return;
@@ -1422,6 +1483,37 @@ export function createUI({
         unlockLine.textContent = def.unlocks.length
             ? `Unlocks · ${def.unlocks.map((t) => BUILDING_NAMES[t]).join(' · ')}`
             : phase === PHASES.length - 1 ? 'Completes Protocol: Selene' : PHASE_TEXT[phase].blurb;
+    }
+
+    // ---- The epilogue (after the NIHIL HQ ending): the active goal in the ribbon and the console ----
+    function reqRow(key, name, n) {
+        const row = el('div', 'req');
+        const count = el('span', 'req-count');
+        const bar = el('div', 'req-bar');
+        const fill = el('div', 'req-fill');
+        bar.appendChild(fill);
+        row.append(el('span', 'req-name', name), count, bar);
+        reqList.appendChild(row);
+        reqRows[key] = { row, count, fill, n, got: -1 };
+        return reqRows[key];
+    }
+    function buildEpilogueDom(epi, b) {
+        const goal = epi.goal;
+        const text = goal ? EPILOGUE.GOALS[goal.id] : null;
+        headSub.textContent = `${EPILOGUE.sub} · ${b.byline}`;
+        if (!celebrating) {
+            ribbonKicker.textContent = goal ? EPILOGUE.ribbon(epi.stage + 1, epi.total) : EPILOGUE.doneKicker;
+            ribbonTitle.textContent = goal ? text.title : EPILOGUE.doneTitle;
+            ribbonExtra.textContent = '';
+        }
+        if (!goal) {
+            unlockLine.textContent = EPILOGUE.doneNote;
+            return;
+        }
+        for (const [item, n] of Object.entries(goal.requires)) reqRow(item, ITEM_NAMES[item] ?? item, n);
+        // The river goal: our machines still in the old bed, counted down to clear.
+        if (goal.clearBed) reqRow('bed', EPILOGUE.bed.name, 1).bed = true;
+        unlockLine.textContent = text.blurb;
     }
 
     // ---- Infinite: the land and licence shop in the console, instead of a phase's requirements ----
@@ -1589,8 +1681,8 @@ export function createUI({
                 buildInfiniteDom(s.infinite);
             }
             for (const r of infRefs) r.btn.classList.toggle('broke', s.money < r.cost);
-        } else if (`${project.phase}|${project.ending ?? null}|${project.company ?? null}` !== phaseSig && !cinematic) {
-            buildPhaseDom(project.phase, project.complete, project.ending ?? null, project.company ?? null);
+        } else if (storySig(project, s.epilogue) !== phaseSig && !cinematic) {
+            buildPhaseDom(project.phase, project.complete, project.ending ?? null, project.company ?? null, s.epilogue ?? null);
         }
 
         // Credits count toward the real value and flash mustard (earned) or red (spent).
@@ -1623,8 +1715,17 @@ export function createUI({
         pauseBtn.setAttribute('aria-label', s.paused ? 'Resume' : 'Pause');
         speedLabel.textContent = `${s.speed.toFixed(2)}×`;
 
+        // In the epilogue the rows count the active goal's deliveries (and the river bed's machines).
+        const counts = s.epilogue?.goal ? s.epilogue.got : project.delivered;
         for (const [item, row] of Object.entries(reqRows)) {
-            const got = Math.min(row.n, project.delivered[item] ?? 0);
+            if (row.bed) {
+                const left = s.epilogue?.bedLeft ?? 0;
+                row.count.textContent = left ? EPILOGUE.bed.left(left) : EPILOGUE.bed.clear;
+                row.fill.style.width = left ? '0%' : '100%';
+                row.row.classList.toggle('met', !left);
+                continue;
+            }
+            const got = Math.min(row.n, counts[item] ?? 0);
             row.count.textContent = `${pad2(got)}/${pad2(row.n)}`;
             row.fill.style.width = `${(got / row.n) * 100}%`;
             if (row.got >= 0 && got > row.got) bump(row.row, 'bump', 380);
@@ -1741,7 +1842,7 @@ export function createUI({
 
     update();
     return {
-        update, say, isBusy, showBanner, showTitle, showEnding, showCredits, toast,
+        update, say, isBusy, showBanner, showTitle, showEnding, showCredits, showEpilogueReport, toast,
         setKeys,
         /** Open or close the alerts list (key N). */
         toggleAlerts: () => togglePopover(alertsPanel),

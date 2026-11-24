@@ -6,7 +6,7 @@
 // A key hashes speaker, mood and text, so editing a line (or its mood) makes
 // it a new key: the old clip simply stops matching and the generator records
 // the new one. Lines are enumerated exactly as director.js builds them.
-import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack, INFINITE } from './story.js';
+import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack, INFINITE, LOCKE, EPILOGUE } from './story.js';
 
 /** Speakers with a voice. Memos are read, not spoken. */
 export const VOICED = new Set(['delta', 'nile', 'boss']);
@@ -40,7 +40,8 @@ export function collectVoiceLines() {
     add(welcomeBack(0));
     add(welcomeBack(4));
     add(welcomeBack(5, 'hq'));
-    for (const beat of BEATS) {
+    // The campaign's beats, Nolan's pre-reveal ones (story.js LOCKE) slotted in where they play.
+    for (const beat of STORY_BEATS) {
         let prev = null;
         for (const line of beat.lines) {
             add(line, prev && prev.who === line.who ? prev.text : null);
@@ -48,7 +49,7 @@ export function collectVoiceLines() {
         }
     }
     for (const phase of OBJECTIVES) for (const o of phase) if (o.hint) add(delta(o.hint));
-    for (const text of AMBIENT.early) add(delta(text));
+    for (const t of [...AMBIENT.early, ...LOCKE.AMBIENT]) add(typeof t === 'string' ? delta(t) : t);
     for (const t of AMBIENT.late) add(typeof t === 'string' ? delta(t, 'sinister') : t);
     for (const text of [...REACTIONS.orderCompleted, ...REACTIONS.orderFailed]) add(delta(text));
     for (const text of AMBIENT.free) add(delta(text, 'happy'));
@@ -70,5 +71,16 @@ export function collectVoiceLines() {
     }
     for (const stage of INFINITE.OBJECTIVES) for (const o of stage) if (o.hint) add(delta(o.hint));
     for (const text of INFINITE.AMBIENT.early) add(delta(text));
+    // The epilogue after the NIHIL HQ ending (iteration 7): its beats, hints, chatter, reactions.
+    for (const beat of EPILOGUE.BEATS) {
+        let before = null;
+        for (const line of beat.lines) {
+            add(line, before && before.who === line.who ? before.text : null);
+            before = line;
+        }
+    }
+    for (const o of EPILOGUE.OBJECTIVES) if (o.hint) add(delta(o.hint));
+    for (const text of EPILOGUE.AMBIENT) add(delta(text, 'happy'));
+    for (const text of [...EPILOGUE.REACTIONS.orderCompleted, ...EPILOGUE.REACTIONS.orderFailed]) add(delta(text));
     return [...out.values()];
 }

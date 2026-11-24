@@ -3,7 +3,7 @@
 // objectives, nudges for a stuck player, order reactions, ambient chatter and
 // the ending trigger. No DOM, no Pixi — it talks to the UI through callbacks.
 // All text comes from story.js.
-import { BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack } from './story.js';
+import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack, LOCKE, EPILOGUE } from './story.js';
 
 // Timings are in simulation ticks (4/s at 1× speed), so pausing the game
 // also pauses DELTA's nagging.
@@ -14,20 +14,42 @@ const REACTION_CHANCE = 0.5;
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-/** The campaign's script. Infinite mode passes its own (story.js INFINITE) through `script`. */
-export const STORY_SCRIPT = { BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack, lateFrom: 4 };
+/**
+ * The campaign's script (with Nolan's pre-reveal beats and chatter, story.js LOCKE). Infinite mode
+ * passes its own (story.js INFINITE) through `script`, and so does the epilogue (below).
+ */
+export const STORY_SCRIPT = {
+    BEATS: STORY_BEATS, OBJECTIVES, AMBIENT: { ...AMBIENT, early: [...AMBIENT.early, ...LOCKE.AMBIENT] },
+    REACTIONS, welcomeBack, lateFrom: 4,
+};
+
+/**
+ * After the NIHIL HQ ending: the company's epilogue (story.js EPILOGUE, epilogue.js). One list of
+ * goals in the flight plan (until the report has been shown), the founder's chatter, the company's
+ * own order reactions; once the `finale` beat has played and DELTA is quiet, `finale()` brings up
+ * the report.
+ */
+export const EPILOGUE_SCRIPT = {
+    BEATS: EPILOGUE.BEATS,
+    OBJECTIVES: (w) => (w.epilogue && !w.epilogue.closed ? EPILOGUE.OBJECTIVES : []),
+    AMBIENT: { early: [], late: [], free: [...AMBIENT.free, ...EPILOGUE.AMBIENT] },
+    REACTIONS: EPILOGUE.REACTIONS,
+    welcomeBack,
+    finale: 'epi:valley',
+};
 
 /**
  * @param {{
  *   say: (line: {who: string, text: string, mood?: string}) => void,
- *   banner: (phaseIndex: number) => void,
+ *   banner: (phaseIndex: number | { kicker: string, title: string, extra?: string }) => void,
  *   ending: () => void,
+ *   finale?: () => void,     // a script's closing beat has played (the epilogue's report)
  *   isBusy: () => boolean,   // is the comms panel still talking?
  *   script?: () => typeof STORY_SCRIPT,   // which script plays (the mode's)
  *   hints?: () => boolean,   // the "DELTA's hints" setting
  * }} io
  */
-export function createDirector({ say, banner, ending, isBusy, script = () => STORY_SCRIPT, hints = () => true }) {
+export function createDirector({ say, banner, ending, finale = () => {}, isBusy, script = () => STORY_SCRIPT, hints = () => true }) {
     /** Fired beat ids, ticked objectives (`obj:<phase>:<id>`), used ambient lines. Persisted. */
     let flags = new Set();
     let objectives = [];
@@ -55,7 +77,8 @@ export function createDirector({ say, banner, ending, isBusy, script = () => STO
     }
 
     function computeObjectives(w) {
-        const list = script().OBJECTIVES[w.phase] ?? [];
+        const { OBJECTIVES } = script();
+        const list = (typeof OBJECTIVES === 'function' ? OBJECTIVES(w) : OBJECTIVES[w.phase]) ?? [];
         objectives = list.map((o) => {
             const key = `obj:${w.phase}:${o.id}`;
             if (!flags.has(key) && o.done(w)) flags.add(key); // sticky once done
@@ -114,6 +137,12 @@ export function createDirector({ say, banner, ending, isBusy, script = () => STO
                 return;
             }
             runBeats(w);
+            // A script's closing beat (the epilogue's) has been said: once, when DELTA is quiet.
+            const { finale: last } = script();
+            if (last && flags.has(last) && !flags.has(`finale:${last}`) && !isBusy()) {
+                flags.add(`finale:${last}`);
+                finale();
+            }
             computeObjectives(w);
             maybeHint(w);
             maybeReactToOrder(w);
