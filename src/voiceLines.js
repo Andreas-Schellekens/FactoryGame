@@ -6,7 +6,8 @@
 // A key hashes speaker, mood and text, so editing a line (or its mood) makes
 // it a new key: the old clip simply stops matching and the generator records
 // the new one. Lines are enumerated exactly as director.js builds them.
-import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack, INFINITE, LOCKE, EPILOGUE } from './story.js';
+import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack, INFINITE, LOCKE, EPILOGUE, challengeScript } from './story.js';
+import { challengeFor } from './challenge.js';
 
 /** Speakers with a voice. Memos are read, not spoken. */
 export const VOICED = new Set(['delta', 'nile', 'boss']);
@@ -82,5 +83,15 @@ export function collectVoiceLines() {
     for (const o of EPILOGUE.OBJECTIVES) if (o.hint) add(delta(o.hint));
     for (const text of EPILOGUE.AMBIENT) add(delta(text, 'happy'));
     for (const text of [...EPILOGUE.REACTIONS.orderCompleted, ...EPILOGUE.REACTIONS.orderFailed]) add(delta(text));
+    // The weekly challenge's script (iteration 7): only the lines that read the same every week
+    // can have a clip (names, numbers and targets change), so keep what three weeks have in common.
+    const weekLines = (key) => {
+        const s = challengeScript(challengeFor(key));
+        const lines = [...s.BEATS.flatMap((b) => b.lines), ...s.OBJECTIVES.flat().filter((o) => o.hint).map((o) => delta(o.hint)),
+            ...s.AMBIENT.early.map((t) => delta(t))];
+        return new Map(lines.filter((l) => VOICED.has(l.who)).map((l) => [voiceKey(l), l]));
+    };
+    const [a, ...others] = ['2026-W01', '2026-W02', '2026-W03'].map(weekLines);
+    for (const [key, line] of a) if (others.every((m) => m.has(key))) add(line);
     return [...out.values()];
 }

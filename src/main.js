@@ -1263,6 +1263,7 @@ window.addEventListener('keydown', (e) => {
     if (k === 'delete' || k === 'backspace') selectTool('erase');
     if (e.key === 'Escape') {
         if (ui.codexOpen()) ui.closeCodex();
+        else if (ui.closePopover()) { /* Keys, Production or Alerts was open: that's what Esc closed */ }
         else if (state.selected) {
             deselect();
             audio.cue('close');

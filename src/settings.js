@@ -50,6 +50,28 @@ function merge(base, saved) {
     return out;
 }
 
+/** Spare keys for a newly added action whose default key a player had already bound elsewhere. */
+const SPARE_KEYS = ['h', 'i', 'j', 'l', 'o', 'p', 'z', ';', "'", ',', '.', '/'];
+/**
+ * Bindings merged over the defaults can give one key to two actions: an action added in a later
+ * version (alerts, codex, blueprints…) gets its default key, which the player may already use. The
+ * action they bound themselves keeps it; the new one moves to a spare key (or none).
+ */
+function uniqueKeys(keys, saved) {
+    if (!saved || typeof saved !== 'object') return keys;
+    const out = { ...keys };
+    const taken = new Set(Object.keys(out).filter((a) => a in saved).map((a) => out[a]));
+    for (const a of Object.keys(out)) {
+        if (a in saved || !taken.has(out[a])) {
+            taken.add(out[a]);
+            continue;
+        }
+        out[a] = SPARE_KEYS.find((k) => !taken.has(k) && !Object.values(out).includes(k)) ?? '';
+        taken.add(out[a]);
+    }
+    return out;
+}
+
 /**
  * @param {{ audioDefaults?: object }} [opts]  the sound engine's current settings, so the
  *   first run keeps the volumes the old Sound panel stored.
@@ -62,6 +84,7 @@ export function createSettings({ audioDefaults } = {}) {
     const base = defaults();
     if (!stored && audioDefaults) base.audio = merge(base.audio, audioDefaults);
     let values = merge(base, stored?.values);
+    values.keys = uniqueKeys(values.keys, stored?.values?.keys);
     let updatedAt = stored?.updatedAt ?? 0;
     const listeners = new Set();
 
@@ -112,6 +135,7 @@ export function createSettings({ audioDefaults } = {}) {
         adopt(data, at) {
             if (!data || !(at > updatedAt)) return false;
             values = merge(defaults(), data);
+            values.keys = uniqueKeys(values.keys, data.keys);
             updatedAt = at;
             persist();
             emit(null);

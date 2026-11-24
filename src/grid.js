@@ -961,7 +961,9 @@ export function planStored(machines, anchor, to, rot = 0) {
         seen.add(`${t.x},${t.y}`);
         if (!fits) bad.push(t);
     }
-    return { moves, bad, cost, ok: moves.length > 0 && bad.length === 0 && score >= cost };
+    // In a weekly challenge a blueprint counts toward the machine cap, like a copy does.
+    const capped = !!activeChallenge && cappedCount() + moves.filter((mv) => countsTowardCap(mv.type)).length > activeChallenge.cap;
+    return { moves, bad, cost, capped, ok: moves.length > 0 && bad.length === 0 && !capped && score >= cost };
 }
 
 /** Demolish every machine in `cells` (refunds, like removeMachine). @returns {FactoryEvent[]} */

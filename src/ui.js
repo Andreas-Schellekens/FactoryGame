@@ -1846,6 +1846,13 @@ export function createUI({
         setKeys,
         /** Open or close the alerts list (key N). */
         toggleAlerts: () => togglePopover(alertsPanel),
+        /** Close an open top-bar popover (Keys, Production, Alerts). @returns {boolean} one was open */
+        closePopover: () => {
+            const open = [help, prodPanel, alertsPanel].find((p) => !p.classList.contains('hidden'));
+            if (!open) return false;
+            togglePopover(open);
+            return true;
+        },
         /** The codex (codexPanel.js): open on an entry ('item:steel', 'building:press'…), K's toggle, Esc's close. */
         openCodex: (id) => codex.open(id),
         toggleCodex: (id) => codex.toggle(id),
