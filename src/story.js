@@ -653,3 +653,160 @@ export const INFINITE = {
     },
     REACTIONS,
 };
+
+// ---- Weekly challenge (iteration 7) ------------------------------------------------------------
+// challenge.js draws each week's rules from its key; these are its words. A week's name is its
+// theme's name (`rules.name` picks one) and its target, "Skeleton Crew: Steel"; its brief is one
+// line in NILE's voice. challengeScript(rules) is DELTA's script for a challenge game (the
+// director plays it like INFINITE); its snapshot adds `w.capped` (machines under the cap) and
+// `w.tested` (a "Test here first" ran). These lines are text only (not voiced yet).
+const CH_PLURAL = {
+    circuit: 'Circuits', steel: 'Steel', capacitor: 'Capacitors', motor: 'Motors', advancedCircuit: 'Advanced Circuits',
+    explosive: 'Explosives', dataCartridge: 'Data Cartridges', seleneShell: 'Selene Shells',
+};
+/** "Capacitors", "Steel": a target in the plural. */
+export const targetPlural = (item) => CH_PLURAL[item] ?? `${ITEM_NAMES[item] ?? item}s`;
+
+export const CHALLENGE_THEMES = {
+    shoestring: {
+        names: ['Shoestring', 'Petty Cash', 'Austerity Measures', 'Penny Pinch'],
+        brief: (r) => `NILE froze the purse: CR ${r.budget} for the whole factory, upgrades included. Make it ${targetPlural(r.target)}.`,
+    },
+    skeleton: {
+        names: ['Skeleton Crew', 'Hiring Freeze', 'Short-Staffed', 'Lean Team'],
+        brief: (r) => `Only ${r.cap} machines on the payroll, belts not counted. Upgrade what you have and ship ${targetPlural(r.target)}.`,
+    },
+    stock: {
+        names: ['Factory Settings', 'Stock Parts', 'Out of the Box', 'Tier One'],
+        brief: (r) => `No upgrades this week: every machine stays at tier 1. Build wide and ship ${targetPlural(r.target)}.`,
+    },
+    scarcity: {
+        names: ['Thin Seams', 'Slim Pickings', 'Dry Spell', 'Scarce Ore'],
+        brief: (r) => `The survey found little ore, and none of it near the Pad. Make every crystal count towards ${targetPlural(r.target)}.`,
+    },
+    tight: {
+        names: ['Tight Quarters', 'Cramped Lease', 'Zoning Dispute', 'Small Print'],
+        brief: (r) => `NILE leased you a patch of the valley, not the valley. Fit a ${ITEM_NAMES[r.target]} line into it.`,
+    },
+    offgrid: {
+        names: ['Off the Grid', 'Power Rationing', 'Brownout Week', 'Unplugged'],
+        brief: (r) => `No Generators: the starter grid is all the power there is. Ship ${targetPlural(r.target)} without tripping it.`,
+    },
+    rush: {
+        names: ['Rush Hour', 'Express Lane', 'Overtime', 'Full Throttle'],
+        brief: (r) => `Express belts, deep pockets, a big cap. Nothing stands between you and ${targetPlural(r.target)} but the layout.`,
+    },
+};
+
+/** "Skeleton Crew: Steel". */
+export const challengeName = (r) => `${CHALLENGE_THEMES[r.theme]?.names[r.name] ?? 'Weekly challenge'}: ${ITEM_NAMES[r.target] ?? r.target}`;
+/** The week's one-line brief. */
+export const challengeBrief = (r) => CHALLENGE_THEMES[r.theme]?.brief(r) ?? '';
+
+/** "3 d 4 h left", "5 h 12 min left", "Over". */
+export function challengeTimeLeft(ms) {
+    if (ms <= 0) return 'Over';
+    const min = Math.floor(ms / 60000);
+    if (min >= 1440) return `${Math.floor(min / 1440)} d ${Math.floor((min % 1440) / 60)} h left`;
+    if (min >= 60) return `${Math.floor(min / 60)} h ${min % 60} min left`;
+    return `${Math.max(1, min)} min left`;
+}
+
+/** The week's rules as short lines (title card, console, board). */
+export function challengeRules(r) {
+    const production = r.buildings.filter((t) => !['belt', 'splitter', 'merger'].includes(t)).map((t) => BUILDING_NAMES[t]);
+    const routers = ['splitter', 'merger'].filter((t) => !r.buildings.includes(t)).map((t) => `${BUILDING_NAMES[t]}s`);
+    return [
+        `Target · ${targetPlural(r.target)}: the only thing the Pad takes, and what scores`,
+        `Machines · ${r.cap} at most (belts, splitters and mergers don't count)`,
+        `Budget · CR ${r.budget}, upgrades included. The Pad pays nothing`,
+        r.tierCap > 1 ? `Tiers · up to ${r.tierCap}` : 'Tiers · none: everything stays at tier 1',
+        `Buildings · ${production.join(', ')}${routers.length ? ` · no ${routers.join(' or ')}` : ''}`,
+        r.fastBelts ? 'Belts · express (two cells a tick)' : 'Belts · normal speed',
+        ['Land · a small lease round the Pad', 'Land · the middle of the valley, not its rim', 'Land · most of the valley'][r.plot] ?? 'Land · the whole valley, its ore laid out for this week',
+    ];
+}
+
+export const CHALLENGE_TEXT = {
+    kicker: 'Weekly challenge',
+    pitch: 'One factory puzzle a week, the same for every Steward. The server rebuilds your factory and ranks it.',
+    start: 'Start this week’s',
+    resume: 'Continue this week’s',
+    board: 'Weekly board',
+    unit: (r) => `${targetPlural(r.target)} / min`,
+    best: (v, rank) => (v == null ? 'No score yet this week' : `Your best · ${v} / min${rank ? ` · rank ${rank}` : ''}`),
+    top: 'This week’s top 3',
+    noTop: 'Nobody has sent a factory in yet. Be the first.',
+    offline: 'The board is offline; you can still play the week.',
+    lastWeek: (name) => `Last week · ${name}`,
+    over: 'This week is over: its board is closed. The new week’s challenge is on the title screen.',
+    slotName: (key) => `Challenge ${key}`,
+    slotProgress: (key) => `Challenge · ${key}`,
+    ribbon: (key) => `Weekly challenge · ${key}`,
+    refusal: {
+        banned: (name) => `No ${name} this week`,
+        cap: (cap) => `Machine cap reached: ${cap} of ${cap}. Belts, splitters and mergers don’t count`,
+        budget: (budget) => `Over budget: CR ${budget} is all there is this week`,
+        tier: 'This week’s tier cap',
+        copyCap: (cap) => `That copy would go over the cap of ${cap} machines`,
+    },
+    keyBanned: 'NOT NOW',
+    explain: 'The server rebuilds your factory on this week’s map, runs it for 6 minutes of game time and counts the target delivered in the last 5. One best per Steward; ties go to the cheaper factory, then the earlier one.',
+    submitNote: 'Only a factory that keeps to this week’s rules is accepted.',
+    padNote: (r) => `Takes only ${targetPlural(r.target)} this week, and pays nothing for them`,
+};
+
+/** DELTA's script for a challenge game (see the section comment). */
+export function challengeScript(r) {
+    const name = challengeName(r);
+    const one = ITEM_NAMES[r.target];
+    const many = targetPlural(r.target);
+    return {
+        BEATS: [
+            {
+                id: 'ch:welcome',
+                when: (w) => w.tick >= 2,
+                lines: [
+                    nile(`INCOMING TRANSMISSION — NILE Weekly Efficiency Review: ${name}.`),
+                    d(challengeBrief(r)),
+                    d(`The Pad takes only ${many} this week, and pays nothing for them: the budget is all you get. When you're happy, send it in. The server rebuilds it and counts ${many} per minute. Same rules for every Steward.`),
+                ],
+            },
+            {
+                id: 'ch:first',
+                when: (w) => (w.deliveredTotal[r.target] ?? 0) > 0,
+                lines: [d(`First ${one} on the Pad. That is a score. Now make it a better one.`, 'happy')],
+            },
+            {
+                id: 'ch:cap',
+                when: (w) => (w.capped ?? 0) >= r.cap,
+                lines: [d(`That's the cap: ${r.cap} machines. From here it's upgrades, belts and a better layout.`)],
+            },
+            {
+                id: 'ch:sent',
+                when: (w) => w.submitted,
+                lines: [d('Sent in. The auditors rebuild it on their own copy of the valley and count for six minutes. Then they rank you.')],
+            },
+        ],
+        OBJECTIVES: [[
+            { id: 'ore', text: 'Place an Extractor on ore', done: (w) => (w.built.extractor ?? 0) > 0,
+                hint: 'This week’s ore is laid out differently. Look for the crystals, then put an Extractor on one.' },
+            { id: 'deliver', text: `Deliver a ${one} to the Pad`, done: (w) => (w.deliveredTotal[r.target] ?? 0) > 0, focus: 'sink',
+                hint: `The Pad only takes ${many} this week. Anything else backs up on the belt.` },
+            { id: 'test', text: 'Test it: Weekly board → Test here first', done: (w) => w.tested || w.submitted,
+                hint: 'The Weekly board button in the console runs the server’s test in your browser first, so you know your score.' },
+            { id: 'send', text: 'Send your factory in', done: (w) => w.submitted,
+                hint: 'Sign in, then Weekly board → Send in this factory. Only your best of the week is kept.' },
+        ]],
+        AMBIENT: {
+            early: [
+                'The Production overview counts what reaches the Pad per minute. So do the auditors.',
+                'Demolishing gives back everything this week, upgrades too. Experiment.',
+                'Ties go to the cheaper factory. NILE loves a bargain.',
+            ],
+            late: [],
+        },
+        REACTIONS,
+        welcomeBack: () => d(`Back to ${name}. The week's clock kept running; your factory waited.`),
+    };
+}

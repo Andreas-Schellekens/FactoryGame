@@ -29,6 +29,7 @@ import {
     PLOT_COST,
 } from './config.js';
 import { PHASES, STARTING_BUILDINGS, unlockPhaseOf } from './campaign.js';
+import { challengeFor, countsTowardCap } from './challenge.js';
 
 export const grid = [];
 export let score = STARTING_MONEY;
@@ -152,20 +153,27 @@ const bump = (counter, key, n = 1) => (counter[key] = (counter[key] || 0) + n);
 // 'valley' (the river flows; Infinite's sulfur is on the east rim) or 'aftermath' (after
 // the story's reveal: dammed, the sulfur in the dry bed, the cannon on its site), so a
 // finished campaign can carry on as Infinite on its own map (continueAsInfinite).
+// 'challenge' plays a weekly challenge (challenge.js): `challenge` is its period key and
+// `activeChallenge` its rules, which set the ore, the buildings, the caps and the budget.
 export const game = {
     mode: 'story',
     world: 'valley',
     plot: 0,
     licences: [],
     orderLevel: 0,
+    challenge: null,
 };
 export const isInfinite = () => game.mode === 'infinite';
+export const isChallenge = () => game.mode === 'challenge';
+const isStory = () => game.mode === 'story';
+/** The rules of the challenge being played (challenge.js challengeFor), or null outside one. */
+export let activeChallenge = null;
 /** Is there a cannon (and its reserved site)? Story, and a campaign carried on as Infinite. */
-export const hasCannon = () => !isInfinite() || game.world === 'aftermath';
+export const hasCannon = () => isStory() || game.world === 'aftermath';
 
 /** The land level: which PLOTS rectangle you may build in (the campaign phase in Story). */
 export function plotLevel() {
-    return isInfinite() ? game.plot : project.phase;
+    return isStory() ? project.phase : game.plot;
 }
 
 /**
@@ -173,12 +181,13 @@ export function plotLevel() {
  * phase in Story; an Infinite valley stays in its first morning, the aftermath after the shot.
  */
 export function visualPhase() {
-    if (!isInfinite()) return project.phase;
+    if (isStory()) return project.phase;
     return game.world === 'aftermath' ? PHASES.length : 0;
 }
 
-/** Is this building type available to build (campaign phase in Story, a licence in Infinite)? */
+/** Is this building type available to build (campaign phase in Story, a licence in Infinite, the week's list in a challenge)? */
 export function isBuildingUnlocked(type) {
+    if (activeChallenge) return activeChallenge.buildings.includes(type);
     if (STARTING_BUILDINGS.includes(type)) return true;
     if (isInfinite()) return game.licences.includes(type);
     for (let i = 0; i < project.phase && i < PHASES.length; i++) {
@@ -196,9 +205,9 @@ export function setCompany(name) {
     project.company = String(name ?? '').trim().slice(0, 28) || null;
 }
 
-/** The active phase definition, or null once the campaign is complete (and always in Infinite). */
+/** The active phase definition, or null once the campaign is complete (and always in Infinite and challenges). */
 export function currentPhase() {
-    return isInfinite() ? null : PHASES[project.phase] ?? null;
+    return isStory() ? PHASES[project.phase] ?? null : null;
 }
 
 // Advance the campaign once every requirement of the active phase is met.
@@ -259,8 +268,10 @@ export function continueAsInfinite() {
     game.orderLevel = 0;
 }
 
-// The Dispatch Pad buys sellable goods and takes anything the phase needs.
+// The Dispatch Pad buys sellable goods and takes anything the phase needs (in a challenge:
+// only the week's target).
 function sinkAccepts(itemType) {
+    if (activeChallenge) return itemType === activeChallenge.target;
     return itemType in SINK_VALUE || itemType in (currentPhase()?.requires ?? {});
 }
 
@@ -469,7 +480,7 @@ for (let x = 0; x < GRID_WIDTH; x++) {
 
 /** Has NIHIL dammed the river: RIVER.damPhase phases complete, or an Infinite aftermath? */
 export function riverDammed() {
-    return isInfinite() ? game.world === 'aftermath' : project.phase >= RIVER.damPhase;
+    return isStory() ? project.phase >= RIVER.damPhase : game.world === 'aftermath';
 }
 
 /** Water flows in the river bed until it is dammed. */
@@ -490,9 +501,10 @@ function fieldDue(f) {
     return true;
 }
 
-/** Lay every ore field that is due and isn't laid yet. */
+/** Lay every ore field that is due and isn't laid yet (a challenge has its own fields). */
 function revealOre() {
-    ORE_FIELDS.forEach((f, i) => {
+    const exact = !!activeChallenge;
+    (exact ? activeChallenge.ore : ORE_FIELDS).forEach((f, i) => {
         if (revealedFields.has(i) || !fieldDue(f)) return;
         revealedFields.add(i);
         const r = Math.ceil(f.r + 1);
@@ -500,7 +512,11 @@ function revealOre() {
             for (let y = f.y - r; y <= f.y + r; y++) {
                 if (!inBounds(x, y) || (x === PAD_POS.x && y === PAD_POS.y) || grid[x][y].blocked || grid[x][y].water) continue;
                 const jitter = (cellHash(x, y) - 0.5) * 0.9;
-                if (Math.hypot(x - f.x, y - f.y) <= f.r + jitter) grid[x][y].resource = f.type;
+                // A challenge's fields compare squared distances: the server's QuickJS must lay
+                // exactly the same cells, and Math.hypot may differ in its last bit between engines.
+                const rr = f.r + jitter;
+                const inside = exact ? rr > 0 && (x - f.x) * (x - f.x) + (y - f.y) * (y - f.y) <= rr * rr : Math.hypot(x - f.x, y - f.y) <= rr;
+                if (inside) grid[x][y].resource = f.type;
             }
         }
         oreRevision++;
@@ -573,10 +589,17 @@ export function loadState(data) {
     if (!data || !LOADABLE.has(data.version)) return null;
 
     // The mode and the campaign come first: they decide the terrain (cannon site, river, ore).
-    const infinite = data.game?.mode === 'infinite';
-    game.mode = infinite ? 'infinite' : 'story';
-    game.world = data.game?.world === 'aftermath' ? 'aftermath' : 'valley';
-    game.plot = Math.max(0, Math.min(PLOTS.length - 1, Math.floor(data.game?.plot ?? 0)));
+    const mode = data.game?.mode;
+    game.mode = mode === 'infinite' || mode === 'challenge' ? mode : 'story';
+    game.challenge = game.mode === 'challenge' ? String(data.game.challenge ?? '') : null;
+    activeChallenge = game.challenge ? challengeFor(game.challenge) : null;
+    if (game.mode === 'challenge' && !activeChallenge) {
+        game.mode = 'story'; // not a challenge this build knows
+        game.challenge = null;
+    }
+    const infinite = game.mode === 'infinite';
+    game.world = !activeChallenge && data.game?.world === 'aftermath' ? 'aftermath' : 'valley';
+    game.plot = activeChallenge ? activeChallenge.plot : Math.max(0, Math.min(PLOTS.length - 1, Math.floor(data.game?.plot ?? 0)));
     game.licences = (data.game?.licences ?? []).filter((t) => t in LICENCE_COST);
     game.orderLevel = Math.max(0, Math.floor(data.game?.orderLevel ?? 0));
     project.phase = data.project?.phase ?? 0;
@@ -610,13 +633,19 @@ export function loadState(data) {
         }
     }
 
-    score = typeof data.score === 'number' ? data.score : infinite ? INFINITE_STARTING_MONEY : STARTING_MONEY;
+    score = typeof data.score === 'number' ? data.score : activeChallenge ? activeChallenge.budget : infinite ? INFINITE_STARTING_MONEY : STARTING_MONEY;
     tickCount = typeof data.tickCount === 'number' ? data.tickCount : 0;
     Object.assign(order, ORDER_DEFAULTS, data.order ?? {});
 
     // Reset research to defaults, then overlay — pre-research saves load locked.
     research.points = data.research?.points ?? 0;
     for (const k in research.unlocked) research.unlocked[k] = data.research?.unlocked?.[k] ?? false;
+    if (activeChallenge) {
+        // A challenge has no research: its recipes are all open, its tiers and belts are the week's.
+        research.unlocked.fastBelts = activeChallenge.fastBelts;
+        research.unlocked.advancedProduct = true;
+        research.unlocked.tier4 = true;
+    }
 
     stats.produced = { ...(data.stats?.produced ?? {}) };
     stats.delivered = { ...(data.stats?.delivered ?? {}) };
@@ -629,11 +658,46 @@ export function loadState(data) {
 }
 
 /**
- * Start a fresh game: Story (the campaign) or Infinite. Everything is reset, the
- * terrain laid for the mode, and the starting credits paid. @returns {FactoryEvent[]}
+ * Start a fresh game: Story (the campaign), Infinite, or a challenge (`challenge`: its period
+ * key, "2026-W48"). Everything is reset, the terrain laid for the mode, and the starting
+ * credits paid (a challenge's budget). @returns {FactoryEvent[]}
  */
-export function newGame(mode = 'story', { world = 'valley' } = {}) {
-    return loadState({ version: SAVE_VERSION, game: { mode, world }, cells: [] });
+export function newGame(mode = 'story', { world = 'valley', challenge = null } = {}) {
+    return loadState({ version: SAVE_VERSION, game: { mode, world, challenge }, cells: [] });
+}
+
+// ---- Challenges: the machine cap, the budget, the tier cap ---------------------------------
+/** How many machines count towards a challenge's cap (all but belts, splitters, mergers and the pad). */
+export function cappedCount() {
+    let n = 0;
+    for (let x = 0; x < GRID_WIDTH; x++) {
+        for (let y = 0; y < GRID_HEIGHT; y++) {
+            const m = grid[x][y].machine;
+            if (m && countsTowardCap(m.type)) n++;
+        }
+    }
+    return n;
+}
+/** Credits spent on upgrading a machine to `tier` (a challenge refunds them on demolition). */
+export function upgradeSpent(tier) {
+    let n = 0;
+    for (let t = 2; t <= tier; t++) n += UPGRADE_COST[t] ?? 0;
+    return n;
+}
+/** The highest tier a machine may reach now (tier 4 is research-gated; a challenge has its own cap). */
+function tierCapNow() {
+    return Math.min(research.unlocked.tier4 ? MAX_TIER : MAX_TIER - 1, activeChallenge?.tierCap ?? MAX_TIER);
+}
+/**
+ * Why a building can't go at (x, y) under the challenge's rules, for the HUD: 'banned' (not
+ * this week), 'cap' (machine cap reached), 'budget', or null (nothing the rules forbid).
+ */
+export function challengeRefusal(x, y, type) {
+    if (!activeChallenge) return null;
+    if (!activeChallenge.buildings.includes(type)) return 'banned';
+    if (countsTowardCap(type) && cappedCount() >= activeChallenge.cap) return 'cap';
+    if (score < (MACHINE_COST[type] ?? 0)) return 'budget';
+    return null;
 }
 
 export function canBuildMachine(x, y, type) {
@@ -643,6 +707,7 @@ export function canBuildMachine(x, y, type) {
     if (cell.machine !== null || cell.blocked || cell.water || !inPlot(x, y)) return false;
     if (type === 'extractor' && cell.resource === null) return false; // needs an ore node
     if (!isBuildingUnlocked(type)) return false; // campaign-gated
+    if (activeChallenge && countsTowardCap(type) && cappedCount() >= activeChallenge.cap) return false; // the week's machine cap
     return score >= MACHINE_COST[type];
 }
 
@@ -734,7 +799,7 @@ export function removeMachine(x, y) {
         events.push({ kind: 'consume', item: cell.item, at: { x, y } });
         cell.item = null;
     }
-    score += MACHINE_COST[cell.machine.type] ?? 0;
+    score += (MACHINE_COST[cell.machine.type] ?? 0) + (activeChallenge ? upgradeSpent(cell.machine.tier) : 0);
     cell.machine = null;
     return events;
 }
@@ -782,7 +847,10 @@ export function planGroup(cells, anchor, to, rot = 0, mode = 'move') {
             && (mode !== 'copy' || isBuildingUnlocked(m.type));
         if (!fits) bad.push(t);
     }
-    return { moves, bad, cost, ok: moves.length > 0 && bad.length === 0 && (mode !== 'copy' || score >= cost) };
+    // A challenge's copy must stay under the machine cap.
+    const capped = mode === 'copy' && !!activeChallenge
+        && cappedCount() + moves.filter((mv) => countsTowardCap(mv.type)).length > activeChallenge.cap;
+    return { moves, bad, cost, capped, ok: moves.length > 0 && bad.length === 0 && !capped && (mode !== 'copy' || score >= cost) };
 }
 
 /**
@@ -837,9 +905,8 @@ export function removeGroup(cells) {
 
 export function upgradeCost(x, y) {
     const m = inBounds(x, y) ? grid[x][y].machine : null;
-    // The top tier is research-gated: capped at MAX_TIER - 1 until `tier4`.
-    const tierCap = research.unlocked.tier4 ? MAX_TIER : MAX_TIER - 1;
-    if (!m || !UPGRADABLE.has(m.type) || m.tier >= tierCap) return null;
+    // The top tier is research-gated: capped at MAX_TIER - 1 until `tier4` (a challenge has its own cap).
+    if (!m || !UPGRADABLE.has(m.type) || m.tier >= tierCapNow()) return null;
     return UPGRADE_COST[m.tier + 1];
 }
 
@@ -983,7 +1050,7 @@ export function machineIO(machineOrType) {
     }
     switch (type) {
         case 'generator': return { takes: ['coalOre'], makes: [] };
-        case 'sink': return { takes: [...new Set([...Object.keys(SINK_VALUE), ...Object.keys(currentPhase()?.requires ?? {})])], makes: [] };
+        case 'sink': return { takes: activeChallenge ? [activeChallenge.target] : [...new Set([...Object.keys(SINK_VALUE), ...Object.keys(currentPhase()?.requires ?? {})])], makes: [] };
         default: return { takes: [], makes: [] };
     }
 }
@@ -1037,8 +1104,7 @@ export function machineRates(x, y) {
     }
     const now = at(m.tier);
     if (!now) return null;
-    const cap = research.unlocked.tier4 ? MAX_TIER : MAX_TIER - 1;
-    return { ...now, kw: POWER_DRAW[m.type] ?? 0, next: UPGRADABLE.has(m.type) && m.tier < cap ? at(m.tier + 1) : null };
+    return { ...now, kw: POWER_DRAW[m.type] ?? 0, next: UPGRADABLE.has(m.type) && m.tier < tierCapNow() ? at(m.tier + 1) : null };
 }
 
 // Try to push a freshly produced item into the cell this machine points at.
@@ -1069,14 +1135,14 @@ export function updateFactoryLogic() {
             const cell = grid[x][y];
             if (cell.machine?.type === 'sink' && cell.item) {
                 const type = cell.item.type;
-                const paid = salePrice(type);
+                const paid = activeChallenge ? 0 : salePrice(type); // a challenge's pad pays nothing: the budget is all there is
                 events.push({ kind: 'consume', item: cell.item, at: { x, y }, paid });
                 if (order.active && type === order.productType) order.delivered++;
                 if (currentPhase()?.requires[type]) bump(project.delivered, type);
                 bump(stats.delivered, type);
                 bump(flow.sold, type);
                 score += paid;
-                if (SINK_VALUE[type]) bump(market.pressure, type);
+                if (SINK_VALUE[type] && !activeChallenge) bump(market.pressure, type);
                 cell.item = null;
             }
         }
