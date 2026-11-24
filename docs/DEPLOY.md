@@ -1,7 +1,9 @@
 # Deploying Protocol: Selene
 
-The game runs as three Railway services in the project **protocol-selene** (region EU West,
-`europe-west4`), all deploying the `main` branch of this repository:
+The game is live at **https://selene.schellekensdigital.be** (also
+`https://web-production-73a9ffba.up.railway.app`). It runs as three Railway services in the
+project **protocol-selene** (region EU West, `europe-west4`), all deploying the `main` branch of
+this repository:
 
 | Service | What | Built from | Public |
 |---|---|---|---|
@@ -36,7 +38,14 @@ railway add --service web --repo Andreas-Schellekens/FactoryGame --branch main \
   --variables 'RAILWAY_DOCKERFILE_PATH=web/Dockerfile'
 railway variable set PORT=8080 --service web
 railway domain --service web --port 8080
+railway domain selene.schellekensdigital.be --service web --port 8080
 ```
+
+The custom domain needs two records in the `schellekensdigital.be` zone (Cloudflare, DNS only,
+not proxied), which `railway domain` prints: a CNAME `selene` → the target Railway gives
+(`p3vpi2kz.up.railway.app`) and a TXT `_railway-verify.selene` with its verification token.
+They were added with the `cf` CLI (`cf dns records create -z <zone> --body '{…}'`); Railway
+then issues the HTTPS certificate itself.
 
 Plus, per service (Settings in the dashboard, or `serviceInstanceUpdate` through
 `railway api`):
