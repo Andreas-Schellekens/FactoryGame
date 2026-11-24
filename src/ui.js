@@ -226,7 +226,7 @@ export function createUI({
             ['LMB', 'build · drag to lay belts'], ['Click machine', 'its panel: recipe, speed, upgrade'], ['RMB', 'demolish (refunds cost)'],
             [kl('rotate'), 'rotate before placing'], [chain, 'buildings, in chain order'], [`${kl('splitter')} / ${kl('merger')}`, 'splitter / merger'],
             [`${kl('upgrade')} / ${kl('erase')}`, 'upgrade / demolish tool'], [kl('select'), 'select: drag a box round machines'],
-            [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection, open the menu'],
+            [`${kl('move')} / ${kl('copy')} / ${kl('erase')}`, 'move / copy / demolish the selection'], [kl('blueprints'), 'blueprints (with a selection: save it as one)'], [kl('pipette'), 'pipette: build what is under the cursor'], ['Esc', 'close panel, drop selection, open the menu'],
             ['WASD', 'move view'], ['Wheel', 'zoom'],
             [`${kl('viewLeft')} / ${kl('viewRight')}`, 'turn view'], [kl('pause'), 'pause'], ['+ / −', 'sim speed'], [kl('mute'), 'sound on / off'],
         ];
@@ -403,12 +403,13 @@ export function createUI({
         };
         if (!sel.mode) {
             info.textContent = `${what} selected`;
-            selbar.append(info, button('Move', kl('move'), 'move'), button('Copy', kl('copy'), 'copy'), button('Demolish', kl('erase'), 'remove', 'danger'), button('Deselect', 'Esc', 'cancel'));
+            selbar.append(info, button('Move', kl('move'), 'move'), button('Copy', kl('copy'), 'copy'), button('Save as blueprint', kl('blueprints'), 'blueprint', 'bp'), button('Demolish', kl('erase'), 'remove', 'danger'), button('Deselect', 'Esc', 'cancel'));
             return;
         }
         const fits = sel.ok === null ? '' : sel.ok ? '' : sel.blocked ? ` · ${sel.blocked} won't fit here` : ' · not enough credits';
         info.textContent = sel.mode === 'move'
             ? `Moving ${what} · click to set down · ${kl('rotate')} turns${fits}`
+            : sel.blueprint ? `Blueprint “${sel.blueprint}” · CR ${sel.cost ?? '–'} · click to build · ${kl('rotate')} turns${fits}`
             : `Copying ${what} · CR ${sel.cost ?? '–'} a copy · click to place · ${kl('rotate')} turns${fits}`;
         info.classList.toggle('bad', sel.ok === false);
         selbar.append(info, button(sel.mode === 'move' ? 'Cancel' : 'Done', 'Esc', 'cancel'));

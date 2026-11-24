@@ -42,11 +42,12 @@ export function layoutOf() {
 const fail = (error) => ({ ok: false, error });
 
 /**
- * Run the test. Never throws on bad input: returns { ok: false, error } instead.
- * @returns {{ ok: true, version: number, world: string, machines: number, perMinute: number,
- *   efficiency: number, sold: Record<string, number> } | { ok: false, error: string }}
+ * Build a layout on a fresh Infinite map of its world with everything researched, licensed
+ * and owned (what the test runs, and what the factory viewer shows). It replaces whatever
+ * game the live grid.js holds. Never throws on bad input.
+ * @returns {{ ok: true, world: string, machines: number } | { ok: false, error: string }}
  */
-export function runBenchmark(layout) {
+export function buildLayout(layout) {
     if (!layout || typeof layout !== 'object' || !Array.isArray(layout.machines)) return fail('No layout');
     const world = layout.world ?? 'valley';
     if (!BENCH_WORLDS.includes(world)) return fail('Unknown world');
@@ -79,6 +80,19 @@ export function runBenchmark(layout) {
         placed.tier = tier;
         if (m.off) sim.setMachineOn(x, y, false);
     }
+    return { ok: true, world, machines: list.length };
+}
+
+/**
+ * Run the test. Never throws on bad input: returns { ok: false, error } instead.
+ * @returns {{ ok: true, version: number, world: string, machines: number, perMinute: number,
+ *   efficiency: number, sold: Record<string, number> } | { ok: false, error: string }}
+ */
+export function runBenchmark(layout) {
+    const built = buildLayout(layout);
+    if (!built.ok) return built;
+    const { world } = built;
+    const list = layout.machines;
 
     for (let i = 0; i < BENCH.warmupTicks; i++) sim.updateFactoryLogic();
     const before = sim.score;

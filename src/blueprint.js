@@ -14,6 +14,42 @@ const KIND = {
 };
 const PROCESSOR = '#ff7a2a';
 
+/**
+ * A plan of a machine list (a blueprint: `[{ x, y, type }]` from 0,0, `w` × `h` cells) in the
+ * same palette, fitted into a `boxW` × `boxH` canvas. Returns the canvas.
+ */
+export function machinesThumb(machines, w, h, boxW = 120, boxH = 84) {
+    const c = document.createElement('canvas');
+    c.width = boxW;
+    c.height = boxH;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0f1d33';
+    g.fillRect(0, 0, boxW, boxH);
+    const cell = Math.max(1, Math.min(12, Math.floor(Math.min((boxW - 8) / w, (boxH - 8) / h))));
+    const ox = Math.floor((boxW - w * cell) / 2);
+    const oy = Math.floor((boxH - h * cell) / 2);
+    g.strokeStyle = 'rgba(160, 190, 230, 0.12)';
+    g.lineWidth = 1;
+    for (let x = 0; x <= w; x++) {
+        g.beginPath();
+        g.moveTo(ox + x * cell + 0.5, oy);
+        g.lineTo(ox + x * cell + 0.5, oy + h * cell);
+        g.stroke();
+    }
+    for (let y = 0; y <= h; y++) {
+        g.beginPath();
+        g.moveTo(ox, oy + y * cell + 0.5);
+        g.lineTo(ox + w * cell, oy + y * cell + 0.5);
+        g.stroke();
+    }
+    for (const m of machines) {
+        g.fillStyle = KIND[m.type] ?? PROCESSOR;
+        const inset = m.type === 'belt' ? Math.max(1, Math.round(cell / 5)) : cell > 3 ? 1 : 0;
+        g.fillRect(ox + m.x * cell + inset, oy + m.y * cell + inset, cell - inset * 2, cell - inset * 2);
+    }
+    return c;
+}
+
 /** A PNG data URL of the current factory. */
 export function blueprintThumb() {
     const c = document.createElement('canvas');

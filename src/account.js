@@ -118,6 +118,11 @@ export function createAccount() {
         putSettings: (data, updatedAt) => call('/settings', { method: 'PUT', body: { data, updatedAt } }),
         submitScore: (layout) => call('/scores', { method: 'POST', body: { layout } }),
         leaderboard: (board, world = 'valley') => call(`/leaderboard?board=${encodeURIComponent(board)}&world=${encodeURIComponent(world)}`),
+        // Iteration 7: the blueprint library (blueprints.js) and other players' factories (public).
+        listBlueprints: () => call('/blueprints'),
+        putBlueprint: (id, body) => call(`/blueprints/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+        deleteBlueprint: (id) => call(`/blueprints/${encodeURIComponent(id)}`, { method: 'DELETE', body: {} }),
+        factory: (id) => call(`/factories/${encodeURIComponent(id)}`),
     };
 }
 

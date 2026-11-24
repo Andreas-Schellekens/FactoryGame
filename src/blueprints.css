@@ -1,0 +1,173 @@
+/* Iteration 7: the blueprint library, the factory viewer's bar, the leaderboard's View
+   buttons. In the HUD's design (style.css tokens: midnight panels, 1 px hairlines, square
+   corners, signal orange, mustard, teal). */
+
+/* ---- Selection bar: Save as blueprint ------------------------------------------------ */
+.sel-btn.bp b {
+  color: var(--teal);
+}
+
+/* ---- The library -------------------------------------------------------------------- */
+.bp-thumb canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.bp-missing {
+  color: var(--mustard);
+}
+
+/* ---- Leaderboard: View, and sharing your own entry ----------------------------------- */
+.lb-row {
+  grid-template-columns: 44px 1fr 120px 80px 70px 64px;
+  align-items: center;
+}
+
+.lb-view {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-secondary.lb-view-btn {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.lb-share:empty {
+  display: none;
+}
+
+.lb-share-out {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .lb-row {
+    grid-template-columns: 34px 1fr 90px 60px;
+  }
+}
+
+/* ---- The factory viewer -------------------------------------------------------------- */
+body.viewing #hud {
+  display: none;
+}
+
+.viewbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 56px;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--hair);
+  box-shadow: 0 3px 0 rgba(5, 10, 20, 0.45);
+  color: var(--paper);
+}
+
+.vb-tag {
+  padding: 3px 8px;
+  font: 600 10px var(--f-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--midnight);
+  background: var(--teal);
+}
+
+.vb-who {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vb-name {
+  overflow: hidden;
+  font: 800 22px/1 var(--f-mission);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vb-meta {
+  font: 500 11px var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--label);
+}
+
+.viewbar.failed .vb-meta {
+  color: #ffb3ad;
+}
+
+.vb-live {
+  font: 600 13px var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--mustard);
+}
+
+.vb-live:empty {
+  display: none;
+}
+
+.vb-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vb-acts .btn-secondary {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+
+.vb-link {
+  flex: 1 1 100%;
+  max-width: 520px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: var(--console-edge);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+  color: var(--paper);
+  font: 500 12px var(--f-mono);
+}
+
+.vb-note {
+  font: 500 12px var(--f-mono);
+  color: var(--teal);
+}
+
+.vb-note.pop {
+  animation: vb-pop 0.3s ease-out;
+}
+
+@keyframes vb-pop {
+  from {
+    transform: translateY(-3px);
+    opacity: 0.4;
+  }
+}
+
+body.reduced-motion .vb-note.pop {
+  animation: none;
+}
+
+@media (max-width: 640px) {
+  .viewbar {
+    padding: 8px 16px;
+  }
+  .vb-name {
+    font-size: 18px;
+  }
+}

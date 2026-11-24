@@ -23,6 +23,7 @@ import {
     RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
     salePrice, flow, UPGRADABLE, machinesIn, planGroup, applyGroup, removeGroup, setEnding, setCompany,
     game, isInfinite, visualPhase, newGame, licenceAvailable, buyLicence, nextPlotCost, buyPlot, isLoadableSave,
+    planStored,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
 import { BUILDING_NAMES, ITEM_NAMES, INFINITE } from './story.js';
@@ -37,7 +38,11 @@ import { createSaves } from './saves.js';
 import { createMenus } from './menus.js';
 import { createSettingsPanel } from './settingsPanel.js';
 import { blueprintThumb } from './blueprint.js';
-import { layoutOf } from './benchmark.js';
+import { layoutOf, buildLayout, BENCH } from './benchmark.js';
+import { createBlueprints, fromCells, fromLayout, anchorOf } from './blueprints.js';
+import { createBlueprintPanel } from './blueprintPanel.js';
+import { createViewBar, linkedFactory, factoryLink, shareLink } from './viewer.js';
+import './blueprints.css';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -58,6 +63,7 @@ const settings = createSettings({ audioDefaults: audio.settings() });
 audio.setSettings(settings.get().audio);
 const account = createAccount();
 const saves = createSaves({ account, isLoadable: isLoadableSave });
+const blueprints = createBlueprints({ account }); // iteration 7: the blueprint library
 
 // --- 3D view (loads the Kenney models first; the loader shows progress) ---
 initGrid();
@@ -100,7 +106,8 @@ const state = {
     selected: null, // { x, y } of the machine whose panel is open
     selDrag: null, // { from, to } while a selection box is being dragged (select tool)
     sel: null, // { cells: Pos[] } the selected machines
-    group: null, // { mode: 'move'|'copy', cells, anchor, rot, plan } while a selection is carried
+    group: null, // { mode: 'move'|'copy', cells, anchor, rot, plan, blueprint? } while a selection (or a blueprint) is carried
+    viewing: false, // the factory viewer: another player's factory runs, read-only (no slot, no building)
 };
 // The recipe last picked per machine type: new machines of that type start on it.
 const lastRecipe = {};
@@ -435,6 +442,33 @@ function pipette() {
     ui.toast(`${BUILDING_NAMES[m.type]}${m.recipe && ITEM_NAMES[m.recipe] ? ` · ${ITEM_NAMES[m.recipe]}` : ''} · picked up with F`);
 }
 
+// --- Blueprints (blueprints.js, blueprintPanel.js): save a selection, carry one like a copy ---
+function openBlueprints() {
+    blueprintPanel.open({ onPick: state.started && !state.cinematic ? carryBlueprint : null });
+}
+function saveSelectionAsBlueprint() {
+    const body = fromCells(state.sel.cells);
+    if (!body) return;
+    blueprintPanel.askName({
+        value: `Blueprint ${String(blueprints.list().length + 1).padStart(2, '0')}`,
+        hint: `${body.machines.length} machines, ${body.w} × ${body.h} cells. The library is on ${(settings.get().keys.blueprints ?? 'b').toUpperCase()}.`,
+        onSave: (name) => {
+            const r = blueprints.add(name, body);
+            if (!r.ok) return r.error;
+            ui.toast(`Saved “${r.blueprint.name}” to your blueprints`);
+            audio.cue('check');
+            return null;
+        },
+    });
+}
+/** Put a blueprint in the player's hand: it follows the cursor like a carried copy. */
+function carryBlueprint(bp) {
+    state.tool = 'select';
+    state.sel = null;
+    state.selected = null;
+    state.group = { mode: 'copy', blueprint: bp, cells: bp.machines, anchor: anchorOf(bp), rot: 0, plan: null };
+}
+
 // --- Story director ---
 const director = createDirector({
     // Late-bound: the UI is created below.
@@ -550,6 +584,7 @@ const ui = createUI({
         if (action === 'cancel') return state.group ? cancelGroup() : clearSelection();
         if (!state.sel) return;
         if (action === 'remove') removeSelection();
+        else if (action === 'blueprint') saveSelectionAsBlueprint();
         else startGroup(action);
     },
     onResetBreaker: () => {
@@ -581,6 +616,7 @@ const ui = createUI({
                 cost: state.group?.plan?.cost ?? null,
                 ok: state.group?.plan?.ok ?? null,
                 blocked: state.group?.plan?.bad.length ?? 0,
+                blueprint: state.group?.blueprint?.name ?? null,
             } : null,
             research: { points: research.points, unlocked: { ...research.unlocked } },
             project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company },
@@ -668,8 +704,11 @@ function onFrame(dt) {
     if (state.group) {
         const h = state.hovered;
         const g = state.group;
-        g.plan = h.x >= 0 && !state.cinematic ? planGroup(g.cells, g.anchor, h, g.rot, g.mode) : null;
+        g.plan = h.x >= 0 && !state.cinematic
+            ? (g.blueprint ? planStored(g.blueprint.machines, g.anchor, h, g.rot) : planGroup(g.cells, g.anchor, h, g.rot, g.mode))
+            : null;
     }
+    if (state.viewing) sampleViewer();
     if (state.sel && !state.group) {
         const cells = state.sel.cells.filter(({ x, y }) => grid[x][y].machine);
         state.sel = cells.length ? { cells } : null;
@@ -726,6 +765,7 @@ window.addEventListener('beforeunload', () => saveGame('later'));
 // --- Menus: title screen, saves, account, leaderboard, settings (menus.js, settingsPanel.js) ---
 const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open() });
 const settingsPanel = createSettingsPanel({ settings, sound: audio, menus, account });
+const blueprintPanel = createBlueprintPanel({ menus, blueprints, account, sound: audio, unlocked: isBuildingUnlocked });
 
 /** Start playing (the title screen is gone): a new game in a new slot, or a slot's save. */
 function beginNew(mode) {
@@ -781,6 +821,7 @@ function openGameMenu() {
         onSaves: () => openSaves(),
         onSettings: () => settingsPanel.open(),
         onLeaderboard: () => openBoard(),
+        onBlueprints: () => openBlueprints(),
         // Saved first; the title screen then offers Continue, Story, Infinite and Load.
         onMainMenu: () => switchTo({ action: 'title' }),
     });
@@ -805,6 +846,8 @@ function previewScore(layout) {
 function openBoard() {
     const playing = state.started;
     menus.openLeaderboard({
+        onView: (id) => viewFactory(id),
+        onShare: (id) => shareFactory(id),
         submit: !playing ? null : {
             allowed: isInfinite(),
             reason: 'Only Infinite factories go on the leaderboard: start or load an Infinite game.',
@@ -815,6 +858,90 @@ function openBoard() {
             preview: () => previewScore(layoutOf()),
         },
     });
+}
+
+// --- The factory viewer (viewer.js): a leaderboard factory, live and read-only ---
+// It never touches the player's game: it runs after a reload (boot intent `view`, or a
+// share link `/?factory=<id>`), with no slot, no autosave and no building.
+let viewBar = null;
+const viewSamples = [];
+function viewFactory(id) {
+    switchTo({ action: 'view', factory: String(id), back: activeSlot ? { action: 'load', slot: activeSlot.id } : { action: 'title' } });
+}
+/** Share a factory's link. @returns {Promise<string>} 'copied' | 'shared', or the link to show */
+async function shareFactory(id) {
+    const url = factoryLink(id);
+    const how = await shareLink(url, 'A factory on the Protocol: Selene leaderboard');
+    return how === 'shown' ? url : how;
+}
+const VIEW_BACK = 'selene.viewBack'; // where Back goes, kept for a reload while viewing
+async function beginView({ factory, back = null }) {
+    state.viewing = true;
+    state.tool = 'select';
+    document.body.classList.add('viewing');
+    try {
+        history.replaceState(null, '', `${location.pathname}?factory=${encodeURIComponent(factory)}`);
+        if (back) sessionStorage.setItem(VIEW_BACK, JSON.stringify({ factory, back }));
+        else {
+            const kept = JSON.parse(sessionStorage.getItem(VIEW_BACK) ?? 'null');
+            if (kept?.factory === factory) back = kept.back;
+        }
+    } catch { /* keep the address */ }
+    viewBar = createViewBar({
+        onBack: () => {
+            try {
+                history.replaceState(null, '', location.pathname);
+                sessionStorage.removeItem(VIEW_BACK);
+            } catch { /* ignore */ }
+            switchTo(back ?? { action: 'title' });
+        },
+        onCopy: (f) => blueprintPanel.askName({
+            title: 'Copy as blueprint',
+            value: `${f.name}'s factory`,
+            hint: 'Into your blueprint library. Extractors only work on ore: put it down where the ore lies the same way.',
+            onSave: (name) => {
+                const r = blueprints.add(name, fromLayout(f.layout));
+                if (!r.ok) return r.error;
+                viewBar.flash(`Saved “${r.blueprint.name}” to your blueprints`);
+                audio.cue('check');
+                return null;
+            },
+        }),
+    });
+    let f;
+    try {
+        f = await account.factory(factory);
+    } catch (e) {
+        viewBar.fail(e.status === 404 ? 'That factory isn’t on the leaderboard (any more).' : e.status === 0 ? 'The server can’t be reached.' : e.message);
+        return;
+    }
+    const built = buildLayout(f.layout);
+    renderer.reset(); // the next sync builds the factory without juice
+    if (!built.ok) {
+        viewBar.fail(`It can’t be built in this version of the game (${built.error}).`);
+        return;
+    }
+    const xs = f.layout.machines.map((m) => m.x);
+    const ys = f.layout.machines.map((m) => m.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    renderer.rig.snap({ x: (x0 + x1) / 2 + 0.5, z: (y0 + y1) / 2 + 0.5, zoom: clamp(15 / (Math.max(y1 - y0, (x1 - x0) * 0.6) + 5), 0.4, 1.4) });
+    viewBar.show(f);
+    state.paused = false;
+    audio.begin(visualPhase());
+}
+/**
+ * The viewer's "now" rate: credits per minute over the last minute of sim time, from the end
+ * of the test's warm-up on (before that the market is still fresh and pays more).
+ */
+function sampleViewer() {
+    if (tickCount < BENCH.warmupTicks) return;
+    const last = viewSamples[viewSamples.length - 1];
+    if (last && tickCount - last.tick < TICK_RATE) return;
+    viewSamples.push({ tick: tickCount, score });
+    while (viewSamples.length > 2 && tickCount - viewSamples[1].tick >= 60 * TICK_RATE) viewSamples.shift();
+    const a = viewSamples[0];
+    const dt = tickCount - a.tick;
+    viewBar?.setLive(dt >= 10 * TICK_RATE ? ((score - a.score) * 60 * TICK_RATE) / dt : null);
 }
 
 // Settings take effect here, once at start and on every change.
@@ -866,8 +993,12 @@ try {
     sessionStorage.removeItem(BOOT_KEY);
 } catch { /* ignore */ }
 const bootSlot = boot?.action === 'load' ? saves.get(boot.slot) : null;
-if (bootSlot) beginSlot(bootSlot);
+// A share link opens straight into what it points at (`?factory=`; `?player=` is a profile's).
+const linked = boot ? null : linkedFactory();
+if (boot?.action === 'view') beginView(boot);
+else if (bootSlot) beginSlot(bootSlot);
 else if (boot?.action === 'new') beginNew(boot.mode);
+else if (linked) beginView({ factory: linked });
 else showTitle();
 
 // --- Input: build tools ---
@@ -922,6 +1053,7 @@ const PAN_KEYS = {
     a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0],
 };
 const held = new Set();
+const VIEW_ACTIONS = new Set(['viewLeft', 'viewRight', 'pause', 'mute']);
 const PAN_SPEED = 0.014; // world units per ms at zoom 1
 
 const toggleMute = () => {
@@ -930,7 +1062,7 @@ const toggleMute = () => {
     ui.toast(muted ? 'Sound off' : 'Sound on');
 };
 window.addEventListener('keydown', (e) => {
-    if (!state.started || menus.isOpen() || e.target.closest?.('textarea, input:not([type="range"])')) return;
+    if (!(state.started || state.viewing) || menus.isOpen() || e.target.closest?.('textarea, input:not([type="range"])')) return;
     const act = keyActions[e.key.toLowerCase()];
     if (state.cinematic) {
         if (act === 'mute') toggleMute();
@@ -944,6 +1076,8 @@ window.addEventListener('keydown', (e) => {
         e.preventDefault();
         return;
     }
+    // The factory viewer only looks: turn the view, pause, sim speed, sound.
+    if (state.viewing && !VIEW_ACTIONS.has(act) && !['+', '=', '-', '_'].includes(e.key)) return;
     // A carried group and a selection borrow some keys while they're there.
     if (state.group) {
         if (act === 'rotate') {
@@ -957,9 +1091,11 @@ window.addEventListener('keydown', (e) => {
         if (act === 'move') return startGroup('move');
         if (act === 'copy') return startGroup('copy');
         if (act === 'erase' || k === 'delete' || k === 'backspace') return removeSelection();
+        if (act === 'blueprints') return saveSelectionAsBlueprint();
         if (e.key === 'Escape') return clearSelection();
     }
     if (act === 'pipette') pipette();
+    if (act === 'blueprints') openBlueprints();
     if (TOOL_ACTIONS.has(act)) selectTool(act);
     if (k === 'delete' || k === 'backspace') selectTool('erase');
     if (e.key === 'Escape') {
@@ -1068,6 +1204,10 @@ canvas.addEventListener('pointerdown', (e) => {
         panDrag = { x: e.clientX, y: e.clientY };
         return;
     }
+    if (state.viewing && e.button === 0) {
+        panDrag = { x: e.clientX, y: e.clientY }; // the viewer: a left drag pans too
+        return;
+    }
     if (!state.started) return;
     const cell = renderer.pickCell(e.clientX, e.clientY);
     if (!cell) return;
@@ -1131,6 +1271,7 @@ if (import.meta.env.DEV) {
     window.__state = state; // the input state: tool, selection, carried group
     window.__settings = settings; // settings.js store: __settings.set('graphics', { shadows: false })
     window.__saves = saves;
+    window.__blueprints = blueprints;
     window.__account = account;
     window.__menus = menus;
     if (new URLSearchParams(location.search).has('sounds')) {

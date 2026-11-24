@@ -190,7 +190,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
      * @param {{ slot: any, onSave: () => boolean, onSaves: () => void, onSettings: () => void,
      *           onLeaderboard: () => void, onMainMenu: () => void }} opts
      */
-    function openGameMenu({ slot, onSave, onSaves, onSettings, onLeaderboard, onMainMenu }) {
+    function openGameMenu({ slot, onSave, onSaves, onSettings, onLeaderboard, onMainMenu, onBlueprints = null }) {
         const m = openModal({ kicker: slot ? `${slot.name} · ${slotProgress(slot)}` : 'Paused', title: 'Menu' });
         m.node.querySelector('.mm-panel').classList.add('game-menu');
         const list = el('div', 'gm-list');
@@ -212,6 +212,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             cue(ok ? 'check' : 'deny');
         });
         item('Saves', 'Load another game · save as · export · import', onSaves);
+        if (onBlueprints) item('Blueprints', 'Your saved machine groups: place · rename · export · import', onBlueprints);
         item('Settings', 'Sound · graphics · gameplay · controls · accessibility', onSettings);
         item('Leaderboard', 'The most efficient Infinite factories', onLeaderboard);
         const acc = item('Account', '', () => openAccount());
@@ -623,9 +624,11 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
 
     // ---- Leaderboard -------------------------------------------------------------------------
     /**
-     * @param {{ submit?: { allowed: boolean, reason?: string, layout: () => any, preview: () => Promise<any> } }} opts
+     * @param {{ submit?: { allowed: boolean, reason?: string, layout: () => any, preview: () => Promise<any> },
+     *           onView?: (id: number) => void, onShare?: (id: number) => Promise<string> }} opts
+     *   onView opens an entry's factory in the viewer; onShare shares its link ('copied', 'shared' or the link).
      */
-    function openLeaderboard({ submit = null } = {}) {
+    function openLeaderboard({ submit = null, onView = null, onShare = null } = {}) {
         const m = openModal({ kicker: 'Valley Efficiency Index', title: 'Leaderboard', wide: true });
         const body = m.body;
         let board = 'throughput';
@@ -657,13 +660,21 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             }
             table.innerHTML = '';
             const head = el('div', 'lb-row lb-head');
-            for (const h of ['#', 'Name', board === 'throughput' ? 'CR / min' : 'CR / min / cell', 'Machines', 'Date']) head.appendChild(el('span', null, h));
+            for (const h of ['#', 'Name', board === 'throughput' ? 'CR / min' : 'CR / min / cell', 'Machines', 'Date', onView ? 'Factory' : '']) head.appendChild(el('span', null, h));
             table.appendChild(head);
             const row = (e) => {
                 const r = el('div', `lb-row${e.me ? ' me' : ''}`);
                 const value = board === 'throughput' ? fmtNum(e.perMinute) : fmtNum(e.efficiency);
                 r.append(el('span', 'lb-rank', String(e.rank)), el('span', 'lb-name', e.name), el('span', 'lb-val', value),
                     el('span', null, String(e.machines)), el('span', 'lb-date', new Date(e.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })));
+                const view = el('span', 'lb-view');
+                if (onView && e.id != null) {
+                    view.appendChild(button('View', () => {
+                        cue('click');
+                        onView(e.id);
+                    }, 'btn-secondary lb-view-btn'));
+                }
+                r.appendChild(view);
                 return r;
             };
             for (const e of data.entries) table.appendChild(row(e));
@@ -707,6 +718,7 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
                     const best = r.newBest.throughput || r.newBest.efficiency ? ' New personal best.' : ' Not better than your best, so not stored.';
                     out.textContent = `${fmtNum(res.perMinute)} CR/min (rank ${r.rank.throughput}) · ${fmtNum(res.efficiency)} per cell (rank ${r.rank.efficiency}).${best}`;
                     cue(r.stored ? 'orderDone' : 'click');
+                    showShare(r.stored ? r.id : null);
                     load();
                 } catch (e) {
                     out.textContent = e.message;
@@ -721,7 +733,22 @@ export function createMenus({ account, saves, sound, onOpenSettings }) {
             const row = el('div', 'mm-actions');
             row.append(sendBtn, testBtn);
             if (signNote) row.appendChild(signNote);
-            sub.append(row, out);
+            // A factory on the board is public: anyone can open it, watch it run and copy it.
+            const shareRow = el('div', 'mm-actions lb-share');
+            const showShare = (id) => {
+                shareRow.innerHTML = '';
+                if (id == null || !onShare) return;
+                const linkOut = el('span', 'mm-note lb-share-out');
+                shareRow.append(
+                    button('Share link', async () => {
+                        const how = await onShare(id);
+                        linkOut.textContent = how === 'copied' ? 'Link copied' : how === 'shared' ? 'Shared' : how;
+                    }, 'btn-secondary lb-share-btn'),
+                    onView ? button('View it', () => onView(id), 'btn-secondary') : '',
+                    linkOut,
+                );
+            };
+            sub.append(row, out, shareRow, el('p', 'mm-fine', 'Factories on the leaderboard can be viewed by other players, who can watch them run and copy them as a blueprint.'));
         }
         const soldText = (sold) => Object.entries(sold ?? {}).map(([k, n]) => `${n} ${ITEM_NAMES[k] ?? k}/min`).join(', ') || 'nothing sold';
 

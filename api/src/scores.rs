@@ -81,10 +81,11 @@ pub async fn submit(State(state): State<AppState>, AuthUser(user): AuthUser, Jso
     let better_throughput = best.0.is_none_or(|b| per_minute > b);
     let better_efficiency = best.1.is_none_or(|b| efficiency > b);
     let stored = per_minute > 0.0 && (better_throughput || better_efficiency);
+    let mut id: Option<i64> = None; // the stored entry, to view or share (/api/factories/{id})
     if stored {
-        sqlx::query(
+        let (new_id,): (i64,) = sqlx::query_as(
             "insert into scores (user_id, world, bench_version, per_minute, efficiency, machines, sold, layout) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8)",
+             values ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
         )
         .bind(user.id)
         .bind(&world)
@@ -94,14 +95,16 @@ pub async fn submit(State(state): State<AppState>, AuthUser(user): AuthUser, Jso
         .bind(machines)
         .bind(&result["sold"])
         .bind(&body.layout)
-        .execute(&state.db)
+        .fetch_one(&state.db)
         .await?;
+        id = Some(new_id);
     }
     let rank_throughput = players_ahead(&state, "per_minute", &world, per_minute.max(best.0.unwrap_or(0.0)), user.id).await? + 1;
     let rank_efficiency = players_ahead(&state, "efficiency", &world, efficiency.max(best.1.unwrap_or(0.0)), user.id).await? + 1;
     Ok(Json(json!({
         "result": result,
         "stored": stored,
+        "id": id,
         "newBest": { "throughput": stored && better_throughput, "efficiency": stored && better_efficiency },
         "best": { "throughput": per_minute.max(best.0.unwrap_or(0.0)), "efficiency": efficiency.max(best.1.unwrap_or(0.0)) },
         "rank": { "throughput": rank_throughput, "efficiency": rank_efficiency },
@@ -123,21 +126,22 @@ pub async fn leaderboard(State(state): State<AppState>, MaybeUser(me): MaybeUser
         return Err(ApiError::bad("Unknown world"));
     }
     let sql = format!(
-        "with best as (select distinct on (user_id) user_id, per_minute, efficiency, machines, created_at from scores \
+        "with best as (select distinct on (user_id) id, user_id, per_minute, efficiency, machines, created_at from scores \
            where world = $1 and bench_version = $2 order by user_id, {column} desc, created_at asc), \
          ranked as (select b.*, u.name, rank() over (order by b.{column} desc) as rank from best b join users u on u.id = b.user_id) \
-         select user_id, name, per_minute, efficiency, machines, (extract(epoch from created_at) * 1000)::bigint, rank \
+         select user_id, name, per_minute, efficiency, machines, (extract(epoch from created_at) * 1000)::bigint, rank, id \
          from ranked where rank <= 50 or user_id = $3 order by rank, created_at"
     );
-    let rows: Vec<(i64, String, f64, f64, i32, i64, i64)> = sqlx::query_as(&sql)
+    let rows: Vec<(i64, String, f64, f64, i32, i64, i64, i64)> = sqlx::query_as(&sql)
         .bind(&world)
         .bind(state.bench_version as i32)
         .bind(me.as_ref().map(|u| u.id).unwrap_or(-1))
         .fetch_all(&state.db)
         .await?;
     let me_id = me.as_ref().map(|u| u.id);
-    let entry = |(uid, name, pm, eff, machines, at, rank): &(i64, String, f64, f64, i32, i64, i64)| {
-        json!({ "rank": rank, "name": name, "perMinute": pm, "efficiency": eff, "machines": machines, "createdAt": at, "me": Some(*uid) == me_id })
+    // `id`: the entry's factory, public at /api/factories/{id}.
+    let entry = |(uid, name, pm, eff, machines, at, rank, id): &(i64, String, f64, f64, i32, i64, i64, i64)| {
+        json!({ "id": id, "rank": rank, "name": name, "perMinute": pm, "efficiency": eff, "machines": machines, "createdAt": at, "me": Some(*uid) == me_id })
     };
     let top: Vec<Value> = rows.iter().filter(|r| r.6 <= 50).map(entry).collect();
     let mine = rows.iter().find(|r| Some(r.0) == me_id).map(entry);

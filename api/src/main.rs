@@ -6,6 +6,7 @@
 //!   selene-api bench <cases.json> run the leaderboard test on sample layouts and time it
 
 mod auth;
+mod blueprints;
 mod error;
 mod limits;
 mod scores;
@@ -16,7 +17,7 @@ use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
@@ -80,6 +81,9 @@ pub fn router(state: AppState) -> Router {
         .route("/settings", get(store::get_settings).put(store::put_settings))
         .route("/scores", post(scores::submit))
         .route("/leaderboard", get(scores::leaderboard))
+        .route("/blueprints", get(blueprints::list))
+        .route("/blueprints/{id}", put(blueprints::put).delete(blueprints::delete))
+        .route("/factories/{id}", get(blueprints::factory))
         .layer(middleware::from_fn(require_header))
         .layer(DefaultBodyLimit::max(6 * 1024 * 1024))
         .with_state(state);
