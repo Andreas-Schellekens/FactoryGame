@@ -455,7 +455,7 @@ export function createUI({
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
         if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: `not for ${b.player} eyes`, svg: memoSVG() };
         if (line.who === 'boss') return { name: BOSS.name.toUpperCase(), role: BOSS.title, svg: bossSVG() };
-        return { name: `${AI.name} ▸ CAPCOM`, role: b.own ? `co-founder · ${b.full}` : `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
+        return { name: AI.name, role: b.own ? `co-founder · ${b.full}` : `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
     }
 
     // Typing is time-based (so a throttled timer can't slow DELTA down), then
@@ -864,7 +864,7 @@ export function createUI({
         function subtitle(line) {
             subWho.textContent = line.who === 'nile'
                 ? `${BRAND.nihil.name} BROADCAST`
-                : line.who === 'boss' ? BOSS.name.toUpperCase() : `${AI.name} ▸ CAPCOM`;
+                : line.who === 'boss' ? BOSS.name.toUpperCase() : AI.name;
             subWho.className = `lb-who who-${line.who}`;
             subText.textContent = line.text;
             bottom.classList.remove('show');
