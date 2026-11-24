@@ -1,12 +1,13 @@
 # Deploying Protocol: Selene
 
-The game runs as three Railway services in one project:
+The game runs as three Railway services in the project **protocol-selene** (region EU West,
+`europe-west4`), all deploying the `main` branch of this repository:
 
 | Service | What | Built from | Public |
 |---|---|---|---|
 | **Postgres** | accounts, cloud saves, settings, leaderboard scores | Railway's PostgreSQL template | no |
-| **api** | the Rust API (`api/`): accounts, saves, settings, the leaderboard's server-side test | `api/Dockerfile` (config `api/railway.json`) | no |
-| **web** | Caddy serving the game (the Vite build) and passing `/api/*` to **api** | `web/Dockerfile` (config `web/railway.json`) | yes |
+| **api** | the Rust API (`api/`): accounts, saves, settings, the leaderboard's server-side test | `api/Dockerfile` | no |
+| **web** | Caddy serving the game (the Vite build) and passing `/api/*` to **api** | `web/Dockerfile` | yes |
 
 The browser only ever talks to **web**, so the game and its API share one site: the
 session cookie is first-party and there is no CORS. **api** is only reachable over
@@ -15,30 +16,39 @@ Railway's private network.
 The game also works without the server: saves and settings then stay in the browser,
 and the account and leaderboard say they are offline.
 
-## Railway setup (once)
-
-1. **Project:** New project → choose the region closest to the players (EU West keeps
-   the data in the EU).
-2. **Database:** + New → Database → PostgreSQL. Railway names it `Postgres`.
-3. **API:** + New → GitHub repo → this repository. Then in the service's settings:
-   - Name it `api` (the web service finds it as `api.railway.internal`).
-   - Settings → Config-as-code → Railway config file: `api/railway.json`.
-     (This builds `api/Dockerfile` from the repository root and checks `/api/health`.)
-   - Variables:
-     - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (the private URL)
-     - `PORT` = `8080`
-     - `COOKIE_SECURE` = `1`
-   - No public domain.
-4. **Web:** + New → GitHub repo → this repository again. Then:
-   - Name it `web`.
-   - Railway config file: `web/railway.json`.
-   - Variables: `API_UPSTREAM` = `${{api.RAILWAY_PRIVATE_DOMAIN}}:8080`
-   - Settings → Networking → Generate domain (or add your own domain).
-5. **Branch:** both services deploy the branch set under Settings → Source (`main`
-   once iteration 6 is merged). Each service only rebuilds when its own files change
-   (`watchPatterns` in its config file).
-
+A push to `main` redeploys the services whose files changed (their watch paths below).
 The API runs its database migrations (`api/migrations/`) when it starts.
+
+## How the project is set up
+
+Railway's config-as-code files (`railway.json`) are deprecated, so the settings live on
+the services themselves. This is how they were made with the Railway CLI
+(`npm i -g @railway/cli`, then `railway login`), from the repository root:
+
+```sh
+railway init --name protocol-selene
+railway add --database postgres
+railway add --service api --repo Andreas-Schellekens/FactoryGame --branch main \
+  --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}}' --variables 'PORT=8080' \
+  --variables 'COOKIE_SECURE=1' --variables 'RAILWAY_DOCKERFILE_PATH=api/Dockerfile'
+railway add --service web --repo Andreas-Schellekens/FactoryGame --branch main \
+  --variables 'API_UPSTREAM=${{api.RAILWAY_PRIVATE_DOMAIN}}:8080' \
+  --variables 'RAILWAY_DOCKERFILE_PATH=web/Dockerfile'
+railway variable set PORT=8080 --service web
+railway domain --service web --port 8080
+```
+
+Plus, per service (Settings in the dashboard, or `serviceInstanceUpdate` through
+`railway api`):
+
+| Service | Dockerfile | Healthcheck | Watch paths |
+|---|---|---|---|
+| api | `api/Dockerfile` | `/api/health` (120 s) | `api/**`, `src/grid.js`, `src/config.js`, `src/campaign.js`, `src/benchmark.js` |
+| web | `web/Dockerfile` | `/` | `web/**`, `src/**`, `public/**`, `index.html`, `vite.config.js`, `package.json`, `package-lock.json` |
+
+Variables: **api** has `DATABASE_URL` (Postgres's private URL, as a reference), `PORT=8080`
+and `COOKIE_SECURE=1`; **web** has `API_UPSTREAM` (the api's private address) and
+`PORT=8080`. The api service has no public domain. Never set `RELAX_LIMITS` on Railway.
 
 ## Costs
 
