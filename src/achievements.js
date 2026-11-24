@@ -76,9 +76,10 @@ const WINDOW = 60 * TICK_RATE; // credits per minute over the last minute of gam
 function readStore() {
     try {
         const v = JSON.parse(localStorage.getItem(STORE) ?? 'null');
-        return v && typeof v.earned === 'object' ? v : { earned: {} };
+        // `earned`: id → when; `here`: the ids earned in this browser (the rest came from the account).
+        return v && typeof v.earned === 'object' ? { here: {}, ...v } : { earned: {}, here: {} };
     } catch {
-        return { earned: {} };
+        return { earned: {}, here: {} };
     }
 }
 
@@ -194,8 +195,15 @@ export function createAchievements({ account, sound, root = null, avatarFor = ()
     account.onChange((st) => {
         const id = st.user?.id ?? null;
         if (id === lastUser) return;
+        const was = lastUser;
         lastUser = id;
         if (id) push(); // sends this browser's and takes the account's
+        else if (was) {
+            // Signed out: what only the account had leaves this browser (like cloud-only saves).
+            store.earned = Object.fromEntries(Object.entries(store.earned).filter(([k]) => store.here[k]));
+            persist();
+            emit();
+        }
     });
 
     // ---- Measuring --------------------------------------------------------------------------
@@ -241,6 +249,7 @@ export function createAchievements({ account, sound, root = null, avatarFor = ()
 
     function earn(def) {
         store.earned[def.id] = Date.now();
+        store.here[def.id] = 1;
         persist();
         emit();
         queue.push(def);

@@ -68,8 +68,9 @@ const password = 'correct horse battery';
 await js(([n, p]) => window.__account.signup(n, p), [other, password]);
 await api('/profile', { method: 'PUT', body: { avatar: 'm:nile' } });
 await api('/achievements', { method: 'POST', body: { earned: { firstChain: Date.now() - 60000 } } });
-const otherScore = await js((layout) => window.__account.submitScore(layout).then((r) => r.stored), SMALL);
-check('the other player is on the leaderboard', otherScore);
+// (The server runs the leaderboard test with a deadline: on a very busy machine it can run out of time.)
+const otherScore = await js((layout) => window.__account.submitScore(layout).then((r) => r.stored, (e) => e.message), SMALL);
+check('the other player is on the leaderboard', otherScore === true, otherScore === true ? '' : otherScore);
 await js(() => window.__account.logout());
 await js(() => localStorage.removeItem('selene.achievements.v1'));
 await js(() => localStorage.removeItem('selene.profile.v1'));
@@ -113,7 +114,8 @@ check('a chosen avatar is kept in the account', av.body?.avatar === 'b:smelter')
 await page.keyboard.press('Escape');
 
 // ---- The leaderboard: your avatar on your row, another player's profile ---------------------
-const mine = await js((layout) => window.__account.submitScore(layout).then((r) => r.stored), SMALL);
+await wait(1000);
+const mine = await js((layout) => window.__account.submitScore(layout).then((r) => r.stored, (e) => e.message), SMALL);
 await menu('Leaderboard');
 await page.waitForSelector(`.lb-row:has-text("${name}") .av`, { timeout: 10000 });
 await wait(500);
@@ -126,7 +128,7 @@ const board = await js(([me, them]) => {
         theirsTitle: row(them)?.querySelector('.av')?.title,
     };
 }, [name, other]);
-check('your avatar shows on your leaderboard row', mine && board.mineImg && board.mineTitle === 'Smelter', board.mineTitle);
+check('your avatar shows on your leaderboard row', mine === true && board.mineImg && board.mineTitle === 'Smelter', mine === true ? board.mineTitle : mine);
 check('other players’ avatars show on theirs', board.theirsSvg && board.theirsTitle === 'NILE', board.theirsTitle);
 await page.click(`.lb-player:has-text("${other}")`);
 await page.waitForSelector('.mm-panel.profile .pf-name', { timeout: 10000 });
@@ -194,8 +196,8 @@ const again = await js(() => import('/src/passkeys.js').then((m) => m.signInWith
 check('its passkey went with it', again === 401, `got ${again}`);
 const gone = await js((n) => fetch(`/api/players/${n}`).then((r) => r.status), name);
 check('its profile is gone', gone === 404);
-await js(([n, pw]) => window.__account.login(n, pw).then(() => window.__account.deleteAccount(pw)), [other, password]);
-check('the other throwaway account is deleted', await js(() => !window.__account.state.user));
+const delOther = await js(([n, pw]) => window.__account.login(n, pw).then(() => window.__account.deleteAccount(pw)).then(() => 'ok', (e) => e.message), [other, password]);
+check('the other throwaway account is deleted', delOther === 'ok' && await js(() => !window.__account.state.user), delOther);
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();

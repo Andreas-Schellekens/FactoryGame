@@ -334,9 +334,11 @@ export function createProfile({ account, menus, achievements, saves, icons = {},
         }
         if (!body.isConnected) return;
         body.innerHTML = '';
+        const foot = el('div', 'mm-actions pf-foot');
+        foot.appendChild(button(T.best, () => onLeaderboard()));
         if (p.private) {
             body.appendChild(header({ avatar: p.avatar, name: p.name, lines: [] }));
-            body.appendChild(el('p', 'mm-text', T.private));
+            body.append(el('p', 'mm-text', T.private), foot);
             return;
         }
         const earned = p.achievements ?? {};
@@ -346,7 +348,7 @@ export function createProfile({ account, menus, achievements, saves, icons = {},
             row.append(el('span', 'mm-note', T.yours), button(T.title, () => open()));
             body.appendChild(row);
         }
-        body.append(bestsRow(p.best), endingsRow(earned), achievementGrid(earned));
+        body.append(bestsRow(p.best), endingsRow(earned), achievementGrid(earned), foot);
     }
 
     // ---- Leaderboard rows ----------------------------------------------------------------------
