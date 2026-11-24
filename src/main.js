@@ -38,6 +38,10 @@ import { createMenus } from './menus.js';
 import { createSettingsPanel } from './settingsPanel.js';
 import { blueprintThumb } from './blueprint.js';
 import { layoutOf } from './benchmark.js';
+// The weekly challenge (iteration 7): its rules in grid.js, its screens in challengeUi.js.
+import { isChallenge, activeChallenge, cappedCount, challengeRefusal } from './grid.js';
+import { CHALLENGE_TEXT, challengeScript } from './story.js';
+import { createChallengeUi } from './challengeUi.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -158,6 +162,8 @@ function snapshot() {
         ending: project.ending,
         minPrice: Math.min(1, ...Object.keys(SINK_VALUE).map((k) => salePrice(k) / SINK_VALUE[k])),
         order: { status: order.status, startTick: order.startTick },
+        capped: activeChallenge ? cappedCount() : 0, // the weekly challenge (story.js challengeScript)
+        tested: !!state.tested,
     };
 }
 
@@ -193,7 +199,7 @@ function selectedInfo() {
     const { x, y } = sel;
     if (m.type === 'sink') {
         const items = Object.keys(SINK_VALUE);
-        return { x, y, type: 'sink', sig: `sink@${x},${y}`, infinite: isInfinite(), market: items.map((item) => ({ item, price: salePrice(item), base: SINK_VALUE[item] })) };
+        return { x, y, type: 'sink', sig: `sink@${x},${y}`, infinite: isInfinite(), challenge: activeChallenge, market: items.map((item) => ({ item, price: salePrice(item), base: SINK_VALUE[item] })) };
     }
     const recipes = RECIPES[m.type]?.map((r) => ({ ...r, unlocked: recipeUnlocked(r), active: m.recipe === r.id }));
     const rates = machineRates(x, y);
@@ -205,7 +211,7 @@ function selectedInfo() {
         const fmt = (n) => (n >= 10 ? Math.round(n) : n.toFixed(1));
         upgrade = { cost, gain: item ? `${fmt(now)} → ${fmt(next)}/min` : rates.points ? `${fmt(rates.points)} → ${fmt(rates.next.points)} pts/min` : '' };
     }
-    const tierCap = UPGRADABLE.has(m.type) && cost == null ? (m.tier >= MAX_TIER ? 'Top tier' : 'Tier 4 needs the Tier 4 research') : null;
+    const tierCap = UPGRADABLE.has(m.type) && cost == null ? (activeChallenge && m.tier >= activeChallenge.tierCap ? CHALLENGE_TEXT.refusal.tier : m.tier >= MAX_TIER ? 'Top tier' : 'Tier 4 needs the Tier 4 research') : null;
     return {
         x, y, type: m.type,
         tier: UPGRADABLE.has(m.type) ? m.tier : null,
@@ -281,7 +287,7 @@ function slotMeta() {
     } catch { /* no canvas: no picture */ }
     return {
         mode: game.mode, world: game.world, phase: project.phase, plot: game.plot, complete: project.complete,
-        playSec: Math.round(playMs / 1000), thumb,
+        playSec: Math.round(playMs / 1000), thumb, week: game.challenge ?? undefined,
     };
 }
 
@@ -352,7 +358,7 @@ function changeSpeed(delta) {
 // --- Tools (locked buildings can't be selected) ---
 function selectTool(tool) {
     if (buildableTools.has(tool) && !isBuildingUnlocked(tool)) {
-        ui.toast(isInfinite() ? `License the ${BUILDING_NAMES[tool]} in the console first` : `${BUILDING_NAMES[tool]} arrives in Phase ${unlockPhaseOf(tool) + 2}`);
+        ui.toast(isChallenge() ? CHALLENGE_TEXT.refusal.banned(BUILDING_NAMES[tool]) : isInfinite() ? `License the ${BUILDING_NAMES[tool]} in the console first` : `${BUILDING_NAMES[tool]} arrives in Phase ${unlockPhaseOf(tool) + 2}`);
         audio.cue('deny');
         return;
     }
@@ -398,7 +404,8 @@ function placeGroup() {
     if (!plan?.ok) {
         audio.cue('deny');
         renderer.nudgeGhost();
-        if (plan && !plan.bad.length && g.mode === 'copy') ui.toast(`This copy costs CR ${plan.cost}`);
+        if (plan?.capped) ui.toast(CHALLENGE_TEXT.refusal.copyCap(activeChallenge.cap));
+        else if (plan && !plan.bad.length && g.mode === 'copy') ui.toast(`This copy costs CR ${plan.cost}`);
         return;
     }
     renderer.quietNext(); // the machines slide over: no demolish/build juice for each one
@@ -441,10 +448,23 @@ const director = createDirector({
     say: (line) => ui.say(line),
     banner: (i) => ui.showBanner(i),
     isBusy: () => ui.isBusy() || menus.isOpen(),
-    script: () => (isInfinite() ? INFINITE : STORY_SCRIPT),
+    script: () => (isChallenge() ? weekScript() : isInfinite() ? INFINITE : STORY_SCRIPT),
     hints: () => settings.get().gameplay.hints,
     ending: () => playEnding(),
 });
+
+/** DELTA's script for the challenge being played (story.js challengeScript), made once per week. */
+let weekScriptCache = null;
+function weekScript() {
+    if (weekScriptCache?.key !== activeChallenge.key) weekScriptCache = { key: activeChallenge.key, ...challengeScript(activeChallenge) };
+    return weekScriptCache;
+}
+/** The console's challenge numbers: the cap, the budget left, the target per minute. */
+function challengeInfo() {
+    const r = activeChallenge;
+    const rate = production ? (production.rows.find((row) => row.item === r.target)?.sold ?? 0) : null;
+    return { key: r.key, rules: r, capped: cappedCount(), money: score, rate };
+}
 
 /** The end: choose the target (unless a save already chose), the cinematic, the report. */
 function playEnding() {
@@ -521,6 +541,7 @@ const ui = createUI({
         return true;
     },
     keyMap: settings.get().keys,
+    challengeConsole: (list, note, info, onBoard) => challengeUi.consoleView(list, note, info, onBoard),
     onUnlock: (id) => unlockTech(id),
     onSetRecipe: (id) => {
         const sel = state.selected;
@@ -586,6 +607,7 @@ const ui = createUI({
             project: { phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company },
             mode: game.mode,
             infinite: isInfinite() ? infiniteInfo() : null,
+            challenge: isChallenge() ? challengeInfo() : null,
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
             objectives: director.objectives(),
         };
@@ -726,14 +748,15 @@ window.addEventListener('beforeunload', () => saveGame('later'));
 // --- Menus: title screen, saves, account, leaderboard, settings (menus.js, settingsPanel.js) ---
 const menus = createMenus({ account, saves, sound: audio, onOpenSettings: () => settingsPanel.open() });
 const settingsPanel = createSettingsPanel({ settings, sound: audio, menus, account });
+const challengeUi = createChallengeUi({ account, saves, menus, sound: audio });
 
 /** Start playing (the title screen is gone): a new game in a new slot, or a slot's save. */
-function beginNew(mode) {
-    if (mode === 'infinite') {
+function beginNew(mode, { week = null } = {}) {
+    if (mode === 'infinite' || mode === 'challenge') {
         renderer.reset();
-        renderer.applyEvents(newGame('infinite'), 0);
+        renderer.applyEvents(newGame(mode, { challenge: week }), 0);
     }
-    activeSlot = saves.create({ mode });
+    activeSlot = saves.create({ mode: game.mode, name: isChallenge() ? CHALLENGE_TEXT.slotName(game.challenge) : null });
     playMs = 0;
     state.started = true;
     state.paused = false;
@@ -750,7 +773,7 @@ async function beginSlot(slot) {
     }
     if (!data || !applySave(data)) {
         ui.toast('That save could not be read; starting a new game');
-        beginNew(slot.mode === 'infinite' ? 'infinite' : 'story');
+        beginNew(slot.mode === 'infinite' || slot.mode === 'challenge' ? slot.mode : 'story', { week: slot.week ?? challengeUi.thisWeek() });
         return;
     }
     activeSlot = saves.get(slot.id);
@@ -771,6 +794,11 @@ function showTitle() {
         onNew: (mode) => beginNew(mode),
         onPlay: (slot) => beginSlot(slot),
         onLeaderboard: () => openBoard(),
+        challengeCard: (leave) => challengeUi.titleCard({
+            // `leave` closes the title screen first (its wrapper takes no arguments).
+            onStart: (week) => leave(() => beginNew('challenge', { week }))(),
+            onPlay: (slot) => leave(() => beginSlot(slot))(),
+        }),
     });
 }
 /** The in-game menu: saves, settings, leaderboard, account, and back to the title screen. */
@@ -794,16 +822,30 @@ function openSaves() {
 
 // The leaderboard's test runs on a copy of the simulation in a worker (benchWorker.js).
 let benchWorker = null;
-function previewScore(layout) {
+function previewScore(layout, options = null) {
     benchWorker ??= new Worker(new URL('./benchWorker.js', import.meta.url), { type: 'module' });
     return new Promise((resolve) => {
         benchWorker.onmessage = (e) => resolve(e.data);
         benchWorker.onerror = () => resolve({ ok: false, error: 'The test could not run here' });
-        benchWorker.postMessage(layout);
+        benchWorker.postMessage(options ? { layout, options } : layout);
     });
 }
 function openBoard() {
     const playing = state.started;
+    if (playing && isChallenge()) {
+        const week = game.challenge;
+        challengeUi.openBoard({
+            week,
+            submit: {
+                week,
+                layout: () => layoutOf(),
+                preview: () => previewScore(layoutOf(), { challenge: week }),
+                onTested: () => (state.tested = true),
+                onSent: () => (state.submitted = true),
+            },
+        });
+        return;
+    }
     menus.openLeaderboard({
         submit: !playing ? null : {
             allowed: isInfinite(),
@@ -867,7 +909,7 @@ try {
 } catch { /* ignore */ }
 const bootSlot = boot?.action === 'load' ? saves.get(boot.slot) : null;
 if (bootSlot) beginSlot(bootSlot);
-else if (boot?.action === 'new') beginNew(boot.mode);
+else if (boot?.action === 'new') beginNew(boot.mode, boot);
 else showTitle();
 
 // --- Input: build tools ---
@@ -895,8 +937,16 @@ function actAt(gx, gy, button) {
         } else {
             audio.cue('deny');
             renderer.nudgeGhost();
+            challengeToast(gx, gy, state.tool);
         }
     }
+}
+
+/** A weekly challenge says why a build was refused: its machine cap or its budget. */
+function challengeToast(x, y, type) {
+    const why = challengeRefusal(x, y, type);
+    if (why === 'cap') ui.toast(CHALLENGE_TEXT.refusal.cap(activeChallenge.cap));
+    else if (why === 'budget') ui.toast(CHALLENGE_TEXT.refusal.budget(activeChallenge.budget));
 }
 
 const SPEND_COLOR = '#ff9d7e';
@@ -1133,6 +1183,7 @@ if (import.meta.env.DEV) {
     window.__saves = saves;
     window.__account = account;
     window.__menus = menus;
+    window.__challengeUi = challengeUi;
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);

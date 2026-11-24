@@ -327,6 +327,7 @@ pub async fn export(State(state): State<AppState>, AuthUser(user): AuthUser) -> 
         "saves": saves.into_iter().map(|(slot, name, meta, data, rev, at)| json!({ "slot": slot, "name": name, "meta": meta, "data": data, "rev": rev, "updatedAt": at })).collect::<Vec<_>>(),
         "settings": settings.map(|(d,)| d),
         "scores": scores.into_iter().map(|(world, v, pm, eff, machines, sold, layout, at)| json!({ "world": world, "benchVersion": v, "perMinute": pm, "efficiency": eff, "machines": machines, "sold": sold, "layout": layout, "createdAt": at })).collect::<Vec<_>>(),
+        "challengeScores": crate::challenge::export_rows(&state.db, user.id).await?,
     });
     let mut res = Json(body).into_response();
     res.headers_mut().insert("content-disposition", HeaderValue::from_static("attachment; filename=\"selene-account.json\""));

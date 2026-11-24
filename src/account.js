@@ -118,6 +118,9 @@ export function createAccount() {
         putSettings: (data, updatedAt) => call('/settings', { method: 'PUT', body: { data, updatedAt } }),
         submitScore: (layout) => call('/scores', { method: 'POST', body: { layout } }),
         leaderboard: (board, world = 'valley') => call(`/leaderboard?board=${encodeURIComponent(board)}&world=${encodeURIComponent(world)}`),
+        // The weekly challenge (iteration 7): a week's board, and a factory for this week's.
+        challengeBoard: (week = null) => call(`/challenge${week ? `?week=${encodeURIComponent(week)}` : ''}`),
+        submitChallenge: (week, layout) => call('/challenge/submit', { method: 'POST', body: { week, layout } }),
     };
 }
 

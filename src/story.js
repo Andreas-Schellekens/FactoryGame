@@ -754,6 +754,8 @@ export const CHALLENGE_TEXT = {
     explain: 'The server rebuilds your factory on this week’s map, runs it for 6 minutes of game time and counts the target delivered in the last 5. One best per Steward; ties go to the cheaper factory, then the earlier one.',
     submitNote: 'Only a factory that keeps to this week’s rules is accepted.',
     padNote: (r) => `Takes only ${targetPlural(r.target)} this week, and pays nothing for them`,
+    padStatus: (r) => `Takes only ${targetPlural(r.target)}`,
+    plotChip: ['small plot', 'fenced plot', 'fenced plot'],
 };
 
 /** DELTA's script for a challenge game (see the section comment). */
