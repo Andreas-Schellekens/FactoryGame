@@ -321,11 +321,13 @@ pub async fn export(State(state): State<AppState>, AuthUser(user): AuthUser) -> 
     .bind(user.id)
     .fetch_all(&state.db)
     .await?;
+    let blueprints = crate::blueprints::export(&state.db, user.id).await?;
     let body = json!({
         "exportedFrom": "Protocol: Selene",
         "user": { "name": user.name, "createdAt": created },
         "saves": saves.into_iter().map(|(slot, name, meta, data, rev, at)| json!({ "slot": slot, "name": name, "meta": meta, "data": data, "rev": rev, "updatedAt": at })).collect::<Vec<_>>(),
         "settings": settings.map(|(d,)| d),
+        "blueprints": blueprints,
         "scores": scores.into_iter().map(|(world, v, pm, eff, machines, sold, layout, at)| json!({ "world": world, "benchVersion": v, "perMinute": pm, "efficiency": eff, "machines": machines, "sold": sold, "layout": layout, "createdAt": at })).collect::<Vec<_>>(),
     });
     let mut res = Json(body).into_response();
@@ -338,7 +340,7 @@ pub struct DeleteAccount {
     password: String,
 }
 
-/// Delete the account and everything with it (saves, settings, scores, sessions).
+/// Delete the account and everything with it (saves, settings, scores, blueprints, sessions).
 pub async fn delete_account(State(state): State<AppState>, AuthUser(user): AuthUser, Json(body): Json<DeleteAccount>) -> ApiResult<Response> {
     limit(&state, format!("delete:{}", user.id), 10, 900)?;
     let (hash,): (String,) = sqlx::query_as("select pass_hash from users where id = $1").bind(user.id).fetch_one(&state.db).await?;

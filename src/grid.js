@@ -773,7 +773,7 @@ export function planGroup(cells, anchor, to, rot = 0, mode = 'move') {
         let ry = y - anchor.y;
         for (let i = 0; i < rot; i++) [rx, ry] = [-ry, rx];
         const t = { x: to.x + rx, y: to.y + ry };
-        moves.push({ from: { x, y }, to: t, type: m.type, dir: turnDir(m.dir, rot) });
+        moves.push({ from: { x, y }, to: t, type: m.type, dir: turnDir(m.dir, rot), recipe: m.recipe, off: !!m.off });
         if (mode === 'copy') cost += MACHINE_COST[m.type] ?? 0;
         const c = inBounds(t.x, t.y) ? grid[t.x][t.y] : null;
         const free = c && (!c.machine || (mode === 'move' && own.has(`${t.x},${t.y}`)));
@@ -797,14 +797,13 @@ export function applyGroup(plan, mode = 'move') {
     if (mode === 'copy') {
         score -= plan.cost;
         for (const mv of plan.moves) {
-            const src = grid[mv.from.x][mv.from.y].machine;
             const cell = grid[mv.to.x][mv.to.y];
             const extra = mv.type === 'extractor' ? { produces: cell.resource }
                 : (mv.type === 'splitter' || mv.type === 'merger') ? { toggle: 0 }
                 : mv.type === 'generator' ? { fuelTicks: 0 }
                 : {};
-            if (src?.recipe) extra.recipe = src.recipe;
-            if (src?.off) extra.off = true;
+            if (mv.recipe) extra.recipe = mv.recipe;
+            if (mv.off) extra.off = true;
             cell.machine = makeMachine(mv.type, mv.dir, extra);
         }
         return events;
@@ -828,6 +827,36 @@ export function applyGroup(plan, mode = 'move') {
         }
     });
     return events;
+}
+
+/**
+ * Plan a stored machine list (a blueprint: `[{ x, y, type, dir, recipe?, off? }]`, from
+ * blueprints.js) as a copy: the entry at `anchor` lands on `to`, turned `rot` quarter turns
+ * clockwise. The same plan shape as planGroup()'s 'copy', so applyGroup(plan, 'copy') builds
+ * it. A blueprint has no source cell on the map: each move's `from` is its landing cell.
+ * Unknown building types and recipes don't fit (a file from another version).
+ */
+export function planStored(machines, anchor, to, rot = 0) {
+    const moves = [];
+    const bad = [];
+    const seen = new Set();
+    let cost = 0;
+    for (const m of machines) {
+        let rx = m.x - anchor.x;
+        let ry = m.y - anchor.y;
+        for (let i = 0; i < rot; i++) [rx, ry] = [-ry, rx];
+        const t = { x: to.x + rx, y: to.y + ry };
+        const known = m.type in MACHINE_COST && m.type !== 'sink' && TURNS.includes(m.dir)
+            && (m.recipe == null || RECIPES[m.type]?.some((r) => r.id === m.recipe));
+        moves.push({ from: t, to: t, type: m.type, dir: known ? turnDir(m.dir, rot) : 'right', recipe: m.recipe ?? undefined, off: !!m.off });
+        cost += MACHINE_COST[m.type] ?? 0;
+        const c = inBounds(t.x, t.y) ? grid[t.x][t.y] : null;
+        const fits = known && c && !c.machine && !c.blocked && !c.water && inPlot(t.x, t.y)
+            && (m.type !== 'extractor' || c.resource) && isBuildingUnlocked(m.type) && !seen.has(`${t.x},${t.y}`);
+        seen.add(`${t.x},${t.y}`);
+        if (!fits) bad.push(t);
+    }
+    return { moves, bad, cost, ok: moves.length > 0 && bad.length === 0 && score >= cost };
 }
 
 /** Demolish every machine in `cells` (refunds, like removeMachine). @returns {FactoryEvent[]} */

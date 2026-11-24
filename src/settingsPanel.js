@@ -17,6 +17,7 @@ const ACTION_NAMES = {
     rotate: 'Rotate before placing', viewLeft: 'Turn the view left', viewRight: 'Turn the view right', pause: 'Pause',
     mute: 'Sound on / off', move: 'Move the selection', copy: 'Copy the selection', alerts: BUILD_HELP.alerts.actionName,
     codex: 'Codex: items, recipes, buildings',
+    blueprints: 'Blueprint library (with a selection: save it as a blueprint)',
 };
 const actionName = (a) => ACTION_NAMES[a] ?? BUILDING_NAMES[a] ?? a;
 const FIXED_KEYS = [

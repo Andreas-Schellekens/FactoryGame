@@ -13,6 +13,7 @@ export const DEFAULT_KEYS = {
     pipette: 'f', rotate: 'r', viewLeft: 'q', viewRight: 'e', pause: ' ', mute: 'm',
     move: 'g', copy: 'c', alerts: 'n',
     codex: 'k',
+    blueprints: 'b',
 };
 /** Keys that can't be bound: camera panning, Escape, the speed keys. */
 export const RESERVED_KEYS = new Set([
