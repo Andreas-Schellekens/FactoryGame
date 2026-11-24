@@ -541,7 +541,6 @@ const director = createDirector({
     finale: () => showEpilogueReport(),
 });
 
-<<<<<<< HEAD
 /** DELTA's script for the challenge being played (story.js challengeScript), made once per week. */
 let weekScriptCache = null;
 function weekScript() {
@@ -568,7 +567,6 @@ function showEpilogueReport() {
             saveGame();
         },
     });
->>>>>>> refs/heads/claude/upbeat-ptolemy-1b264e
 }
 
 /** The end: choose the target (unless a save already chose), the cinematic, the report. */
@@ -1443,15 +1441,12 @@ if (import.meta.env.DEV) {
     window.__blueprints = blueprints;
     window.__account = account;
     window.__menus = menus;
-<<<<<<< HEAD
     window.__undo = history; // undo.js: __undo.size(), __undo.undo()
     window.__alerts = alerts; // alerts.js: __alerts.groups()
     window.__achievements = achievements; // __achievements.grant('circuit') earns one
     window.__profile = profile;
     window.__challengeUi = challengeUi;
-=======
     window.__epilogue = await import('./epilogue.js'); // the epilogue: __epilogue.GOALS, epilogueInfo(), tickEpilogue()
->>>>>>> refs/heads/claude/upbeat-ptolemy-1b264e
     if (new URLSearchParams(location.search).has('sounds')) {
         const { mountSoundboard } = await import('./soundboard.js');
         mountSoundboard(audio);
