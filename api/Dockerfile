@@ -9,9 +9,12 @@ RUN mkdir -p api/src && echo 'fn main() {}' > api/src/main.rs \
     && cd api && cargo build --release --locked \
     && rm -rf src target/release/deps/selene_api* target/release/selene-api*
 
-COPY src/grid.js src/config.js src/campaign.js src/benchmark.js src/
+COPY src/grid.js src/config.js src/campaign.js src/benchmark.js src/challenge.js src/
 COPY api/ api/
-RUN cd api && cargo build --release --locked
+# COPY keeps the files' own times, which can be older than the placeholder built above (when
+# Cargo.toml changed): touch them, or cargo thinks the placeholder is current and ships it.
+RUN cd api && touch src/*.rs && cargo build --release --locked \
+    && grep -q "selene-api listening" target/release/selene-api
 
 FROM debian:bookworm-slim
 RUN useradd --system --uid 10001 selene
