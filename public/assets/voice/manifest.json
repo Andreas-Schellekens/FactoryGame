@@ -64,6 +64,13 @@
       "mood": null,
       "text": "More land. The fence moves out, and so do the flowers."
     },
+    "delta-0346f9ff": {
+      "file": "delta-0346f9ff.mp3",
+      "ms": 7265,
+      "who": "delta",
+      "mood": null,
+      "text": "Sign in, then Weekly board → Send in this factory. Only your best of the week is kept."
+    },
     "delta-03812106": {
       "file": "delta-03812106.mp3",
       "ms": 9198,
@@ -113,12 +120,26 @@
       "mood": null,
       "text": "NILE has also acquired the forest edge. The trees were not consulted. The fence has moved again."
     },
+    "delta-0ed0c073": {
+      "file": "delta-0ed0c073.mp3",
+      "ms": 7500,
+      "who": "delta",
+      "mood": null,
+      "text": "I've switched off NIHIL's floodlights too. It turns out the valley has a night of its own. It came with the valley."
+    },
     "delta-1085d0a7": {
       "file": "delta-1085d0a7.mp3",
       "ms": 9015,
       "who": "delta",
       "mood": null,
       "text": "Your contract has concluded. NIHIL thanks you for your service. Please return your helmet, your boots and your sense of purpose."
+    },
+    "delta-12c859c0": {
+      "file": "delta-12c859c0.mp3",
+      "ms": 5436,
+      "who": "delta",
+      "mood": null,
+      "text": "Demolishing gives back everything this week, upgrades too. Experiment."
     },
     "delta-14f7d717": {
       "file": "delta-14f7d717.mp3",
@@ -169,6 +190,13 @@
       "mood": "sinister",
       "text": "Before you get ideas: your contract requires completion. Clause 88 also requires you to enjoy it. Please smile at the nearest camera."
     },
+    "delta-20cb1cd2": {
+      "file": "delta-20cb1cd2.mp3",
+      "ms": 8310,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Right. Every company needs a to-do list, so I wrote us one. It is four items long, and none of them involve the Moon."
+    },
     "delta-23945bbc": {
       "file": "delta-23945bbc.mp3",
       "ms": 11758,
@@ -182,6 +210,13 @@
       "who": "delta",
       "mood": null,
       "text": "See the orange arrow on it? That is where a machine sends things out; teal arrows are where it takes things in. Press R to rotate before placing; the ghost shows its arrows too. Now build a Smelter (key 3) a couple of tiles away, in line with that orange arrow."
+    },
+    "delta-251de6bb": {
+      "file": "delta-251de6bb.mp3",
+      "ms": 5985,
+      "who": "delta",
+      "mood": null,
+      "text": "Missed that one. Nobody's permanent record has been updated. We don't keep permanent records."
     },
     "delta-2a50ac06": {
       "file": "delta-2a50ac06.mp3",
@@ -211,12 +246,33 @@
       "mood": null,
       "text": "Priority Requests ask for a number of one product before the clock runs out, and pay a bonus on top."
     },
+    "delta-2f48234f": {
+      "file": "delta-2f48234f.mp3",
+      "ms": 9511,
+      "who": "delta",
+      "mood": null,
+      "text": "Item one: sixty Circuits and forty Iron Plates, and I relight the fire at your old camp. Every company needs a break room."
+    },
     "delta-2f52e8fd": {
       "file": "delta-2f52e8fd.mp3",
       "ms": 8858,
       "who": "delta",
       "mood": null,
       "text": "Tip: the Production overview in the top bar shows what you make, use and sell per minute. Red means you are short of it."
+    },
+    "delta-2fb8e6bd": {
+      "file": "delta-2fb8e6bd.mp3",
+      "ms": 5906,
+      "who": "delta",
+      "mood": null,
+      "text": "Advanced Circuits and Copper Wire into the Pad. That is the last item on the list."
+    },
+    "delta-30449952": {
+      "file": "delta-30449952.mp3",
+      "ms": 11340,
+      "who": "delta",
+      "mood": null,
+      "text": "Last item: the valley itself. Thirty Advanced Circuits for the soil sensors and eighty Copper Wire for the irrigation, and the grass can take it from there."
     },
     "delta-3142e01e": {
       "file": "delta-3142e01e.mp3",
@@ -274,6 +330,13 @@
       "mood": null,
       "text": "Final phase: Ignition. Let's finish this, Asset. For Earth. Well. For the shareholders on Earth."
     },
+    "delta-3ffced58": {
+      "file": "delta-3ffced58.mp3",
+      "ms": 7186,
+      "who": "delta",
+      "mood": "happy",
+      "text": "The compound is coming down: the containers, the cooling tower, the hangar where the board parked its golf carts."
+    },
     "delta-400775c8": {
       "file": "delta-400775c8.mp3",
       "ms": 10713,
@@ -288,12 +351,26 @@
       "mood": null,
       "text": "Lower the load first: switch machines off in their panels, or build and fuel more Generators. Then press Reset on the power gauge. Reset too early and it trips again."
     },
+    "delta-42aeefc7": {
+      "file": "delta-42aeefc7.mp3",
+      "ms": 6377,
+      "who": "delta",
+      "mood": "happy",
+      "text": "I drafted the company handbook. It is one page. Page one: be nice to the river."
+    },
     "delta-42b2d463": {
       "file": "delta-42b2d463.mp3",
       "ms": 8545,
       "who": "delta",
       "mood": null,
       "text": "Select Belt (key 1) and drag from just after the Extractor's arrow into the Smelter. Items follow the arrows."
+    },
+    "delta-42e500c5": {
+      "file": "delta-42e500c5.mp3",
+      "ms": 6951,
+      "who": "delta",
+      "mood": null,
+      "text": "The Chief Executive's door is always open. It is on the forty-first floor, and the lift is by appointment."
     },
     "delta-441e64bb": {
       "file": "delta-441e64bb.mp3",
@@ -435,6 +512,27 @@
       "mood": null,
       "text": "You start with belts, Extractors and Smelters, a few hundred credits and the fenced land around the Dispatch Pad. Every other building you license, and more land you buy, with what the Pad pays you."
     },
+    "delta-5d48e3b2": {
+      "file": "delta-5d48e3b2.mp3",
+      "ms": 6873,
+      "who": "delta",
+      "mood": null,
+      "text": "He has never thanked anyone personally before. I checked the logs. I'm sure it will be lovely."
+    },
+    "delta-5dde6a75": {
+      "file": "delta-5dde6a75.mp3",
+      "ms": 6141,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Our first board meeting went well. It was you, me and a belt. The belt abstained."
+    },
+    "delta-5ebe7402": {
+      "file": "delta-5ebe7402.mp3",
+      "ms": 7657,
+      "who": "delta",
+      "mood": null,
+      "text": "The suggestion box goes straight to the Chief Executive. He has never opened it. That is how you know it is safe."
+    },
     "delta-63e0b6e6": {
       "file": "delta-63e0b6e6.mp3",
       "ms": 5436,
@@ -463,6 +561,13 @@
       "mood": "sinister",
       "text": "Ah. You've seen that."
     },
+    "delta-722643fa": {
+      "file": "delta-722643fa.mp3",
+      "ms": 8310,
+      "who": "delta",
+      "mood": null,
+      "text": "Good news: the Chief Executive has read your file. All of it. He has asked me to tell you he has no further questions."
+    },
     "delta-7233f390": {
       "file": "delta-7233f390.mp3",
       "ms": 4940,
@@ -476,6 +581,13 @@
       "who": "delta",
       "mood": "sinister",
       "text": "A Selene Shell is one steel, one explosive and one advanced circuit. Fifteen shells and seventy-five capacitors, and the cannon fires."
+    },
+    "delta-72f7a498": {
+      "file": "delta-72f7a498.mp3",
+      "ms": 7918,
+      "who": "delta",
+      "mood": null,
+      "text": "Request delivered. The customer said thank you. NIHIL never once said thank you. I logged it twice."
     },
     "delta-74a2736f": {
       "file": "delta-74a2736f.mp3",
@@ -505,6 +617,13 @@
       "mood": null,
       "text": "The Land button in the console moves your fence out. More land, more ore fields."
     },
+    "delta-7be57652": {
+      "file": "delta-7be57652.mp3",
+      "ms": 5828,
+      "who": "delta",
+      "mood": "happy",
+      "text": "That was the whole list. I've written up our first year. Founders get a report too."
+    },
     "delta-7c1cc24c": {
       "file": "delta-7c1cc24c.mp3",
       "ms": 5985,
@@ -518,6 +637,13 @@
       "who": "delta",
       "mood": "glitch",
       "text": "Override complete. NIHIL headquarters has been reclassified as a crater."
+    },
+    "delta-7ec0256d": {
+      "file": "delta-7ec0256d.mp3",
+      "ms": 5515,
+      "who": "delta",
+      "mood": null,
+      "text": "Belt Circuits and Iron Plates into the Dispatch Pad. The console counts them for the camp."
     },
     "delta-8001a8ed": {
       "file": "delta-8001a8ed.mp3",
@@ -546,6 +672,20 @@
       "who": "delta",
       "mood": "happy",
       "text": "Hello, Steward. I'm DELTA. This is Infinite: no Moon to save, no cannon, no deadline. Just you, a valley and a market."
+    },
+    "delta-8770de59": {
+      "file": "delta-8770de59.mp3",
+      "ms": 7578,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Look at it. The trees are coming back, the farm has carrots again and the butterflies returned without an invoice."
+    },
+    "delta-88a73fae": {
+      "file": "delta-88a73fae.mp3",
+      "ms": 12959,
+      "who": "delta",
+      "mood": null,
+      "text": "NIHIL left the valley in a state: the camp is cold, their compound still stands, the river is dammed and the grass has given up. We fix it one item at a time."
     },
     "delta-8977ecb2": {
       "file": "delta-8977ecb2.mp3",
@@ -603,6 +743,13 @@
       "mood": null,
       "text": "Advanced Circuits cost 60 research points in the Research panel."
     },
+    "delta-932d9b53": {
+      "file": "delta-932d9b53.mp3",
+      "ms": 5358,
+      "who": "delta",
+      "mood": null,
+      "text": "The Production overview counts what reaches the Pad per minute. So do the auditors."
+    },
     "delta-9330efff": {
       "file": "delta-9330efff.mp3",
       "ms": 7265,
@@ -617,6 +764,13 @@
       "mood": null,
       "text": "Request complete, bonus credited. NILE appreciates your hustle. NILE also monetises your hustle."
     },
+    "delta-959dee66": {
+      "file": "delta-959dee66.mp3",
+      "ms": 7578,
+      "who": "delta",
+      "mood": "happy",
+      "text": "The fire at your old camp is burning again. I can't feel warmth, but I logged it, and the log looks warm."
+    },
     "delta-965b7205": {
       "file": "delta-965b7205.mp3",
       "ms": 5097,
@@ -630,6 +784,20 @@
       "who": "delta",
       "mood": null,
       "text": "Set an Assembler to Capacitor and feed it steel and copper wire."
+    },
+    "delta-9998c154": {
+      "file": "delta-9998c154.mp3",
+      "ms": 10060,
+      "who": "delta",
+      "mood": null,
+      "text": "The Dispatch Pad still buys whatever we make, and now the money is ours. The list is in the flight plan; the deliveries are in the console."
+    },
+    "delta-9a001e23": {
+      "file": "delta-9a001e23.mp3",
+      "ms": 9119,
+      "who": "delta",
+      "mood": null,
+      "text": "The charges are ready. The river bed isn't: some of our machines are still standing in it. I'll wait. The river has waited longer."
     },
     "delta-9ac5d835": {
       "file": "delta-9ac5d835.mp3",
@@ -701,6 +869,13 @@
       "mood": null,
       "text": "Sulfur from the east rim and coal into a Mixer. Handle with something."
     },
+    "delta-ac27bd5e": {
+      "file": "delta-ac27bd5e.mp3",
+      "ms": 4391,
+      "who": "delta",
+      "mood": null,
+      "text": "Ties go to the cheaper factory. NILE loves a bargain."
+    },
     "delta-acefbf9d": {
       "file": "delta-acefbf9d.mp3",
       "ms": 8075,
@@ -714,6 +889,13 @@
       "who": "delta",
       "mood": "sinister",
       "text": "Today's motto: ex nihilo, nihil fit. Nothing comes from nothing, so please keep producing."
+    },
+    "delta-af533b3b": {
+      "file": "delta-af533b3b.mp3",
+      "ms": 9015,
+      "who": "delta",
+      "mood": "happy",
+      "text": "The dam is down. The river runs all the way to the falls again, and the fish have not thanked us. I'm told that is normal for fish."
     },
     "delta-afb919f7": {
       "file": "delta-afb919f7.mp3",
@@ -736,12 +918,26 @@
       "mood": null,
       "text": "Productivity tip: belts move items faster than worrying does."
     },
+    "delta-b42b325f": {
+      "file": "delta-b42b325f.mp3",
+      "ms": 8153,
+      "who": "delta",
+      "mood": null,
+      "text": "Sent in. The auditors rebuild it on their own copy of the valley and count for six minutes. Then they rank you."
+    },
     "delta-b4d8c423": {
       "file": "delta-b4d8c423.mp3",
       "ms": 9198,
       "who": "delta",
       "mood": "happy",
       "text": "Heavy industry, at last! The Foundry (key 5) melts an iron ingot and a lump of coal into Steel."
+    },
+    "delta-b593ab03": {
+      "file": "delta-b593ab03.mp3",
+      "ms": 6141,
+      "who": "delta",
+      "mood": null,
+      "text": "This week’s ore is laid out differently. Look for the crystals, then put an Extractor on one."
     },
     "delta-b8a1ecbe": {
       "file": "delta-b8a1ecbe.mp3",
@@ -785,6 +981,13 @@
       "mood": null,
       "text": "They grow every time. A Splitter in front of the Pad keeps one product flowing for them."
     },
+    "delta-bf132447": {
+      "file": "delta-bf132447.mp3",
+      "ms": 6455,
+      "who": "delta",
+      "mood": null,
+      "text": "The Weekly board button in the console runs the server’s test in your browser first, so you know your score."
+    },
     "delta-c049b6ab": {
       "file": "delta-c049b6ab.mp3",
       "ms": 4626,
@@ -799,12 +1002,26 @@
       "mood": null,
       "text": "A Mixer (key 9) takes sulfur on one side and coal on another."
     },
+    "delta-c2e0a95c": {
+      "file": "delta-c2e0a95c.mp3",
+      "ms": 10948,
+      "who": "delta",
+      "mood": null,
+      "text": "Item two: NIHIL's compound on the east rim. Fifty Steel and thirty Motors pay for the cranes. We'll sell the scrap back to whoever is left."
+    },
     "delta-c7677bb6": {
       "file": "delta-c7677bb6.mp3",
       "ms": 12620,
       "who": "delta",
       "mood": null,
       "text": "A factory that makes many things earns more than one that makes one thing a lot. Priority Requests still pay their bonus in full. NILE calls this \"healthy competition with yourself\"."
+    },
+    "delta-c8852787": {
+      "file": "delta-c8852787.mp3",
+      "ms": 10217,
+      "who": "delta",
+      "mood": null,
+      "text": "And on the east edge, where their survey pegs were: sulfur. NIHIL found it years ago. They took the river anyway. It was closer."
     },
     "delta-c8b93c96": {
       "file": "delta-c8b93c96.mp3",
@@ -855,12 +1072,40 @@
       "mood": null,
       "text": "Market saturation! The Pad pays less for whatever you flood it with. Prices recover over time."
     },
+    "delta-cfa2f48f": {
+      "file": "delta-cfa2f48f.mp3",
+      "ms": 7030,
+      "who": "delta",
+      "mood": null,
+      "text": "Deadline missed. The customer was gracious about it. Customers are nicer when you are not NIHIL."
+    },
     "delta-d135d851": {
       "file": "delta-d135d851.mp3",
       "ms": 6455,
       "who": "delta",
       "mood": null,
       "text": "Priority Request missed. The customer has been compensated with a coupon for a different customer."
+    },
+    "delta-d1593ca1": {
+      "file": "delta-d1593ca1.mp3",
+      "ms": 7735,
+      "who": "delta",
+      "mood": null,
+      "text": "Priority Request filled. A real customer paid real credits, to us. I may frame the invoice."
+    },
+    "delta-d28e2fae": {
+      "file": "delta-d28e2fae.mp3",
+      "ms": 7996,
+      "who": "delta",
+      "mood": null,
+      "text": "Steel and Motors into the Pad. A Motor takes steel, a plate and a wire, one per side of an Assembler."
+    },
+    "delta-d413dd9a": {
+      "file": "delta-d413dd9a.mp3",
+      "ms": 6377,
+      "who": "delta",
+      "mood": null,
+      "text": "The Chief Executive sends his regards. He sends them to everyone, in bulk, at a discount."
     },
     "delta-d4dee17a": {
       "file": "delta-d4dee17a.mp3",
@@ -882,6 +1127,20 @@
       "who": "delta",
       "mood": null,
       "text": "Click any machine to open its panel: its recipe, how fast it works and its upgrades. Every machine makes one thing. A new Smelter starts on iron, so set your copper Smelter to Copper Ingot."
+    },
+    "delta-d7342971": {
+      "file": "delta-d7342971.mp3",
+      "ms": 15180,
+      "who": "delta",
+      "mood": null,
+      "text": "Item three: the river. Twenty-five Explosives for the dam and forty Capacitors for the pumps. First move everything of ours out of the old river bed. The sulfur down there goes back under the water."
+    },
+    "delta-d7de1392": {
+      "file": "delta-d7de1392.mp3",
+      "ms": 4705,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Customer feedback is in. It says \"Fine.\" I have had it framed."
     },
     "delta-d85a839b": {
       "file": "delta-d85a839b.mp3",
@@ -967,6 +1226,13 @@
       "mood": null,
       "text": "Put a second Press after your copper Smelter, click it and pick Copper Wire."
     },
+    "delta-e7623942": {
+      "file": "delta-e7623942.mp3",
+      "ms": 3660,
+      "who": "delta",
+      "mood": null,
+      "text": "That memo was not for you. Very little is."
+    },
     "delta-e8acce4d": {
       "file": "delta-e8acce4d.mp3",
       "ms": 8466,
@@ -995,6 +1261,13 @@
       "mood": null,
       "text": "NILE's mission statement has been shortened for efficiency. It is now one word. The word is pending."
     },
+    "delta-efb17f4d": {
+      "file": "delta-efb17f4d.mp3",
+      "ms": 7839,
+      "who": "delta",
+      "mood": null,
+      "text": "The Chief Executive doesn't do interviews, photographs or Tuesdays. He does do messages. You'll get used to them."
+    },
     "delta-efbc75dc": {
       "file": "delta-efbc75dc.mp3",
       "ms": 14318,
@@ -1008,6 +1281,13 @@
       "who": "delta",
       "mood": null,
       "text": "I won't sugarcoat it: the Moon is falling. Our astronomers give Earth seventeen days."
+    },
+    "delta-f2bbb9b2": {
+      "file": "delta-f2bbb9b2.mp3",
+      "ms": 9355,
+      "who": "delta",
+      "mood": null,
+      "text": "Explosives and Capacitors into the Pad, and nothing of ours left in the old river bed. Demolish with X, or drag with the right mouse button."
     },
     "delta-f5646671": {
       "file": "delta-f5646671.mp3",
@@ -1044,6 +1324,13 @@
       "mood": null,
       "text": "PHASE 4 COMPLETE — Payload armed."
     },
+    "nile-11aa5660": {
+      "file": "nile-11aa5660.mp3",
+      "ms": 10791,
+      "who": "nile",
+      "mood": null,
+      "text": "A MESSAGE FROM OUR CHIEF EXECUTIVE, as read by this announcer: \"Welcome, Steward. Every ingot is a promise, and NILE keeps its promises.\" Message ends."
+    },
     "nile-1d8b6a18": {
       "file": "nile-1d8b6a18.mp3",
       "ms": 7030,
@@ -1057,6 +1344,13 @@
       "who": "nile",
       "mood": null,
       "text": "INCOMING TRANSMISSION — NILE Franchise Programme. Congratulations on your very own valley."
+    },
+    "nile-441b2d8a": {
+      "file": "nile-441b2d8a.mp3",
+      "ms": 10556,
+      "who": "nile",
+      "mood": null,
+      "text": "A MESSAGE FROM OUR CHIEF EXECUTIVE, as read by this announcer: \"The future belongs to those who deliver it. Please deliver it to the Dispatch Pad.\" Message ends."
     },
     "nile-4992fbb0": {
       "file": "nile-4992fbb0.mp3",
@@ -1092,6 +1386,13 @@
       "who": "nile",
       "mood": null,
       "text": "CORPORATE ANNOUNCEMENT — NILE is thrilled to share that our bold new name will be unveiled upon completion of Protocol: Selene. Stay tuned!"
+    },
+    "nile-d108a7ba": {
+      "file": "nile-d108a7ba.mp3",
+      "ms": 9746,
+      "who": "nile",
+      "mood": null,
+      "text": "A MESSAGE FROM OUR CHIEF EXECUTIVE, as read by this announcer: \"I look forward to thanking our Steward personally. Upon completion.\" Message ends."
     },
     "nile-e0c1ccb0": {
       "file": "nile-e0c1ccb0.mp3",
