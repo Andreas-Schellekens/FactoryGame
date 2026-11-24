@@ -48,7 +48,7 @@ const onB = await b.evaluate((id) => window.__saves.get(id), slotId);
 check('device B sees the slot after signing in', onB?.cloudOnly === true, onB?.name);
 await b.waitForSelector('.btn-continue', { timeout: 5000 });
 await b.click('.btn-continue');
-await b.waitForTimeout(1200);
+await b.waitForFunction(() => window.__state.started, null, { timeout: 15000 }); // the save downloads first
 const openedB = await b.evaluate(() => ({ mode: window.__sim.game.mode, active: window.__saves.activeId() }));
 check('Continue on B downloads and plays it', openedB.mode === 'infinite' && openedB.active === slotId);
 await b.evaluate(() => window.__sim.buildMachine(14, 11, 'extractor', 'right'));

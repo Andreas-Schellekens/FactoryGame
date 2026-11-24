@@ -236,8 +236,9 @@ pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> ApiRes
     Ok(with_cookie(session_cookie(&state, "", 0), json!({ "ok": true })))
 }
 
-pub async fn me(AuthUser(user): AuthUser) -> Json<Value> {
-    Json(json!({ "user": { "id": user.id, "name": user.name } }))
+/// Who is signed in: `{ user }`, or `{ user: null }` (not a 401: the game asks on every start).
+pub async fn me(MaybeUser(user): MaybeUser) -> Json<Value> {
+    Json(json!({ "user": user.map(|u| json!({ "id": u.id, "name": u.name })) }))
 }
 
 #[derive(Deserialize)]
