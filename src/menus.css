@@ -7,6 +7,24 @@
 .title-screen .title-card {
   max-width: 860px;
   gap: 8px;
+  /* Centred when it fits; when it is taller than the window it starts at the top and the
+     overlay scrolls. (A flex item centred with align-items overflows upward, out of reach:
+     that cut off the mission patch.) */
+  margin: auto 0;
+}
+
+.title-screen {
+  align-items: flex-start;
+}
+
+/* The patch and the title shrink with the window's height, so the cards stay in view. */
+.title-screen .title-patch svg {
+  width: clamp(84px, 13vh, 150px);
+  height: auto;
+}
+
+.title-screen .title-game {
+  font-size: clamp(48px, min(9vw, 10.5vh), 108px);
 }
 
 .title-corner {
@@ -216,6 +234,7 @@
   }
   .title-screen .title-card {
     flex-shrink: 0;
+    margin: 0;
   }
 }
 

@@ -326,8 +326,8 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
             el('h1', 'title-game', GAME_TITLE),
             el('p', 'title-byline', BRAND.nile.byline),
             cont,
+            row, // Load game / Leaderboard / Settings up here, where they are always in view
             modes,
-            row,
             el('p', 'fine-print', `By clicking Begin you accept the ${BRAND.nile.name} ${BRAND.nile.player} Agreement (4,812 pages), including Clause 88.`),
         );
         overlay.append(lockup, corner, card, madeBy());
