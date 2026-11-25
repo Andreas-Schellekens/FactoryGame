@@ -78,7 +78,7 @@ export function createAudio() {
             reverb: ctx.createConvolver(), reverbReturn: g(0.32),
             music: g(), musicPause: lowpass(), musicDuck: g(), musicWet: g(0.6),
             amb: g(), ambPause: lowpass(), ambDuck: g(), ambWet: g(0.5),
-            sfx: g(), sfxWet: g(0.8),
+            sfx: g(), sfxDuck: g(), sfxWet: g(0.8),
             voice: g(), ending: null,
         };
         n.comp.threshold.value = -12;
@@ -93,7 +93,7 @@ export function createAudio() {
         n.musicWet.connect(n.reverb);
         n.amb.connect(n.ambPause).connect(n.ambDuck).connect(n.master);
         n.ambWet.connect(n.reverb);
-        n.sfx.connect(n.master);
+        n.sfx.connect(n.sfxDuck).connect(n.master);
         n.sfxWet.connect(n.reverb);
         n.voice.connect(n.master);
         applySettings();
@@ -106,10 +106,22 @@ export function createAudio() {
             music.scheduleUntil(until);
             amb.scheduleUntil(until);
         }, 60);
-        // Background tabs throttle timers; rather than stutter, go quiet until we're back.
+        // Background tabs throttle timers; rather than stutter, go quiet until we're back. A voice
+        // clip is held where it was (the comms line waits too, ui.js), not left running silently.
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) ctx.suspend();
-            else ctx.resume();
+            if (document.hidden) {
+                ctx.suspend();
+                if (voice && !voice.el.paused) {
+                    voice.held = true;
+                    voice.el.pause();
+                }
+            } else {
+                ctx.resume();
+                if (voice?.held) {
+                    voice.held = false;
+                    voice.el.play().catch(() => {});
+                }
+            }
         });
     }
 
@@ -162,6 +174,8 @@ export function createAudio() {
         const t = ctx.currentTime;
         n.musicDuck.gain.setTargetAtTime(on ? 0.42 : 1, t, on ? 0.08 : 0.5);
         n.ambDuck.gain.setTargetAtTime(on ? 0.55 : 1, t, on ? 0.08 : 0.5);
+        // The factory's own sounds too (a busy late-game pad chimes nonstop), a little less.
+        n.sfxDuck.gain.setTargetAtTime(on ? 0.6 : 1, t, on ? 0.08 : 0.5);
     }
 
     // ---- Voice --------------------------------------------------------------------
@@ -414,6 +428,7 @@ export function createAudio() {
         get mood() { return mood; },
         get speaking() { return !!voice; },
         get musicDuck() { return n ? n.musicDuck.gain.value : 1; },
+        get sfxDuck() { return n ? n.sfxDuck.gain.value : 1; },
         get awaitingEnding() { return awaitingEnding; },
         log: devLog,
         playMood(m) {

@@ -522,6 +522,9 @@ export function createUI({
     let holdTimer = null;
     let transmitting = false; // a transmission is open (Quindar tone at start and end)
     let voiceEnds = 0;        // performance.now() when the current line's voice clip ends, 0 = no voice
+    let typeStart = 0;        // performance.now() when the current line started typing
+    let typeRate = 0;         // its characters per ms
+    let held = null;          // the tab is hidden: { at, typing } (the line waits, and so does its voice)
 
     function speaker(line) {
         // A line can start in the frame before the HUD repaints (on load, right after the ending):
@@ -591,16 +594,36 @@ export function createUI({
         commsRole.textContent = who.role;
         commsText.textContent = '';
         const voiceMs = sound?.lineStart(current, { fresh }) ?? null;
-        const start = performance.now();
-        voiceEnds = voiceMs ? start + voiceMs : 0;
+        typeStart = performance.now();
+        voiceEnds = voiceMs ? typeStart + voiceMs : 0;
         // Text types along with the voice (a little ahead of it); without one, at reading pace.
-        const rate = voiceMs ? current.text.length / Math.max(300, voiceMs * 0.85) : CHARS_PER_MS * textSpeed;
+        typeRate = voiceMs ? current.text.length / Math.max(300, voiceMs * 0.85) : CHARS_PER_MS * textSpeed;
+        startTyping();
+    }
+    function startTyping() {
         typeTimer = setInterval(() => {
-            const typed = Math.floor((performance.now() - start) * rate);
+            const typed = Math.floor((performance.now() - typeStart) * typeRate);
             commsText.textContent = current.text.slice(0, typed);
             if (typed >= current.text.length) finishTyping();
         }, 30);
     }
+    // A hidden tab holds the current line where it is (audio.js holds its voice clip), so coming
+    // back picks it up mid-sentence instead of finding it said to nobody and gone.
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            if (held || !current || !(typeTimer || holdTimer)) return;
+            held = { at: performance.now(), typing: !!typeTimer };
+            stopTimers();
+        } else if (held) {
+            const away = performance.now() - held.at;
+            const { typing } = held;
+            held = null;
+            typeStart += away;
+            if (voiceEnds) voiceEnds += away;
+            if (typing) startTyping();
+            else finishTyping();
+        }
+    });
     function updateMore() {
         commsMore.textContent = queue.length ? `${queue.length} queued · click to skip` : '';
     }
@@ -608,11 +631,11 @@ export function createUI({
         queue.push(line);
         log.push({ ...line, label: speaker(line).name }); // header as it was when said
         if (log.length > 80) log.shift();
-        if (!typeTimer && !holdTimer && !cinematic) nextLine();
+        if (!typeTimer && !holdTimer && !cinematic && !held) nextLine();
         else updateMore();
     }
     /** Still mid-conversation (typing, lingering or with lines queued)? The ending counts as busy. */
-    const isBusy = () => cinematic || !!typeTimer || !!holdTimer || queue.length > 0;
+    const isBusy = () => cinematic || !!held || !!typeTimer || !!holdTimer || queue.length > 0;
 
     comms.addEventListener('click', (e) => {
         if (e.target === logBtn || logPanel.contains(e.target)) return;
@@ -944,7 +967,8 @@ export function createUI({
     function showEnding({ stats: s, onChoose, onFound, onContinue, onNewGame, stage, decided = null }) {
         cinematic = true;
         // Whatever DELTA was saying waits until after the ending.
-        if (current && (typeTimer || holdTimer)) {
+        if (current && (typeTimer || holdTimer || held)) {
+            held = null;
             stopTimers();
             sound?.lineStop();
             queue.unshift(current);
