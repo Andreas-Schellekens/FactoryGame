@@ -270,8 +270,32 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
             b.append(el('span', 'tc-k', 'Continue'), el('span', 'tc-name', latest.name), el('span', 'tc-meta', `${slotProgress(latest)} · ${fmtPlay(latest.playSec)}`));
             cont.appendChild(b);
         };
+        // Each mode card: start a new game, or pick up that mode's latest save.
+        const resumeCells = { story: el('div', 'mode-resume'), infinite: el('div', 'mode-resume') };
+        const renderResume = () => {
+            for (const [mode, cell] of Object.entries(resumeCells)) {
+                cell.innerHTML = '';
+                const slot = saves.latest(mode);
+                if (!slot) continue;
+                const b = button('', leave(() => onPlay(slot)), 'btn-secondary btn-resume');
+                b.title = `Resume ${slot.name}`;
+                // The card already says the mode: "Phase 03/05 · 12 min ago", "Land 2/5 · just now".
+                const where = slotProgress(slot).replace(/^[^·]*·\s*/, '');
+                b.append(el('span', 'mr-k', 'Resume'), el('span', 'mr-meta', `${where} · ${fmtAgo(slot.savedAt)}`));
+                cell.appendChild(b);
+            }
+        };
         renderContinue();
-        const offSaves = saves.onChange(renderContinue);
+        renderResume();
+        const offSaves = saves.onChange(() => {
+            renderContinue();
+            renderResume();
+        });
+        const actions = (start, mode) => {
+            const row = el('div', 'mode-actions');
+            row.append(start, resumeCells[mode]);
+            return row;
+        };
 
         const modes = el('div', 'title-modes');
         const story = el('div', 'mode-card');
@@ -279,14 +303,14 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
             el('span', 'mode-kicker', 'Story'),
             el('h3', 'mode-title', GAME_TITLE),
             el('p', 'mode-text', 'Five phases, one cannon. The Moon is falling. NILE has a plan. You are the plan.'),
-            button('Begin onboarding', leave(() => onNew('story')), 'btn-primary'),
+            actions(button('Begin onboarding', leave(() => onNew('story')), 'btn-primary'), 'story'),
         );
         const inf = el('div', 'mode-card infinite');
         inf.append(
             el('span', 'mode-kicker', 'Infinite'),
             el('h3', 'mode-title', INFINITE_TEXT.title),
             el('p', 'mode-text', INFINITE_TEXT.pitch),
-            button('Start Infinite', leave(() => onNew('infinite')), 'btn-primary'),
+            actions(button('Start Infinite', leave(() => onNew('infinite')), 'btn-primary'), 'infinite'),
         );
         modes.append(story, inf);
         if (challengeCard) modes.appendChild(challengeCard(leave)); // the weekly challenge (challengeUi.js)

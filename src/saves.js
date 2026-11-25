@@ -137,9 +137,9 @@ export function createSaves({ account, isLoadable }) {
         list: () => [...index.slots].sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0)),
         get: find,
         activeId: () => index.active,
-        /** The most recently saved slot that can be played (for "Continue"). */
-        latest() {
-            return this.list().find((s) => s.cloudOnly || localStorage.getItem(dataKey(s.id))) ?? null;
+        /** The most recently saved slot that can be played (for "Continue"), optionally of one mode. */
+        latest(mode = null) {
+            return this.list().find((s) => (!mode || (s.mode ?? 'story') === mode) && (s.cloudOnly || localStorage.getItem(dataKey(s.id)))) ?? null;
         },
         setActive(id) {
             index.active = id;

@@ -115,6 +115,40 @@
   font-size: 20px;
 }
 
+/* Start a new game, and beside it a small Resume for that mode's latest save. */
+.mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.mode-resume:empty {
+  display: none;
+}
+
+.btn-resume {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 46px;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.btn-resume .mr-k {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+.btn-resume .mr-meta {
+  font: 500 10px var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
 .title-row {
   display: flex;
   flex-wrap: wrap;
