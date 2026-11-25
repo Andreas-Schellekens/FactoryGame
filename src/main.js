@@ -24,17 +24,18 @@ import {
     RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
     salePrice, flow, UPGRADABLE, machinesIn, planGroup, applyGroup, removeGroup, setEnding, setCompany,
     game, isInfinite, visualPhase, newGame, licenceAvailable, buyLicence, nextPlotCost, buyPlot, isLoadableSave,
-    planStored,
+    planStored, turnMachine, inPlot,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
-import { BUILDING_NAMES, ITEM_NAMES, INFINITE, BUILD_HELP } from './story.js';
+import { BUILDING_NAMES, ITEM_NAMES, INFINITE, BUILD_HELP, TUTORIAL } from './story.js';
+import { tutorialCard, tutorialGuide, tutorialProblem } from './tutorial.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
 import { createDirector, STORY_SCRIPT, EPILOGUE_SCRIPT } from './director.js';
 import { tickEpilogue, epilogueSnapshot, epilogueInfo, epilogueStats, closeEpilogue, confirmEpilogueGoal } from './epilogue.js';
 import { createAudio, BUILD_SIZE } from './audio.js';
-import { createSettings } from './settings.js';
+import { createSettings, keyLabel } from './settings.js';
 import { createAccount } from './account.js';
 import { createSaves } from './saves.js';
 import { createMenus } from './menus.js';
@@ -138,6 +139,46 @@ function jumpToAlert(key) {
     return true;
 }
 
+// --- The tutorial card (tutorial.js): the console's "Now" block and the map's guides ---
+let tutorialProblemNow = null; // a stuck machine worth explaining (also w.problem for DELTA's tip)
+let tutorialStepKey = null;
+/** Is a cell's centre off-screen, or hidden under the console or the keys? */
+function offScreen(c) {
+    const p = renderer.projectCell(c.x, c.y);
+    return !p || p.x < 340 || p.x > innerWidth - 40 || p.y < 80 || p.y > innerHeight - 140;
+}
+function updateTutorial() {
+    if (!settings.get().gameplay.highlights || state.cinematic || state.viewing) {
+        tutorialProblemNow = null;
+        tutorialStepKey = null;
+        ui.setTutorial(null);
+        renderer.setGuide(null);
+        if (import.meta.env.DEV) window.__tutorial = null;
+        return;
+    }
+    tutorialProblemNow = tutorialProblem(tickCount, alerts.groups());
+    let card = tutorialCard({ objectives: director.objectives(), mode: game.mode, phaseReady: phaseReady(), problem: tutorialProblemNow, complete: project.complete });
+    // A stuck line: the map marks the cell the card is about (the step's guide waits until it's fixed).
+    const guide = card?.kind === 'problem' ? { mark: card.cell }
+        : game.mode === 'story' && card?.kind === 'step' ? tutorialGuide(card.id) : null;
+    // Holding the example's building over its spot, turned another way: say how to match it.
+    const over = guide?.ghosts?.find((g) => g.x === state.hovered.x && g.y === state.hovered.y);
+    if (over && state.tool === over.type && state.dir !== over.dir) card = { ...card, note: TUTORIAL.turnNote(keyLabel(settings.get().keys.rotate)) };
+    ui.setTutorial(card);
+    renderer.setGuide(guide);
+    if (import.meta.env.DEV) window.__tutorial = { card, guide }; // verify-tutorial.mjs
+    // A new step: bring the spot it's about into view when it's off-screen, and put away a machine
+    // panel left open from the step before (it would sit over the route).
+    const key = card ? `${card.kind}:${card.id ?? card.title}` : null;
+    if (key !== tutorialStepKey) {
+        // Only from one step to the next: a panel opened to fix a problem stays while you fix it.
+        const fromStep = tutorialStepKey?.startsWith('step:');
+        tutorialStepKey = key;
+        if (fromStep && card?.kind === 'step' && guide?.path?.length && state.selected) deselect();
+        if (guide?.focus && offScreen(guide.focus)) renderer.rig.focusOn(guide.focus.x + 0.5, guide.focus.y + 0.5);
+    }
+}
+
 // --- World snapshot for the story director (and objectives) ---
 function snapshot() {
     const built = Object.fromEntries([...buildableTools].map((t) => [t, 0]));
@@ -163,6 +204,7 @@ function snapshot() {
         // In Infinite the director's "phase" is the stage: licence groups bought (0–4).
         phase: isInfinite() ? infiniteStage() : project.phase,
         phaseReady: phaseReady(), // everything for the phase is in, waiting for Confirm delivery
+        problem: tutorialProblemNow?.kind ?? null, // a stuck machine the tutorial card explains (DELTA's tip)
         complete: !isInfinite() && project.complete,
         mode: game.mode,
         licences: [...game.licences],
@@ -380,6 +422,16 @@ function switchTo(intent) {
 function rotateDir() {
     state.dir = nextDir(state.dir);
     audio.cue('rotate');
+}
+/** Turn the machine whose panel is open a quarter turn clockwise, where it stands (undoable). */
+function turnSelected() {
+    const sel = state.selected;
+    const m = sel && grid[sel.x]?.[sel.y]?.machine;
+    if (!m || state.viewing) return false;
+    renderer.quietNext(); // turned, not rebuilt: no build juice
+    if (!history.run(BUILD_HELP.what.turn(m.type), () => turnMachine(sel.x, sel.y))) return false;
+    audio.cue('rotate');
+    return true;
 }
 function togglePause() {
     state.paused = !state.paused;
@@ -630,6 +682,19 @@ const ui = createUI({
     onOpenSettings: () => settingsPanel.open(),
     onOpenBoard: () => openBoard(),
     onOpenMenu: () => openGameMenu(),
+    // The tutorial card: Show me (the stuck machine: camera there, its panel open), and Hide.
+    // A belt has no panel: the camera goes there and the red tile says which piece.
+    onTutorialShow: (c) => {
+        renderer.rig.focusOn(c.x + 0.5, c.y + 0.5);
+        const type = grid[c.x]?.[c.y]?.machine?.type;
+        if (type && !CONVEYOR_TOOLS.has(type)) state.selected = { x: c.x, y: c.y };
+        audio.cue('open');
+    },
+    onTurnSelected: () => turnSelected(),
+    onTutorialSkip: () => {
+        settings.set('gameplay', { highlights: false });
+        ui.toast(TUTORIAL.skipped);
+    },
     // Everything for the phase (or the epilogue's goal) is in: the player sends it.
     onConfirmDelivery: () => {
         if (state.cinematic) return false;
@@ -773,6 +838,9 @@ let nextOrderTick = null; // tickCount at which to issue the next order, or null
 function tickOrders() {
     // Story: from phase 2. Infinite: once the factory has delivered something.
     if (isInfinite() ? !Object.keys(stats.delivered).length : project.phase < 1) return;
+    // Story's phase 2: the first request waits for the first Circuit, so it never asks before the
+    // player has an Assembler running.
+    if (game.mode === 'story' && project.phase === 1 && !(stats.produced.circuit > 0)) return;
     if (order.status === 'none' && nextOrderTick === null) nextOrderTick = tickCount + ORDER_GRACE_TICKS * 4;
     if (!order.active && order.status !== 'none' && nextOrderTick === null) {
         nextOrderTick = tickCount + ORDER_GRACE_TICKS; // grace pause after a result
@@ -851,6 +919,7 @@ function onFrame(dt) {
             director.update(w);
             achievements.update(w);
             state.focus = settings.get().gameplay.highlights ? director.objectives().find((o) => !o.done)?.focus ?? null : null;
+            updateTutorial();
         }
         if (!state.paused && document.visibilityState === 'visible') playMs += dt;
         autosaveClock += dt;
@@ -1181,9 +1250,27 @@ function actAt(gx, gy, button) {
         } else {
             audio.cue('deny');
             renderer.nudgeGhost();
-            challengeToast(gx, gy, state.tool);
+            if (challengeRefusal(gx, gy, state.tool)) challengeToast(gx, gy, state.tool);
+            else cantBuildToast(gx, gy, state.tool);
         }
     }
+}
+
+/** Why a click didn't build (the red ghost alone doesn't say): a toast, not repeated within a second. */
+let cantBuildLast = { text: '', at: 0 };
+function cantBuildToast(x, y, type) {
+    const cell = grid[x][y];
+    const W = BUILD_HELP.cantBuild;
+    const text = cell.machine ? W.taken(BUILDING_NAMES[cell.machine.type]?.toLowerCase() ?? 'machine')
+        : cell.blocked ? W.site
+            : cell.water ? W.water
+                : !inPlot(x, y) ? W.plot
+                    : type === 'extractor' && !cell.resource ? W.ore
+                        : score < machineCost(type) ? W.credits(machineCost(type)) : null;
+    const now = performance.now();
+    if (!text || (text === cantBuildLast.text && now - cantBuildLast.at < 1200)) return;
+    cantBuildLast = { text, at: now };
+    ui.toast(text);
 }
 
 /** A weekly challenge says why a build was refused: its machine cap or its budget. */
@@ -1278,7 +1365,10 @@ window.addEventListener('keydown', (e) => {
             audio.cue('close');
         } else openGameMenu(); // nothing to close: Esc opens the menu
     }
-    if (act === 'rotate') rotateDir();
+    // With a machine's panel open the rotate key turns that machine; otherwise the next building.
+    if (act === 'rotate') {
+        if (!(state.selected && turnSelected())) rotateDir();
+    }
     if (act === 'viewLeft') renderer.rig.rotate(-1);
     if (act === 'viewRight') renderer.rig.rotate(1);
     if (act === 'pause') {

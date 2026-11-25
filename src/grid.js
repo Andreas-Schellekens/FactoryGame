@@ -280,8 +280,8 @@ export function continueAsInfinite() {
 }
 
 // The Dispatch Pad buys sellable goods and takes anything the phase needs (in a challenge:
-// only the week's target).
-function sinkAccepts(itemType) {
+// only the week's target). Exported for the tutorial, which explains an item the Pad won't take.
+export function sinkAccepts(itemType) {
     if (activeChallenge) return itemType === activeChallenge.target;
     return itemType in SINK_VALUE || itemType in (currentPhase()?.requires ?? {});
 }
@@ -792,6 +792,18 @@ export function setMachineOn(x, y, on) {
     if (!m || m.type === 'sink' || m.type === 'belt') return false;
     if (on) delete m.off;
     else m.off = true;
+    return true;
+}
+
+/**
+ * Turn a placed machine a quarter turn clockwise (the machine panel's Turn). What it holds stays,
+ * and a finished product leaves through the new front. Not the Dispatch Pad.
+ * @returns {boolean} turned
+ */
+export function turnMachine(x, y) {
+    const m = inBounds(x, y) ? grid[x][y].machine : null;
+    if (!m || m.type === 'sink') return false;
+    m.dir = TURNS[(TURNS.indexOf(m.dir) + 1) % 4];
     return true;
 }
 

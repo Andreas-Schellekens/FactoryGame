@@ -158,12 +158,15 @@ export const BEATS = [
             nile('INCOMING TRANSMISSION — NILE, Network for Infrastructure, Logistics & Engineering. Office of Planetary Continuity.'),
             d("Hello, Steward! I'm DELTA, your Dispatch & Engineering Logistics Task Assistant. I'll be with you every step of the way. That part is not optional.", 'happy'),
             d("I won't sugarcoat it: the Moon is falling. Our astronomers give Earth seventeen days."),
-            d("NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it.", 'happy'),
-            d('Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision.'),
-            d('Quick orientation: WASD or the arrow keys move your view, the mouse wheel zooms, Q and E rotate. Middle-drag works too.'),
-            d('NILE has leased you a small plot for now: the fenced land around the Dispatch Pad. It grows as the cannon does.'),
             d("Let's start small. I've ringed the grey crystals near the Dispatch Pad: that's iron ore. Select the Extractor (key 2) and place it on one."),
         ],
+    },
+    // Hands first, story later: the rest of the welcome waits until the first delivery
+    // (whyStory, below); the controls come up only if the first step takes a while.
+    {
+        id: 'orientation',
+        when: (w) => w.phase === 0 && !w.extractorOn.ironOre && w.tick > 100,
+        lines: [d('Quick orientation: WASD or the arrow keys move your view, the mouse wheel zooms, Q and E rotate. Middle-drag works too.')],
     },
     {
         id: 'firstExtractor',
@@ -198,6 +201,15 @@ export const BEATS = [
         ],
     },
     {
+        id: 'whyStory',
+        when: (w) => w.phase === 0 && w.deliveredTotal.ironIngot > 0,
+        lines: [
+            d("NILE has a plan. It's called Protocol: Selene, a cannon powerful enough to push the Moon back into a safe orbit. And you are going to build it.", 'happy'),
+            d('Out of eight billion candidates, NILE chose you. Your courage, your talent and your remarkably low salary expectations made it an easy decision.'),
+            d('NILE has leased you a small plot for now: the fenced land around the Dispatch Pad. It grows as the cannon does.'),
+        ],
+    },
+    {
         id: 'broke',
         when: (w) => w.money < 15 && w.tick > 40,
         lines: [d('Low on credits? Erasing a building (right-click) refunds its full cost. NILE calls it "flexible capital".')],
@@ -210,17 +222,34 @@ export const BEATS = [
             nile('PHASE 1 COMPLETE — The cannon foundation has been poured. Earth thanks you. NILE thanks you more.'),
             d('Good news: NILE has acquired the neighbouring farmland. The farmer was very understanding. Your plot has grown.', 'happy'),
             d("Look at you go! I've unlocked the Press, the Assembler, the Splitter and the Merger.", 'happy'),
-            d('Phase 2 needs targeting circuitry: Iron Plates and Circuits. The Press (key 4) stamps iron ingots into plates, or draws copper ingots into wire. Pick which in its panel.'),
-            d('An Assembler (key 6) makes a Circuit from one iron plate and one copper wire. Two presses, one assembler, a great many belts.'),
-            d('A Splitter (key T) sends one belt three ways. A Merger (key Y) does the opposite. Like a family, but useful.'),
-            d('NILE will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file.'),
             d("Oh, a small update: the Moon's impact date has been revised from 'seventeen days' to 'soon'. Please do not request clarification.", 'glitch'),
         ],
+    },
+    // Phase 2's new machines one at a time, as each is needed, instead of all at once.
+    {
+        id: 'p2press',
+        when: (w) => w.phase === 1,
+        lines: [d('Phase 2 needs targeting circuitry: Iron Plates and Circuits. The Press (key 4) stamps iron ingots into plates, or draws copper ingots into wire. Pick which in its panel.')],
+    },
+    {
+        id: 'p2assembler',
+        when: (w) => w.phase === 1 && w.produced.ironPlate > 0 && w.produced.copperWire > 0,
+        lines: [d('An Assembler (key 6) makes a Circuit from one iron plate and one copper wire. Two presses, one assembler, a great many belts.')],
     },
     {
         id: 'firstCircuit',
         when: (w) => w.phase === 1 && w.produced.circuit > 0,
         lines: [d('A circuit! So small. So fragile. So billable.', 'happy')],
+    },
+    {
+        id: 'p2splitter',
+        when: (w) => w.phase === 1 && w.produced.circuit > 0,
+        lines: [d('A Splitter (key T) sends one belt three ways. A Merger (key Y) does the opposite. Like a family, but useful.')],
+    },
+    {
+        id: 'p2orders',
+        when: (w) => w.phase === 1 && w.order && w.order.status !== 'none',
+        lines: [d('NILE will also send you Priority Requests from now on. Completing them pays a bonus. Ignoring them is noted in your file.')],
     },
     {
         id: 'brownoutEarly',
@@ -356,10 +385,12 @@ export const OBJECTIVES = [
             hint: "Select Belt (key 1) and drag from just after the Extractor's arrow into the Smelter. Items follow the arrows." },
         { id: 'deliver', text: 'Belt ingots into the Dispatch Pad', done: (w) => w.deliveredTotal.ironIngot > 0, focus: 'sink',
             hint: "The Dispatch Pad is the ringed landing pad with the arrow hovering over it. Drag a belt from the Smelter's output into it." },
-        { id: 'copperRecipe', text: 'Set a Smelter to Copper Ingot', done: (w) => (w.recipes['smelter:copperIngot'] ?? 0) > 0,
-            hint: 'Click a Smelter to open its panel and pick Copper Ingot. A Smelter only takes the ore of its recipe.' },
-        { id: 'copper', text: 'Smelt a Copper Ingot', done: (w) => w.produced.copperIngot > 0, focus: 'copperOre',
+        { id: 'copperExtractor', text: 'Place an Extractor on copper ore', done: (w) => w.extractorOn.copperOre > 0, focus: 'copperOre',
             hint: 'Copper ore is the ringed orange crystal field: an Extractor on it, a belt, and a Smelter set to Copper Ingot.' },
+        { id: 'copperRecipe', text: 'Build a Smelter and set it to Copper Ingot', done: (w) => (w.recipes['smelter:copperIngot'] ?? 0) > 0,
+            hint: 'Click a Smelter to open its panel and pick Copper Ingot. A Smelter only takes the ore of its recipe.' },
+        { id: 'copper', text: 'Smelt a Copper Ingot', done: (w) => w.produced.copperIngot > 0 },
+        { id: 'copperDeliver', text: 'Belt copper ingots into the Dispatch Pad', done: (w) => (w.deliveredTotal.copperIngot ?? 0) > 0, focus: 'sink' },
     ],
     [
         { id: 'plate', text: 'Press an Iron Plate', done: (w) => w.produced.ironPlate > 0,
@@ -368,6 +399,7 @@ export const OBJECTIVES = [
             hint: 'Put a second Press after your copper Smelter, click it and pick Copper Wire.' },
         { id: 'circuit', text: 'Assemble a Circuit', done: (w) => w.produced.circuit > 0,
             hint: 'An Assembler (key 6) needs one iron plate AND one copper wire. Belt both into it, any side works.' },
+        { id: 'circuitDeliver', text: 'Belt circuits into the Dispatch Pad', done: (w) => (w.deliveredTotal.circuit ?? 0) > 0, focus: 'sink' },
         { id: 'split', text: 'Share a belt with a Splitter', done: (w) => w.built.splitter > 0,
             hint: 'You need plates for the Pad and for circuits. A Splitter (key T) sends one belt three ways.' },
     ],
@@ -678,7 +710,19 @@ export const BUILD_HELP = {
         upgrade: (type, tier) => `${BUILDING_NAMES[type] ?? type} to T${tier}`,
         recipe: (type) => `${BUILDING_NAMES[type] ?? type} recipe`,
         power: (type, on) => `${BUILDING_NAMES[type] ?? type} switched ${on ? 'on' : 'off'}`,
+        turn: (type) => `${BUILDING_NAMES[type] ?? type} turned`,
         edit: 'that change',
+    },
+    // The machine panel's Turn button (a quarter turn clockwise; the key turns it too while the panel is open).
+    turn: (key) => `Turn · ${key}`,
+    // Why a click didn't build (a toast with the red ghost's wiggle).
+    cantBuild: {
+        site: 'That’s the cannon’s construction site: build around it',
+        water: 'You can’t build on the river',
+        plot: 'That’s outside your land',
+        ore: 'An Extractor has to stand on ore: the coloured crystals',
+        taken: (what) => `There’s a ${what} here. Demolish it first (X), or build next to it`,
+        credits: (cr) => `Not enough credits: that costs CR ${cr}`,
     },
     undone: (what) => `Undone · ${what}`,
     redone: (what) => `Redone · ${what}`,
@@ -860,9 +904,13 @@ export const CODEX = {
 const HIGHLIGHTS = [
     {
         extractor: { key: 'extractor' }, smelter: { key: 'smelter' }, ingot: { key: 'belt', focus: 'smelter' },
-        deliver: { key: 'belt' }, copperRecipe: { ui: 'recipe:copperIngot', focus: 'smelter' }, copper: { key: 'extractor' },
+        deliver: { key: 'belt' }, copperExtractor: { key: 'extractor' }, copperRecipe: { key: 'smelter', ui: 'recipe:copperIngot' },
+        copper: { key: 'belt' }, copperDeliver: { key: 'belt' },
     },
-    { plate: { key: 'press' }, wire: { key: 'press', ui: 'recipe:copperWire' }, circuit: { key: 'assembler' }, split: { key: 'splitter' } },
+    {
+        plate: { key: 'press' }, wire: { key: 'press', ui: 'recipe:copperWire' }, circuit: { key: 'assembler' },
+        circuitDeliver: { key: 'belt' }, split: { key: 'splitter' },
+    },
     { steel: { key: 'foundry' }, generator: { key: 'generator', ui: 'power' }, capacitor: { key: 'assembler', ui: 'recipe:capacitor' } },
     {
         cartridge: { key: 'fabricator' }, research: { key: 'lab' }, advTech: { ui: 'research:advancedProduct' },
@@ -1368,3 +1416,87 @@ EPILOGUE.BEATS.push(...[0, 1, 2, 3].map((s) => ({
     when: (w) => stageOf(w) === s && w.epilogue.ready && !w.epilogue.bedLeft,
     lines: [d(EPI_READY_LINE, 'happy')],
 })));
+
+// ---- The tutorial card (iteration 7) -------------------------------------------------------------
+// The console's "Now" block (tutorial.js builds it, ui.js shows it): the open step of the flight
+// plan with how to do it and the buildings involved, a stuck machine worth explaining (with a
+// Show me), the deliveries left, or the Confirm delivery prompt. Text only (the hints above are
+// what DELTA says out loud). `schema` lists building types (pictures from the renderer's icons)
+// and item types ('item:…') in the order the chain runs.
+export const TUTORIAL = {
+    label: 'Now',
+    stepKicker: (n, total) => `Step ${n} of ${total}`,
+    problemKicker: 'Something is stuck',
+    confirmKicker: 'Ready to ship',
+    deliverKicker: 'Last step',
+    controls: 'WASD move the view · wheel zooms · Q / E turn it · R turns a building before you place it',
+    // Under the card while you hold the example's building over its spot, facing another way.
+    turnNote: (key) => `Press ${key} to turn it the way the example faces (its orange arrow).`,
+    showMe: 'Show me',
+    skip: 'Hide the tutorial',
+    skipped: 'Tutorial hidden. Turn it back on in Settings → Gameplay.',
+    confirm: {
+        title: 'Confirm delivery',
+        how: 'Everything this phase needs is on the Dispatch Pad. Press Confirm delivery below to ship it to the cannon.',
+    },
+    deliver: {
+        title: 'Fill the deliveries',
+        how: 'Keep your belts running into the Dispatch Pad until every bar below is full, then press Confirm delivery.',
+    },
+    problems: {
+        title: {
+            wrongRecipe: 'Wrong recipe', wrongSide: 'Facing the wrong way', wrongItem: 'Wrong delivery',
+            facesOut: 'Facing off your land', deadEnd: 'The belt stops short', missingInput: 'Missing ingredient',
+        },
+        wrongRecipe: (machine, now, item, recipe) => `This ${machine} is set to ${now ?? 'another recipe'}, so it won't take ${item}. Click it and pick ${recipe} in its panel.`,
+        wrongSide: (machine, from) => `This ${machine} faces the ${from} that feeds it. Things go in at the back or the sides and come out of the front (the orange arrow), so what it makes has nowhere to go. Show me, then press Turn until its orange arrow points away.`,
+        // `from` is null for a belt; `oreToPad`: raw ore at the Dispatch Pad, the commonest one.
+        wrongItem: (from, item, target, oreToPad) => {
+            if (oreToPad) {
+                return from
+                    ? `This ${from} sends ${item} straight into the Dispatch Pad, which doesn't take ore: it has to be smelted first. Show me, press Turn so its orange arrow points at open ground, and belt it into a Smelter.`
+                    : `This belt carries ${item} into the Dispatch Pad, which doesn't take ore: it has to be smelted first. Lay the belt into a Smelter instead, and the Smelter's front into the Pad.`;
+            }
+            return from
+                ? `This ${from} sends ${item} straight into the ${target}, which can't use it. Show me, then press Turn, or belt its front into a machine that takes ${item}.`
+                : `This belt carries ${item} into the ${target}, which can't use it. Demolish this belt piece (X) to clear it, then lay it into a machine that takes ${item}.`;
+        },
+        facesOut: (machine) => `This ${machine}'s front (the orange arrow) faces the edge of your land, so what it makes can't leave. Show me, then press Turn until it points at open ground.`,
+        deadEnd: (item, edge) => (edge
+            ? `This belt runs into the edge of your land, so the ${item} waits at its end. Lay it another way, so its last arrow points into the next machine or the Dispatch Pad.`
+            : `This belt stops before it reaches anything, so the ${item} waits at its end. Lay it on until its last arrow points into the next machine or the Dispatch Pad.`),
+        missingInput: (machine, items) => `This ${machine} is waiting for ${items.length ? items.join(' and ') : 'an ingredient'}. It needs every input before it starts: belt the missing one in from a free side.`,
+    },
+    // Per phase, by objective id: how to do it (shown at once on the card) and the chain in pictures.
+    STEPS: [
+        {
+            extractor: { how: 'Press 2 for the Extractor and click a ringed grey crystal: the blue example shows a good spot. Its orange arrow is where the ore comes out; R turns it before you click.', schema: ['item:ironOre', 'extractor'] },
+            smelter: { how: 'Press 3 for the Smelter and place it on the blue example, facing the way its orange arrow points. Ore goes in at the back or the sides, ingots come out of the front.', schema: ['extractor', 'smelter'] },
+            ingot: { how: 'Press 1 for Belt and drag from the tile in front of the Extractor\'s arrow up to the Smelter, along the blue arrows. Belts carry items the way you drag.', schema: ['extractor', 'belt', 'smelter'] },
+            deliver: { how: 'Drag a belt from the Smelter\'s front into the Dispatch Pad, the landing pad with the bobbing arrow. Every ingot that lands counts for the cannon and earns credits.', schema: ['smelter', 'belt', 'sink'] },
+            copperExtractor: { how: 'Phase 1 also needs copper. Put an Extractor (2) on the ringed orange crystals.', schema: ['item:copperOre', 'extractor'] },
+            copperRecipe: { how: 'Build a Smelter (3) on the blue example, then click it and pick Copper Ingot in its panel. A new Smelter makes iron, and only takes the ore of its recipe.', schema: ['extractor', 'smelter', 'item:copperIngot'] },
+            copper: { how: 'Belt the copper Extractor into the copper Smelter (1, then drag).', schema: ['extractor', 'belt', 'smelter'] },
+            copperDeliver: { how: 'Belt the copper Smelter\'s front into the Dispatch Pad. It takes deliveries on every side.', schema: ['smelter', 'belt', 'sink'] },
+        },
+        {
+            plate: { how: 'Press 4 for the Press and put it on your iron ingots\' way to the Pad: belt the Smelter into the Press\'s back, and the Press\'s front onward. A new Press makes Iron Plates.', schema: ['item:ironIngot', 'press', 'item:ironPlate'] },
+            wire: { how: 'Do the same after your copper Smelter, then click that Press and pick Copper Wire in its panel.', schema: ['item:copperIngot', 'press', 'item:copperWire'] },
+            circuit: { how: 'Press 6 for the Assembler. Belt Iron Plates into one side and Copper Wire into another: it starts once it has both.', schema: ['item:ironPlate', 'assembler', 'item:circuit'] },
+            circuitDeliver: { how: 'Belt the Assembler\'s front into the Dispatch Pad.', schema: ['assembler', 'belt', 'sink'] },
+            split: { how: 'The Pad wants plates and circuits both. A Splitter (T) takes what comes in at its back and sends it out of its front and both sides in turn: put one in a belt (your iron plates, say) so one line feeds two places, the Assembler and the Pad.', schema: ['item:ironPlate', 'splitter', 'assembler'] },
+        },
+    ],
+};
+const addTutorialSteps = (phases, table) => phases.forEach((list, i) => list.forEach((o) => Object.assign(o, table[i]?.[o.id] ?? {})));
+addTutorialSteps(OBJECTIVES, TUTORIAL.STEPS);
+
+// DELTA explains a stuck machine once per game (the card says which one and what to do).
+// Snapshot field: w.problem (tutorial.js: 'wrongRecipe' | 'wrongSide' | 'wrongItem' | 'facesOut' |
+// 'deadEnd' | 'missingInput').
+STORY_BEATS.push(
+    { id: 'tipWrongRecipe', when: (w) => w.problem === 'wrongRecipe', lines: [d("That machine is set to the wrong recipe for what you're feeding it. Click it and pick the right one in its panel.")] },
+    { id: 'tipWrongSide', when: (w) => w.problem === 'wrongSide', lines: [d('That machine is facing the wrong way. Things go in at the back or the sides and come out of the front. Open it and press Turn.')] },
+    { id: 'tipMissingInput', when: (w) => w.problem === 'missingInput', lines: [d('That machine is waiting for another ingredient. It needs every input before it starts.')] },
+    { id: 'tipBlocked', when: (w) => ['wrongItem', 'facesOut', 'deadEnd'].includes(w.problem), lines: [d('That line goes nowhere useful. Every belt has to end in a machine that can use what it carries, or in the Dispatch Pad.')] },
+);

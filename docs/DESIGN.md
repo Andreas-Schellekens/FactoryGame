@@ -367,4 +367,17 @@ Each iteration should be playable on its own before the next one starts.
             the console's button sends it, and DELTA says when it's ready. The title screen fits
             short windows (it scrolls instead of cutting off the patch), with Load game, Leaderboard
             and Settings under Continue, and a Resume per mode.
+      - [x] A hands-on Story tutorial: a "Now" card at the top of the console with the open step
+            (step n of m, how to do it at once, the buildings in pictures), sky-blue example
+            buildings and belt arrows on the map for the first chain, a camera that goes to the
+            step, stuck lines explained by their cause (a machine facing its feed, a wrong recipe,
+            something a machine or the Pad can't use, a belt that stops short, a missing
+            ingredient) with Show me, a red tile on the map and a tip from DELTA, hints after 20 s
+            while learning; the opening is hands first (the story after the first delivery) and
+            phase 2's machines come one at a time. Switchable in Settings (Tutorial) and from the
+            card. After a fresh-eyes playtest: examples that always fit inside the land, an orange
+            arrow for which way an example faces, "press R" while you hold it turned the wrong way,
+            Turn in the machine panel, a toast for why a click didn't build, and the first Priority
+            Request after the first Circuit.
+      - [ ] Examples on the map for phase 2's machines too (Press, Assembler, Splitter).
       - [ ] Playtest the epilogue's goal sizes and the challenge's weeks at real pace.

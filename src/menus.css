@@ -133,11 +133,13 @@
   font-size: 20px;
 }
 
-/* Start a new game, and beside it a small Resume for that mode's latest save. */
+/* Start a new game, and under it a small Resume for that mode's latest save: stacked on every
+   card and at every width (side by side, a long start button pushed Resume down on one card
+   but not the other). */
 .mode-actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
 }
 

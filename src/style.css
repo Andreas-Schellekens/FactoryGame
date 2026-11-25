@@ -554,6 +554,164 @@ body.evil .tb-brand {
   display: none;
 }
 
+/* ---- The tutorial card: the console's "Now" block (tutorial.js) ------------------------------ */
+.now {
+  gap: 7px;
+  background: var(--console);
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+
+.now.hidden {
+  display: none;
+}
+
+.now-kicker {
+  font: 600 10px var(--f-mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mustard);
+}
+
+.now-title {
+  font: 900 21px/1.05 var(--f-mission);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.now-how {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--paper-2);
+}
+
+/* A nudge about what you're doing right now (holding the example's building the wrong way round). */
+.now-note {
+  margin: 0;
+  padding: 4px 8px;
+  border-left: 2px solid var(--signal);
+  font: 600 12px/1.4 var(--f-mono);
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.now-schema {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.now-schema.hidden,
+.now-controls.hidden,
+.now-note.hidden,
+.now-show.hidden {
+  display: none;
+}
+
+.now-pic {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+  font: 500 9px var(--f-mono);
+  color: var(--label);
+  text-align: center;
+  overflow: hidden;
+}
+
+.now-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.now-pic.item img {
+  width: 78%;
+  height: 78%;
+}
+
+.now-arrow {
+  font: 600 14px var(--f-mono);
+  color: var(--label);
+}
+
+.now-controls {
+  font: 500 10px/1.5 var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--label);
+}
+
+.now-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.now-show {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  background: var(--signal);
+  color: var(--midnight);
+  font: 800 13px var(--f-mission);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.now-skip {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 10px var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.now-skip:hover {
+  color: var(--paper-2);
+}
+
+/* Something is stuck: alarm red, with Show me. Ready to ship: teal. */
+.now-problem {
+  box-shadow: inset 3px 0 0 var(--alarm);
+}
+
+.now-problem .now-kicker {
+  color: var(--alarm);
+}
+
+.now-confirm {
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.now-confirm .now-kicker {
+  color: var(--teal);
+}
+
+/* A new step pops in. */
+.now-pop {
+  animation: now-pop 0.42s ease-out;
+}
+
+@keyframes now-pop {
+  0% { background: rgba(255, 255, 255, 0.14); }
+  100% { background: var(--console); }
+}
+
+body.reduced-motion .now-pop {
+  animation: none;
+}
+
 /* Confirm delivery: shows once everything for the phase is on the pad, and pulses until pressed. */
 .con-confirm {
   width: 100%;

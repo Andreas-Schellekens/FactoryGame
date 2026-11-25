@@ -270,7 +270,7 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
             b.append(el('span', 'tc-k', 'Continue'), el('span', 'tc-name', latest.name), el('span', 'tc-meta', `${slotProgress(latest)} · ${fmtPlay(latest.playSec)}`));
             cont.appendChild(b);
         };
-        // Each mode card: start a new game, or pick up that mode's latest save.
+        // Each mode card: start a new game, or (under it) pick up that mode's latest save.
         const resumeCells = { story: el('div', 'mode-resume'), infinite: el('div', 'mode-resume') };
         const renderResume = () => {
             for (const [mode, cell] of Object.entries(resumeCells)) {

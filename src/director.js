@@ -8,6 +8,7 @@ import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack, LOCKE, EPILOG
 // Timings are in simulation ticks (4/s at 1× speed), so pausing the game
 // also pauses DELTA's nagging.
 const HINT_DELAY = 180;     // an open objective untouched this long earns a hint (~45 s)
+const LEARNING_HINT_DELAY = 80; // ...in Story's first two phases (~20 s)
 const HINT_REPEAT = 900;    // and the same hint repeats at most this often (~4 min)
 const AMBIENT_EVERY = 1100; // idle chatter cadence (~4.5 min)
 const REACTION_CHANCE = 0.5;
@@ -82,7 +83,10 @@ export function createDirector({ say, banner, ending, finale = () => {}, isBusy,
         objectives = list.map((o) => {
             const key = `obj:${w.phase}:${o.id}`;
             if (!flags.has(key) && o.done(w)) flags.add(key); // sticky once done
-            return { id: o.id, text: o.text, hint: o.hint, focus: o.focus ?? null, key: o.key ?? null, ui: o.ui ?? null, done: flags.has(key) };
+            return {
+                id: o.id, text: o.text, hint: o.hint, focus: o.focus ?? null, key: o.key ?? null, ui: o.ui ?? null,
+                how: o.how ?? null, schema: o.schema ?? null, done: flags.has(key), // how/schema: the tutorial card
+            };
         });
     }
 
@@ -93,7 +97,9 @@ export function createDirector({ say, banner, ending, finale = () => {}, isBusy,
             stuck = { key, since: w.tick };
             return;
         }
-        if (!open?.hint || !hints() || isBusy() || w.tick - stuck.since < HINT_DELAY) return;
+        // While learning (Story's first two phases) DELTA steps in sooner.
+        const delay = w.mode === 'story' && w.phase <= 1 ? LEARNING_HINT_DELAY : HINT_DELAY;
+        if (!open?.hint || !hints() || isBusy() || w.tick - stuck.since < delay) return;
         const last = lastHintAt.get(key);
         if (last != null && w.tick - last < HINT_REPEAT) return;
         lastHintAt.set(key, w.tick);

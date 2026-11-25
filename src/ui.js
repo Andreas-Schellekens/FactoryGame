@@ -24,7 +24,7 @@ import { MACHINE_COST, TECH_COST, TICK_RATE, OVERLOAD_RATIO, OVERLOAD_TICKS, HQ_
 import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
-    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX, CHALLENGE_TEXT, challengeName, EPILOGUE, LOCKE,
+    CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX, CHALLENGE_TEXT, challengeName, EPILOGUE, LOCKE, TUTORIAL,
 } from './story.js';
 import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
@@ -126,7 +126,8 @@ export function createUI({
     onGroupAction = () => {},
     // Iteration 6: the save slots, settings and leaderboard panels (menus.js), Infinite's shop.
     onOpenSaves = () => {}, onOpenSettings = () => {}, onOpenBoard = () => {}, onBuyLicence = () => false, onBuyPlot = () => false,
-    onOpenMenu = () => {}, onConfirmDelivery = () => false,
+    onOpenMenu = () => {}, onConfirmDelivery = () => false, onTutorialShow = () => {}, onTutorialSkip = () => {},
+    onTurnSelected = () => false,
     // Iteration 7: the alerts list (a group's next machine; the list was opened).
     onAlert = () => false, onAlertsOpen = () => {},
     keyMap = DEFAULT_KEYS,
@@ -428,7 +429,72 @@ export function createUI({
     const orderProgress = el('span', 'order-progress');
     orderSec.append(orderTitle, orderDemand, orderProgress);
 
-    con.append(head, reqSec, planSec, researchSec, orderSec);
+    // ---- The tutorial card: the console's "Now" block (tutorial.js decides what it says) --------
+    const nowSec = el('div', 'con-sec now hidden');
+    const nowKicker = el('span', 'now-kicker');
+    const nowTitle = el('span', 'now-title');
+    const nowHow = el('p', 'now-how');
+    const nowNote = el('p', 'now-note hidden'); // e.g. "Press R to turn it the way the example faces"
+    const nowSchema = el('div', 'now-schema');
+    const nowControls = el('span', 'now-controls', TUTORIAL.controls);
+    const nowShow = el('button', 'now-show', TUTORIAL.showMe);
+    nowShow.type = 'button';
+    const nowSkip = el('button', 'now-skip', TUTORIAL.skip);
+    nowSkip.type = 'button';
+    const nowRow = el('div', 'now-row');
+    nowRow.append(nowShow, nowSkip);
+    nowSec.append(nowKicker, nowTitle, nowHow, nowNote, nowSchema, nowControls, nowRow);
+    let tutorialNow = null; // the card on show (its `ui` glows, like an objective's)
+    let nowSig = '';
+    nowShow.addEventListener('click', () => {
+        if (tutorialNow?.cell) onTutorialShow(tutorialNow.cell);
+    });
+    nowSkip.addEventListener('click', () => {
+        cue('close');
+        onTutorialSkip();
+    });
+    /** A picture for the schema: a building ('smelter') or an item ('item:ironOre'). */
+    function schemaPic(what) {
+        const isItem = what.startsWith('item:');
+        const src = isItem ? itemIcons[what.slice(5)] : icons[what];
+        const name = isItem ? ITEM_NAMES[what.slice(5)] : BUILDING_NAMES[what] ?? (what === 'sink' ? 'Dispatch Pad' : what);
+        const box = el('span', `now-pic${isItem ? ' item' : ''}`);
+        box.title = name ?? what;
+        if (src) {
+            const img = el('img');
+            img.src = src;
+            img.alt = name ?? what;
+            box.appendChild(img);
+        } else box.textContent = name ?? what;
+        return box;
+    }
+    /** Show the card (or hide it with null). Rebuilt only when what it says changes. */
+    function setTutorial(card) {
+        tutorialNow = card;
+        const sig = card ? JSON.stringify([card.kind, card.kicker, card.title, card.how, card.schema, card.controls, card.note ?? '', !!card.cell]) : '';
+        if (sig === nowSig) return;
+        const fresh = card && card.title !== JSON.parse(nowSig || '[]')[2];
+        nowSig = sig;
+        nowSec.classList.toggle('hidden', !card);
+        if (!card) return;
+        nowSec.className = `con-sec now now-${card.kind}`;
+        nowKicker.textContent = card.kicker ?? '';
+        nowTitle.textContent = card.title ?? '';
+        nowHow.textContent = card.how ?? '';
+        nowNote.textContent = card.note ?? '';
+        nowNote.classList.toggle('hidden', !card.note);
+        nowSchema.innerHTML = '';
+        (card.schema ?? []).forEach((what, i) => {
+            if (i) nowSchema.appendChild(el('span', 'now-arrow', '→'));
+            nowSchema.appendChild(schemaPic(what));
+        });
+        nowSchema.classList.toggle('hidden', !card.schema?.length);
+        nowControls.classList.toggle('hidden', !card.controls);
+        nowShow.classList.toggle('hidden', !card.cell);
+        if (fresh) bump(nowSec, 'now-pop', 420);
+    }
+
+    con.append(head, nowSec, reqSec, planSec, researchSec, orderSec);
     root.appendChild(con);
 
     // ---- Codex (over the console while it is open; the game keeps running) -------------------------
@@ -836,6 +902,15 @@ export function createUI({
             tg.addEventListener('click', () => onToggleSelected());
             actions.appendChild(tg);
         }
+        // Turn it a quarter turn clockwise, where it stands (the rotate key does it too while this is open).
+        const turn = el('button', 'mp-btn mp-turn', BUILD_HELP.turn(kl('rotate')));
+        turn.type = 'button';
+        turn.title = 'A quarter turn clockwise: its front (the orange arrow) moves round';
+        turn.addEventListener('click', () => {
+            if (!onTurnSelected()) cue('deny');
+        });
+        actions.appendChild(turn);
+        mpRefs.turn = turn;
         if (actions.childNodes.length) mp.appendChild(actions);
     }
     function updatePanel(sel, money) {
@@ -1844,9 +1919,11 @@ export function createUI({
                 return b && !b.classList.contains('active') ? b : null;
             }
             case 'upgrade': return panelOpen ? mpRefs.up ?? null : null;
+            case 'turn': return panelOpen ? mpRefs.turn ?? null : null;
             case 'power': return powerCell;
             case 'production': return prodBtn;
             case 'menu': return menuBtn;
+            case 'confirm': return confirmBtn.classList.contains('hidden') ? null : confirmBtn;
             case 'codex': return codexBtn;
             case 'order': return orderSec.classList.contains('hidden') ? null : orderSec;
             case 'research':
@@ -1865,7 +1942,10 @@ export function createUI({
             key?.classList.add('hint-pulse');
             hintKey = key;
         }
-        const target = now?.ui ? hintTarget(now.ui, s) : null;
+        // A stuck machine or a ready delivery on the tutorial card points the way first.
+        const cardUi = highlights && !cinematic && (tutorialNow?.kind === 'problem' || tutorialNow?.kind === 'confirm') ? tutorialNow.ui : null;
+        const ui = cardUi ?? now?.ui;
+        const target = ui ? hintTarget(ui, s) : null;
         if (target !== hintEl) {
             hintEl?.classList.remove('hint-glow');
             target?.classList.add('hint-glow');
@@ -1876,7 +1956,7 @@ export function createUI({
     update();
     return {
         update, say, isBusy, showBanner, showTitle, showEnding, showCredits, showEpilogueReport, toast,
-        setKeys,
+        setKeys, setTutorial,
         /** Open or close the alerts list (key N). */
         toggleAlerts: () => togglePopover(alertsPanel),
         /** Close an open top-bar popover (Keys, Production, Alerts). @returns {boolean} one was open */

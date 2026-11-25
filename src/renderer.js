@@ -1321,6 +1321,114 @@ export async function createRenderer(container, { onProgress } = {}) {
         ghostFx.wiggle = 1;
     }
 
+    // ---- Tutorial guides: example buildings and a belt route for the first chain ---------------
+    // (tutorial.js decides where; main.js passes it in with setGuide.) Sky blue, so they never
+    // read as the green "this fits" of the player's own build ghost.
+    const guideMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.4, depthWrite: false });
+    const guideGroup = new THREE.Group();
+    overlay.add(guideGroup);
+    const guideModels = new Map();
+    const guideArrowTex = (() => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 64;
+        const g = c.getContext('2d');
+        g.lineCap = 'round';
+        g.lineJoin = 'round';
+        const chevron = () => {
+            g.beginPath();
+            g.moveTo(14, 42);
+            g.lineTo(32, 22);
+            g.lineTo(50, 42);
+            g.stroke();
+        };
+        // A dark rim under the stroke, so the chevrons read on light grass as well as on concrete.
+        g.strokeStyle = '#0b1830';
+        g.lineWidth = 16;
+        chevron();
+        g.strokeStyle = '#fff';
+        g.lineWidth = 9;
+        chevron();
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+    })();
+    const guideArrowGeo = new THREE.PlaneGeometry(0.8, 0.8).rotateX(-Math.PI / 2);
+    // An example's front: an orange chevron (the port colour for "out") just past its edge.
+    const guideOutGeo = new THREE.PlaneGeometry(0.6, 0.6).rotateX(-Math.PI / 2);
+    const guideOutMat = new THREE.MeshBasicMaterial({ map: guideArrowTex, color: 0xff9a4d, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
+    // The example's cell, lit up: a flat sky-blue tile drawn over the ground.
+    const guideFrameGeo = new THREE.PlaneGeometry(0.96, 0.96).rotateX(-Math.PI / 2);
+    const guideFrameMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.4, depthTest: false, depthWrite: false });
+    // A stuck machine or belt the card is about: the same tile in alarm red.
+    const guideMarkMat = new THREE.MeshBasicMaterial({ color: 0xff5a4e, transparent: true, opacity: 0.5, depthTest: false, depthWrite: false });
+    // A flat chevron points to world −z (grid "up") unturned.
+    const ARROW_YAW = { up: 0, left: Math.PI / 2, down: Math.PI, right: -Math.PI / 2 };
+    let guideSig = '';
+    function guideModel(type, dir) {
+        const key = `${type}|${dir}`;
+        if (!guideModels.has(key)) {
+            const { obj } = buildView({ type, dir, tier: 1, progress: 0, pendingOutput: null }, 0, 0, 'straight', true);
+            obj.traverse((o) => {
+                if (o.isMesh) {
+                    o.material = guideMat;
+                    o.castShadow = false;
+                    o.renderOrder = 4;
+                }
+            });
+            obj.position.set(0, 0, 0);
+            guideModels.set(key, obj);
+        }
+        return guideModels.get(key);
+    }
+    /**
+     * Show the tutorial's guide, or null to clear: `ghosts` (example buildings, [{ x, y, type, dir }]),
+     * `frames` (machines of the player's lit up, [{ x, y }]), `path` (a belt route, [{ x, y, dir }])
+     * and `mark` (the stuck cell a problem card is about, { x, y }).
+     */
+    function setGuide(guide) {
+        const sig = guide ? JSON.stringify([guide.ghosts ?? [], guide.frames ?? [], guide.path ?? [], guide.mark ?? null]) : '';
+        if (sig === guideSig) return;
+        guideSig = sig;
+        for (const child of [...guideGroup.children]) {
+            guideGroup.remove(child);
+            if (child.userData.arrow != null) child.material.dispose();
+        }
+        if (!guide) return;
+        const tile = (c, mat) => {
+            const frame = new THREE.Mesh(guideFrameGeo, mat);
+            frame.position.set(c.x + 0.5, 0.05, c.y + 0.5);
+            frame.renderOrder = 3;
+            guideGroup.add(frame);
+        };
+        for (const g of guide.ghosts ?? []) {
+            const view = guideModel(g.type, g.dir).clone();
+            view.position.set(g.x + 0.5, 0, g.y + 0.5);
+            view.scale.setScalar(1.04); // just over the ore rock or the ground, so it isn't swallowed
+            guideGroup.add(view);
+            tile(g, guideFrameMat); // the cell itself lit up: "here"
+            // Which way it faces: "what it makes comes out here".
+            const v = { right: [1, 0], down: [0, 1], left: [-1, 0], up: [0, -1] }[g.dir];
+            if (v) {
+                const out = new THREE.Mesh(guideOutGeo, guideOutMat);
+                out.position.set(g.x + 0.5 + v[0] * 0.78, 0.07, g.y + 0.5 + v[1] * 0.78);
+                out.rotation.y = ARROW_YAW[g.dir];
+                out.renderOrder = 31;
+                guideGroup.add(out);
+            }
+        }
+        for (const f of guide.frames ?? []) tile(f, guideFrameMat);
+        if (guide.mark) tile(guide.mark, guideMarkMat);
+        (guide.path ?? []).forEach((p, i) => {
+            const mat = new THREE.MeshBasicMaterial({ map: guideArrowTex, color: 0x7dd3fc, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false });
+            const arrow = new THREE.Mesh(guideArrowGeo, mat);
+            arrow.position.set(p.x + 0.5, 0.06, p.y + 0.5);
+            arrow.rotation.y = ARROW_YAW[p.dir] ?? 0;
+            arrow.renderOrder = 30;
+            arrow.userData.arrow = i;
+            guideGroup.add(arrow);
+        });
+    }
+
     const focusGroup = new THREE.Group();
     overlay.add(focusGroup);
     const focusMat = new THREE.MeshBasicMaterial({
@@ -1369,7 +1477,17 @@ export async function createRenderer(container, { onProgress } = {}) {
         const pulse = calm ? 0.6 : 0.5 + 0.5 * Math.sin(performance.now() / 260);
         focusMat.opacity = 0.35 + 0.55 * pulse;
         focusGroup.children.forEach((r) => r.scale.setScalar(calm ? 1 : 1 + 0.08 * pulse));
+        // The tutorial's example buildings breathe; its belt arrows run along the route.
+        guideMat.opacity = 0.55 + 0.3 * pulse;
+        guideFrameMat.opacity = 0.35 + 0.3 * pulse;
+        guideMarkMat.opacity = 0.35 + 0.4 * pulse;
+        guideOutMat.opacity = 0.6 + 0.4 * pulse;
+        const run = calm ? 0 : performance.now() / 180;
+        guideGroup.children.forEach((g) => {
+            if (g.userData.arrow != null) g.material.opacity = 0.35 + 0.6 * (0.5 + 0.5 * Math.cos(run - g.userData.arrow * 0.9));
+        });
     }
+
 
     function updateOverlay(state, dt) {
         const { hovered, tool, dir } = state;
@@ -2264,7 +2382,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         /** Item pictures for the codex: { [itemType]: PNG data URL }, from the belt meshes. */
         itemIcons,
         nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic, lookAtCannon,
-        setGraphics, setPortPalette,
+        setGraphics, setPortPalette, setGuide,
         /** Render cost of the last frame (draw calls, triangles) — for profiling. */
         stats: () => ({ ...renderer.info.render }),
         /** Visual state worth keeping in a save: the concrete scars. */

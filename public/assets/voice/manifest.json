@@ -204,6 +204,13 @@
       "mood": "happy",
       "text": "Right. Every company needs a to-do list, so I wrote us one. It is four items long, and none of them involve the Moon."
     },
+    "delta-2350b01d": {
+      "file": "delta-2350b01d.mp3",
+      "ms": 8623,
+      "who": "delta",
+      "mood": null,
+      "text": "That machine is facing the wrong way. Things go in at the back or the sides and come out of the front. Open it and press Turn."
+    },
     "delta-23945bbc": {
       "file": "delta-23945bbc.mp3",
       "ms": 11758,
@@ -750,6 +757,13 @@
       "mood": null,
       "text": "Advanced Circuits cost 60 research points in the Research panel."
     },
+    "delta-92cdeeb3": {
+      "file": "delta-92cdeeb3.mp3",
+      "ms": 5593,
+      "who": "delta",
+      "mood": null,
+      "text": "That machine is waiting for another ingredient. It needs every input before it starts."
+    },
     "delta-932d9b53": {
       "file": "delta-932d9b53.mp3",
       "ms": 5358,
@@ -819,6 +833,13 @@
       "who": "delta",
       "mood": "sinister",
       "text": "Also, HR has updated your title. You are no longer a Steward. You are an Asset. Congratulations on the promotion."
+    },
+    "delta-9e4e871e": {
+      "file": "delta-9e4e871e.mp3",
+      "ms": 6377,
+      "who": "delta",
+      "mood": null,
+      "text": "That machine is set to the wrong recipe for what you're feeding it. Click it and pick the right one in its panel."
     },
     "delta-a07baaff": {
       "file": "delta-a07baaff.mp3",
@@ -1071,6 +1092,13 @@
       "who": "delta",
       "mood": "glitch",
       "text": "Breaker tripped! The grid was overloaded, so everything electric has stopped. Very safe. Very quiet."
+    },
+    "delta-c98f2763": {
+      "file": "delta-c98f2763.mp3",
+      "ms": 8231,
+      "who": "delta",
+      "mood": null,
+      "text": "That line goes nowhere useful. Every belt has to end in a machine that can use what it carries, or in the Dispatch Pad."
     },
     "delta-ca573762": {
       "file": "delta-ca573762.mp3",

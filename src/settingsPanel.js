@@ -168,7 +168,7 @@ export function createSettingsPanel({ settings, sound, menus, account }) {
         function gameplay() {
             choice('gameplay', 'autosave', 'Autosave', [[0, 'Off'], [30, '30 s'], [60, '1 min'], [120, '2 min'], [300, '5 min']], 'Also on every phase and when you leave');
             toggle('gameplay', 'hints', 'DELTA’s hints', 'A nudge when an objective stays open for a while');
-            toggle('gameplay', 'highlights', 'Tutorial highlights', 'Show where: the key to press, rings on the map, the panel an objective is about');
+            toggle('gameplay', 'highlights', 'Tutorial', 'The step card in the console, example buildings on the map, and highlights on the key to press and the panel to use');
             choice('gameplay', 'textSpeed', 'Text speed', [[0.6, 'Slow'], [1, 'Normal'], [1.6, 'Fast'], [99, 'Instant']], 'How fast DELTA’s lines type out (with a voice, they follow it)');
             toggle('gameplay', 'voice', 'DELTA’s voice', 'Off: her lines stay text only');
         }
