@@ -193,11 +193,26 @@
   }
 }
 
-/* The maker's badge: bottom right on the title screen, in the page's flow on small screens. */
+/* The title screen's footer: under everything, across the card, a hairline above it; the fine
+   print on the left and the maker's badge on the right (stacked and centred on narrow screens). */
+.title-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  width: 100%;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--hair-2);
+}
+
+.title-footer .fine-print {
+  margin: 0;
+  text-align: left;
+}
+
 .made-by {
-  position: absolute;
-  right: 28px;
-  bottom: 24px;
+  flex-shrink: 0;
   display: block;
   line-height: 0;
   opacity: 0.85;
@@ -210,18 +225,22 @@
 }
 
 .made-by img {
-  width: 231px;
+  width: 200px;
   height: auto;
 }
 
-/* Narrow or short windows: the title screen becomes one column, the NILE lockup on top
-   (instead of over the mission patch) and the badge at the bottom. */
-@media (max-width: 1100px), (max-height: 760px) {
-  .made-by {
-    position: static;
-    align-self: center;
-    margin: 18px auto 0;
+@media (max-width: 720px) {
+  .title-footer {
+    flex-direction: column;
   }
+  .title-footer .fine-print {
+    text-align: center;
+  }
+}
+
+/* Narrow or short windows: the title screen becomes one column, the NILE lockup on top
+   (instead of over the mission patch). */
+@media (max-width: 1100px), (max-height: 760px) {
   .title-screen {
     flex-direction: column;
     justify-content: flex-start;

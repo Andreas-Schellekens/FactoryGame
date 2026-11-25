@@ -328,9 +328,15 @@ export function createMenus({ account, saves, sound, onOpenSettings, people = ()
             cont,
             row, // Load game / Leaderboard / Settings up here, where they are always in view
             modes,
-            el('p', 'fine-print', `By clicking Begin you accept the ${BRAND.nile.name} ${BRAND.nile.player} Agreement (4,812 pages), including Clause 88.`),
         );
-        overlay.append(lockup, corner, card, madeBy());
+        // The footer: the fine print and the maker's badge, on one line under everything else.
+        const footer = el('footer', 'title-footer');
+        footer.append(
+            el('p', 'fine-print', `By clicking Begin you accept the ${BRAND.nile.name} ${BRAND.nile.player} Agreement (4,812 pages), including Clause 88.`),
+            madeBy(),
+        );
+        card.appendChild(footer);
+        overlay.append(lockup, corner, card);
         document.body.appendChild(overlay);
         overlay._off = offSaves;
         if (isPhone()) showPhoneNote(onLeaderboard);
