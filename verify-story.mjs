@@ -51,6 +51,22 @@ await wait(400);
 const sign = await js(() => document.querySelector('.tooltip')?.innerText ?? '');
 check("the construction site's sign carries his name", /N\. I\. LOCKE/.test(sign), sign.split('\n').pop());
 
+// ---- A phase waits for Confirm delivery -----------------------------------------------------------
+await js(() => { for (const [k, n] of Object.entries(window.__sim.currentPhase().requires)) window.__sim.project.delivered[k] = n; });
+await wait(1500);
+const ready = await js(() => ({ phase: window.__sim.project.phase, button: !!document.querySelector('.con-confirm:not(.hidden)') }));
+check('phase 1 waits for Confirm delivery once everything is in', ready.phase === 0 && ready.button, JSON.stringify(ready));
+let said = '';
+for (let i = 0; i < 120 && !/Confirm delivery/.test(said); i++) {
+    said = await js(() => document.querySelector('.comms-text')?.textContent ?? '');
+    if (!/Confirm delivery/.test(said)) await page.click('.comms-text', { force: true }).catch(() => {});
+    await wait(120);
+}
+check('DELTA says the delivery can be confirmed', /Confirm delivery/.test(said), said.slice(0, 60));
+await page.click('.con-confirm');
+await wait(600);
+check('confirming completes the phase', (await js(() => window.__sim.project.phase)) === 1);
+
 // ---- The HQ ending, then the epilogue ----------------------------------------------------------
 await js(() => {
     window.__sim.project.phase = 5;
@@ -77,14 +93,21 @@ check('the epilogue starts after the founding report', start.epi?.stage === 0, J
 check('its four goals are in the flight plan', start.plan.length === 4 && start.plan[0] === 'Relight the camp', start.plan.join(' · '));
 check('the ribbon and the console show the first goal', /GOAL 01 OF 04/.test(start.ribbon) && start.reqs.includes('Circuit'), start.reqs.join(', '));
 
-/** Deliver what the active goal asks for (the dev hook: stats.delivered), then wait for the next stage. */
-async function finishGoal() {
+/** Confirm delivery in the console (a goal waits for it once everything is in). */
+async function confirmDelivery() {
+    await page.waitForSelector('.con-confirm:not(.hidden)', { timeout: 10000 });
+    await page.click('.con-confirm');
+}
+/** Deliver what the active goal asks for (the dev hook: stats.delivered), confirm, then wait for the next stage. */
+async function finishGoal({ confirm = true } = {}) {
     const before = await js(() => {
         const e = window.__sim.project.epilogue;
         const goal = window.__epilogue.GOALS[e.stage];
         for (const [k, n] of Object.entries(goal.requires)) window.__sim.stats.delivered[k] = (window.__sim.stats.delivered[k] ?? 0) + n;
         return e.stage;
     });
+    if (!confirm) return before;
+    await confirmDelivery();
     for (let i = 0; i < 30; i++) {
         if (await js(() => window.__sim.project.epilogue.stage) > before) return before + 1;
         await wait(200);
@@ -97,7 +120,13 @@ const water = () => js(() => {
     return n;
 });
 
-check('goal 1 (the camp) completes on its deliveries', (await finishGoal()) === 1);
+await finishGoal({ confirm: false });
+await wait(1200);
+const waiting = await js(() => ({ stage: window.__sim.project.epilogue.stage, button: !!document.querySelector('.con-confirm:not(.hidden)') }));
+check('goal 1 waits for Confirm delivery once its deliveries are in', waiting.stage === 0 && waiting.button, JSON.stringify(waiting));
+await confirmDelivery();
+for (let i = 0; i < 30 && (await js(() => window.__sim.project.epilogue.stage)) < 1; i++) await wait(200);
+check('goal 1 (the camp) completes when confirmed', (await js(() => window.__sim.project.epilogue.stage)) === 1);
 await wait(300);
 const banner = await js(() => document.querySelector('.ribbon')?.innerText ?? '');
 check('a goal banner celebrates it', /GOAL 01 · DONE/.test(banner), banner.replace(/\n/g, ' / '));
@@ -128,6 +157,7 @@ const held = await js(() => ({ stage: window.__sim.project.epilogue.stage, bed: 
 check('the river waits for a clear bed', !!bedCell && held.stage === 2 && /1 left/.test(held.bed ?? ''), held.bed);
 check('the river bed is dry before', (await water()) === 0);
 await js((c) => window.__sim.removeMachine(c.x, c.y), bedCell);
+await confirmDelivery();
 for (let i = 0; i < 20 && (await js(() => window.__sim.project.epilogue.stage)) < 3; i++) await wait(200);
 check('goal 3 (the river) completes once the bed is clear', (await js(() => window.__sim.project.epilogue.stage)) === 3);
 const wet = await water();

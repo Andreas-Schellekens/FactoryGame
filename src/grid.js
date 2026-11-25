@@ -215,17 +215,25 @@ export function currentPhase() {
 
 // Advance the campaign once every requirement of the active phase is met.
 // The `phase` bump is the only completion signal — the director polls it.
-function checkPhaseComplete() {
-    const phase = currentPhase();
-    if (!phase) return;
-    for (const [type, n] of Object.entries(phase.requires)) {
-        if ((project.delivered[type] || 0) < n) return;
-    }
+/**
+ * Story: every requirement of the active phase is on the pad. The phase doesn't complete by
+ * itself: the player confirms the delivery (the console's button, `confirmDelivery`).
+ */
+export function phaseReady() {
+    const phase = isStory() ? currentPhase() : null;
+    if (!phase) return false;
+    return Object.entries(phase.requires).every(([type, n]) => (project.delivered[type] || 0) >= n);
+}
+
+/** Confirm a ready delivery: the phase completes (the next part of the cannon, the next unlocks). @returns {boolean} */
+export function confirmDelivery() {
+    if (!phaseReady()) return false;
     project.phase++;
     project.delivered = {};
     if (project.phase >= PHASES.length) project.complete = true;
     applyRiver();
     revealOre();
+    return true;
 }
 
 // ---- Infinite: licences and land ---------------------------------------------------------
@@ -1215,7 +1223,7 @@ export function updateFactoryLogic() {
             }
         }
     }
-    checkPhaseComplete();
+    // (A phase completes when the player confirms the delivery: confirmDelivery().)
     for (const k in market.pressure) {
         market.pressure[k] *= MARKET_DECAY;
         if (market.pressure[k] < 0.01) delete market.pressure[k];

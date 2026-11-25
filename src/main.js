@@ -32,7 +32,7 @@ import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
 import { createDirector, STORY_SCRIPT, EPILOGUE_SCRIPT } from './director.js';
-import { tickEpilogue, epilogueSnapshot, epilogueInfo, epilogueStats, closeEpilogue } from './epilogue.js';
+import { tickEpilogue, epilogueSnapshot, epilogueInfo, epilogueStats, closeEpilogue, confirmEpilogueGoal } from './epilogue.js';
 import { createAudio, BUILD_SIZE } from './audio.js';
 import { createSettings } from './settings.js';
 import { createAccount } from './account.js';
@@ -52,7 +52,7 @@ import './blueprints.css';
 import { createAchievements } from './achievements.js';
 import { createProfile, avatarForAchievement } from './profile.js';
 // The weekly challenge (iteration 7): its rules in grid.js, its screens in challengeUi.js.
-import { isChallenge, activeChallenge, cappedCount, challengeRefusal } from './grid.js';
+import { isChallenge, activeChallenge, cappedCount, challengeRefusal, phaseReady, confirmDelivery } from './grid.js';
 import { CHALLENGE_TEXT, challengeScript } from './story.js';
 import { createChallengeUi } from './challengeUi.js';
 
@@ -162,6 +162,7 @@ function snapshot() {
         tick: tickCount,
         // In Infinite the director's "phase" is the stage: licence groups bought (0–4).
         phase: isInfinite() ? infiniteStage() : project.phase,
+        phaseReady: phaseReady(), // everything for the phase is in, waiting for Confirm delivery
         complete: !isInfinite() && project.complete,
         mode: game.mode,
         licences: [...game.licences],
@@ -629,6 +630,13 @@ const ui = createUI({
     onOpenSettings: () => settingsPanel.open(),
     onOpenBoard: () => openBoard(),
     onOpenMenu: () => openGameMenu(),
+    // Everything for the phase (or the epilogue's goal) is in: the player sends it.
+    onConfirmDelivery: () => {
+        if (state.cinematic) return false;
+        const ok = project.epilogue && project.ending === 'hq' ? confirmEpilogueGoal() : confirmDelivery();
+        if (ok) audio.cue('click');
+        return ok;
+    },
     onBuyLicence: (type) => {
         const cost = LICENCE_COST[type];
         if (!buyLicence(type)) return false;
@@ -721,6 +729,7 @@ const ui = createUI({
             unlocked: Object.fromEntries([...buildableTools].map((t) => [t, isBuildingUnlocked(t)])),
             objectives: director.objectives(),
             epilogue: epilogueInfo(),
+            phaseReady: !state.cinematic && phaseReady(), // the console's Confirm delivery
         };
     },
 });

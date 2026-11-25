@@ -126,7 +126,7 @@ export function createUI({
     onGroupAction = () => {},
     // Iteration 6: the save slots, settings and leaderboard panels (menus.js), Infinite's shop.
     onOpenSaves = () => {}, onOpenSettings = () => {}, onOpenBoard = () => {}, onBuyLicence = () => false, onBuyPlot = () => false,
-    onOpenMenu = () => {},
+    onOpenMenu = () => {}, onConfirmDelivery = () => false,
     // Iteration 7: the alerts list (a group's next machine; the list was opened).
     onAlert = () => false, onAlertsOpen = () => {},
     keyMap = DEFAULT_KEYS,
@@ -388,7 +388,14 @@ export function createUI({
     const reqSec = el('div', 'con-sec');
     const reqList = el('div', 'req-list');
     const unlockLine = el('span', 'con-note');
-    reqSec.append(reqList, unlockLine);
+    // A phase (or an epilogue goal) completes when the player confirms it, once everything is in.
+    const confirmBtn = el('button', 'con-confirm hidden', 'Confirm delivery');
+    confirmBtn.type = 'button';
+    confirmBtn.addEventListener('click', () => {
+        if (onConfirmDelivery()) confirmBtn.classList.add('hidden');
+        else cue('deny');
+    });
+    reqSec.append(reqList, confirmBtn, unlockLine);
     /** @type {Record<string, {count: HTMLElement, fill: HTMLElement, n: number}>} */
     let reqRows = {};
 
@@ -1739,6 +1746,8 @@ export function createUI({
         pauseBtn.setAttribute('aria-label', s.paused ? 'Resume' : 'Pause');
         speedLabel.textContent = `${s.speed.toFixed(2)}×`;
 
+        // Everything is in: the console offers Confirm delivery (a phase, or an epilogue goal).
+        confirmBtn.classList.toggle('hidden', !(s.phaseReady || s.epilogue?.canConfirm));
         // In the epilogue the rows count the active goal's deliveries (and the river bed's machines).
         const counts = s.epilogue?.goal ? s.epilogue.got : project.delivered;
         for (const [item, row] of Object.entries(reqRows)) {

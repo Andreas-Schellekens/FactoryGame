@@ -1336,3 +1336,35 @@ export const EPILOGUE = {
         credits: 'Credits',
     },
 };
+
+// ---- Confirming a delivery (iteration 7) -------------------------------------------------------
+// A phase no longer completes the moment its last item lands: once everything is on the pad the
+// console offers Confirm delivery (grid.js phaseReady / confirmDelivery), and DELTA says so, once
+// per phase. The epilogue's goals work the same way (epilogue.js confirmEpilogueGoal). Snapshot
+// field: w.phaseReady.
+const READY_LINE = "Delivery complete. Confirm it in the console when you're ready, and NILE ships it to the site.";
+STORY_BEATS.push(
+    {
+        id: 'ready0',
+        when: (w) => w.phase === 0 && w.phaseReady,
+        lines: [d("That's everything Phase 1 needs, sitting on the Dispatch Pad. Nothing ships until you say so: press Confirm delivery in the console.")],
+    },
+    { id: 'ready1', when: (w) => w.phase === 1 && w.phaseReady, lines: [d(READY_LINE)] },
+    { id: 'ready2', when: (w) => w.phase === 2 && w.phaseReady, lines: [d(READY_LINE)] },
+    {
+        id: 'ready3',
+        when: (w) => w.phase === 3 && w.phaseReady,
+        lines: [d('The Payload is all there. Confirm the delivery and NILE arms the turret. Everyone at head office is very excited.')],
+    },
+    {
+        id: 'ready4',
+        when: (w) => w.phase === 4 && w.phaseReady,
+        lines: [d('Every Selene Shell is on the pad, Asset. Confirm the delivery and the cannon is loaded.', 'sinister')],
+    },
+);
+const EPI_READY_LINE = "Everything for this item is on the pad. Confirm it in the console and I'll get started.";
+EPILOGUE.BEATS.push(...[0, 1, 2, 3].map((s) => ({
+    id: `epi:ready${s}`,
+    when: (w) => stageOf(w) === s && w.epilogue.ready && !w.epilogue.bedLeft,
+    lines: [d(EPI_READY_LINE, 'happy')],
+})));

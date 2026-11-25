@@ -148,6 +148,13 @@
       "mood": null,
       "text": "Licences are in the console on the left. The Press turns ingots into plates and wire, which sell better."
     },
+    "delta-1565f0f3": {
+      "file": "delta-1565f0f3.mp3",
+      "ms": 8623,
+      "who": "delta",
+      "mood": null,
+      "text": "That's everything Phase 1 needs, sitting on the Dispatch Pad. Nothing ships until you say so: press Confirm delivery in the console."
+    },
     "delta-156a5bea": {
       "file": "delta-156a5bea.mp3",
       "ms": 8153,
@@ -855,6 +862,13 @@
       "mood": "sinister",
       "text": "Moon+ beta testers report \"a deep sense of loss\" and \"surprisingly reasonable pricing\"."
     },
+    "delta-a8012af1": {
+      "file": "delta-a8012af1.mp3",
+      "ms": 7918,
+      "who": "delta",
+      "mood": null,
+      "text": "The Payload is all there. Confirm the delivery and NILE arms the turret. Everyone at head office is very excited."
+    },
     "delta-a83d6fec": {
       "file": "delta-a83d6fec.mp3",
       "ms": 11575,
@@ -868,6 +882,13 @@
       "who": "delta",
       "mood": null,
       "text": "Sulfur from the east rim and coal into a Mixer. Handle with something."
+    },
+    "delta-aa1e8a7a": {
+      "file": "delta-aa1e8a7a.mp3",
+      "ms": 5436,
+      "who": "delta",
+      "mood": null,
+      "text": "Delivery complete. Confirm it in the console when you're ready, and NILE ships it to the site."
     },
     "delta-ac27bd5e": {
       "file": "delta-ac27bd5e.mp3",
@@ -1008,6 +1029,13 @@
       "who": "delta",
       "mood": null,
       "text": "Item two: NIHIL's compound on the east rim. Fifty Steel and thirty Motors pay for the cranes. We'll sell the scrap back to whoever is left."
+    },
+    "delta-c3b88087": {
+      "file": "delta-c3b88087.mp3",
+      "ms": 5906,
+      "who": "delta",
+      "mood": "sinister",
+      "text": "Every Selene Shell is on the pad, Asset. Confirm the delivery and the cannon is loaded."
     },
     "delta-c7677bb6": {
       "file": "delta-c7677bb6.mp3",
@@ -1246,6 +1274,13 @@
       "who": "delta",
       "mood": null,
       "text": "Brownout! You have more machines than the starter grid can feed. They keep working, just slower. Like interns."
+    },
+    "delta-e8f14bb1": {
+      "file": "delta-e8f14bb1.mp3",
+      "ms": 5097,
+      "who": "delta",
+      "mood": "happy",
+      "text": "Everything for this item is on the pad. Confirm it in the console and I'll get started."
     },
     "delta-e9414417": {
       "file": "delta-e9414417.mp3",

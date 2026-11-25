@@ -68,7 +68,9 @@ export function tickEpilogue(tick, { hold = false } = {}) {
     if (!project.epilogue) start(tick);
     const e = project.epilogue;
     const goal = GOALS[e.stage];
-    if (!isReady(goal, progress(e)) || (goal.clearBed && bedLeft() > 0)) return null;
+    // A goal completes once the player confirms it (the console's Confirm delivery), like a phase.
+    if (!e.confirm || !isReady(goal, progress(e)) || (goal.clearBed && bedLeft() > 0)) return null;
+    e.confirm = false;
     e.stage++;
     e.base = { ...stats.delivered };
     let events = [];
@@ -77,6 +79,20 @@ export function tickEpilogue(tick, { hold = false } = {}) {
         events = applyEpilogueLand();
     }
     return { goal: goal.id, stage: e.stage, events };
+}
+
+/** Can the active goal be confirmed: everything in (and, for the river, the bed clear)? */
+function canConfirm(e) {
+    const goal = GOALS[e.stage];
+    return !!goal && isReady(goal, progress(e)) && !(goal.clearBed && bedLeft() > 0);
+}
+
+/** The player confirms the active goal's delivery; the next tickEpilogue completes it. @returns {boolean} */
+export function confirmEpilogueGoal() {
+    const e = state();
+    if (!e || !canConfirm(e)) return false;
+    e.confirm = true;
+    return true;
 }
 
 /** The director's view (story.js predicates read `w.epilogue`), or null. */
@@ -99,6 +115,7 @@ export function epilogueInfo() {
         stage: e.stage, total: GOALS.length, closed: !!e.closed,
         goal: goal && { id: goal.id, requires: goal.requires, clearBed: !!goal.clearBed },
         got: progress(e), bedLeft: goal?.clearBed ? bedLeft() : 0,
+        canConfirm: canConfirm(e) && !e.confirm,
     };
 }
 

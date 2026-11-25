@@ -363,4 +363,8 @@ Each iteration should be playable on its own before the next one starts.
             broadcasts, memos over his initials, DELTA's mentions, his name on the site's sign.
       - [x] Recorded the 43 new lines (Nolan's pre-reveal broadcasts, DELTA's lines, the epilogue, the
             challenge's fixed lines); a challenge's per-week lines stay text.
+      - [x] Confirm delivery: a phase (and an epilogue goal) waits once everything is on the pad;
+            the console's button sends it, and DELTA says when it's ready. The title screen fits
+            short windows (it scrolls instead of cutting off the patch), with Load game, Leaderboard
+            and Settings under Continue, and a Resume per mode.
       - [ ] Playtest the epilogue's goal sizes and the challenge's weeks at real pace.
