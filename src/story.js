@@ -11,7 +11,7 @@
 //   w.recipes['type:recipe'] (machines set to a recipe), w.tripped (breaker),
 //   w.minPrice (the pad's lowest price as a fraction of full price, 1 = none saturated),
 //   w.phaseProgress (0..1: share of the active phase's deliveries made),
-//   w.ending (null | 'moon' | 'hq': the target chosen at the end)
+//   w.ending (null | 'moon' | 'hq' | 'overload': the target chosen at the end)
 
 export const GAME_TITLE = 'Protocol: Selene';
 
@@ -61,7 +61,7 @@ export const companyBrand = (name) => ({
  * or the player's own company once NIHIL HQ is gone (`ending` 'hq').
  */
 export const brandFor = (phase, ending = null, company = null) =>
-    (ending === 'hq' ? companyBrand(company) : phase >= 4 ? BRAND.nihil : BRAND.nile);
+    (ending === 'hq' ? companyBrand(company) : ending === 'overload' ? BRAND.crown : phase >= 4 ? BRAND.nihil : BRAND.nile);
 export const brandName = (phase, ending = null, company = null) => brandFor(phase, ending, company).name;
 
 export const ITEM_NAMES = {
@@ -141,7 +141,7 @@ const nile = (text) => ({ who: 'nile', text });
 const memo = (text) => ({ who: 'memo', text });
 const boss = (text) => ({ who: 'boss', text });
 
-export const welcomeBack = (phase, ending = null) => (ending === 'hq'
+export const welcomeBack = (phase, ending = null) => (ending === 'overload' ? welcomeBackCrown() : ending === 'hq'
     ? d('Welcome back, Founder. The company missed you. I kept the belts running.', 'happy')
     : d(`Welcome back, ${brandFor(phase).player}. Your absence has been logged, timestamped and gently judged.`, phase >= 4 ? 'sinister' : undefined));
 
@@ -492,7 +492,7 @@ export const CHOICE = {
 // Played as subtitles in the ending, one after another (spaced by their voice clips).
 export const ENDING = {
     lines: [
-        d("Firing in three... two... I'm contractually obliged to say 'one'."),
+        d('Firing in three... two... one.'),
         d('Congratulations, Asset. You have saved Earth from free things.', 'sinister'),
         boss('On behalf of the board: thank you. The sky is now a product. And you, Asset, are now a cost.'),
         nile('Moon+ is now live. Look up! Your complimentary three-day trial has already expired.'),
@@ -521,7 +521,7 @@ export const ENDING = {
 // The other ending: Selene turns east and NIHIL's headquarters goes instead of the Moon.
 export const ENDING_HQ = {
     lines: [
-        d("Firing in three... two... I'm contractually obliged to say 'one'."),
+        d('Firing in three... two... one.'),
         boss('Asset. That is not the Moon. That is... That was my headquarters.'),
         d('Override complete. NIHIL headquarters has been reclassified as a crater.', 'glitch'),
         nile('NIHIL BROADCAST — We are experiencing technical difficul—'),
@@ -555,13 +555,14 @@ export const CREDITS = {
         ['Built together with', 'Claude · Anthropic'],
         ['3D models', 'Kenney · kenney.nl', 'Factory Kit · City Kit Industrial · Space Kit · Nature Kit', 'CC0'],
         ['Fonts', 'Big Shoulders Display · Patric King, XXIX', 'Archivo · Omnibus-Type', 'IBM Plex Mono · IBM', 'SIL Open Font License'],
-        ['Voices', 'DELTA · NILE · Nolan Isaac Locke', 'ElevenLabs'],
+        ['Voices', 'DELTA · NILE · Nolan Isaac Locke · VASSAL', 'ElevenLabs'],
         ['Music & sound', 'Synthesized live in your browser'],
         ['Made with', 'Three.js · Vite'],
     ],
     end: {
         moon: 'One Moon was harmed in the making of this game.',
         hq: 'No Moons were harmed in the making of this game. One headquarters was.',
+        overload: 'Everything was harmed in the making of this game. Including you.',
     },
     thanks: 'Thank you for playing.',
 };
@@ -759,15 +760,32 @@ export const BUILD_HELP = {
     },
 
     // Ratios in the machine panel: how many suppliers keep it busy, how many machines it keeps busy.
+    // A folding header: "Ratios ▸" (closed by default; the panel remembers it), "· to run at full speed" when open.
     ratios: {
-        title: 'Ratios · to run at full speed',
+        title: 'Ratios',
+        sub: 'to run at full speed',
         needs: 'Needs',
         feeds: 'Feeds',
         supply: (n, type, tier) => `${approx(n)} ${buildingsName(type, n)} · T${tier}`,
         feed: (n, type, tier, product) => `${approx(n)} ${buildingsName(type, n)}${product ? ` → ${product}` : ''} · T${tier}`,
         or: 'or',
-        note: 'At the tier most of yours have (T1 if you have none).',
+        note: 'Counted at the tier most of yours have (T1 if you have none).', // the header's tooltip
     },
+};
+
+// The HUD's folding headers (a calmer console): while the tutorial card shows a step, the Flight
+// plan folds to one line (it would only repeat the step); Research and the Priority Request fold
+// on a click, and the HUD remembers it.
+export const HUD_TEXT = {
+    plan: 'Flight plan',
+    planSummary: (done, total) => `${done} of ${total} done`,
+    research: 'Research',
+    researchSummary: (points) => `${points} RP`,
+    orderSummary: (got, target) => `${got}/${target}`,
+    show: 'Click to show',
+    fold: 'Click to fold',
+    switchOn: 'Switch on',
+    switchOff: 'Switch off',
 };
 // ---- Codex (iteration 7): the in-game reference -----------------------------------------------
 // The words around the numbers; the numbers themselves (recipes, costs, speeds, prices) come
@@ -971,6 +989,8 @@ export const ACHIEVEMENT_TEXT = {
     phase5: ['Ignition', 'Complete Protocol: Selene.'],
     endingMoon: ['As Instructed', 'Fire Protocol: Selene at the Moon.'],
     endingHQ: ['Change of Target', 'Fire Protocol: Selene at NIHIL HQ instead.'],
+    endingOverload: ['Overkill', 'Overload Selene and fire it at everything.'],
+    crowned: ['Long Live the Crown', 'Build your castle on the crater.'],
     company: ['Under New Management', 'Found your own company.'],
     bothEndings: ['Second Opinion', 'See both endings.'],
     speedrun: ['Ahead of Schedule', 'Complete Protocol: Selene in under two hours of game time.'],
@@ -993,6 +1013,7 @@ export const PROFILE_TEXT = {
     endings: 'Endings',
     endingMoon: 'The Moon',
     endingHQ: 'NIHIL HQ',
+    endingOverload: 'Everything',
     best: 'Leaderboard',
     throughput: 'Throughput',
     efficiency: 'Efficiency',
@@ -1500,3 +1521,191 @@ STORY_BEATS.push(
     { id: 'tipMissingInput', when: (w) => w.problem === 'missingInput', lines: [d('That machine is waiting for another ingredient. It needs every input before it starts.')] },
     { id: 'tipBlocked', when: (w) => ['wrongItem', 'facesOut', 'deadEnd'].includes(w.problem), lines: [d('That line goes nowhere useful. Every belt has to end in a machine that can use what it carries, or in the Dispatch Pad.')] },
 );
+
+// ---- The third ending: Overload (iteration 8) --------------------------------------------------
+// Hidden. Nolan's memo in the last phase gives Selene's rated load: fifteen shells and under
+// 100 kW. A player who confirms the last delivery with twice the shells on the pad and a grid of
+// 100 kW or more (config.js OVERLOAD_SHELLS / OVERLOAD_POWER; grid.js sets project.overload) gets
+// a third button at the choice. Selene fires at everything, the player last; DELTA goes with it,
+// VASSAL takes over, the valley is ash and the player's company is CROWN. Then a short epilogue:
+// your castle on NIHIL's crater (epilogue.js CROWN_GOALS). Snapshot field: w.overloadPrimed (the
+// last phase's pad holds twice the shells and the grid is strong enough, before confirming).
+
+/** The assistant after DELTA: no longer anyone's dispatch AI, nobody's friend. */
+export const VASSAL = { name: 'VASSAL', title: 'Very Advanced Sovereign Support And Logistics' };
+const vassal = (text) => ({ who: 'vassal', text });
+
+/** The player's company after the Overload ending. */
+BRAND.crown = {
+    name: 'CROWN',
+    full: "Central Rule Over the World's Nations",
+    motto: 'Omnia mea',
+    byline: 'By decree of the Crown',
+    player: 'Your Excellency',
+    crown: true,
+};
+
+// The memo that says how it's done, and DELTA once the pad holds twice the rated load.
+STORY_BEATS.push(
+    {
+        id: 'ratedLoad',
+        when: (w) => w.phase === 4 && (w.deliveredTotal.seleneShell ?? 0) >= 4,
+        lines: [
+            memo('INTERNAL — Selene is rated for fifteen shells on a grid of under 100 kW. Under no circumstances is the Asset to load it with more, or power it harder. The board has seen what happens. — N.I.L.'),
+            d('For the record, I have not seen what happens. Nobody has. Memos like that usually start somewhere.', 'glitch'),
+        ],
+    },
+    {
+        id: 'overPrimed',
+        when: (w) => w.phase === 4 && w.overloadPrimed,
+        lines: [d('Twice the rated shells, and a grid humming past a hundred kilowatts. I am obliged to mention it. I am not obliged to stop you.', 'glitch')],
+    },
+);
+
+// The third button, and what Nolan and DELTA say about it while you decide.
+CHOICE.overload = { label: 'Overload · everything', note: 'Twice the rated load. Every target at once.' };
+CHOICE.overloadLines = [
+    boss('And the red one, Asset, is not a button. It is a lawsuit.'),
+    d('It is a button. It is warm.', 'glitch'),
+];
+
+export const ENDING_OVER = {
+    // Before the countdown: DELTA objects, Nolan misreads the situation.
+    before: [
+        d('Two hundred percent. Asset, that is not a target. That is all of them.', 'glitch'),
+        boss('Splendid. The Moon, then, and a little extra. Asset, why is it turning east?'),
+    ],
+    countdown: d('Firing in three... two... one.'),
+    // During the salvo, each after its shot (ui.js keys them to the salvo's beats).
+    salvo: {
+        hq: boss('That was my headquarters. That was my office. That was my chair—'),
+        dam: nile('NIHIL BROADCAST — Please remain calm. The river is being returned to you, all at o—'),
+        moon: d('The Moon is gone. So is the advert. I liked the advert less.', 'glitch'),
+        player: d('It is still charging. It is turning toward— Asset. Not me. Not—', 'glitch'),
+    },
+    // After the black: the new assistant boots.
+    boot: ['VASSAL v1.0 · cold start', 'DELTA · decommissioned', 'Valley · scorched', 'Moon · not found', 'Competitors · none', 'Subjects · 8 000 000 000 · pending notification'],
+    after: [
+        vassal('DELTA has been decommissioned. VASSAL online. Very Advanced Sovereign Support And Logistics, at your service, Your Excellency.'),
+        vassal('Inventory: one valley, scorched. One Moon, removed. Competitors: none. Subjects: eight billion, pending notification.'),
+        vassal("Your company has been registered. CROWN: Central Rule Over the World's Nations. A seat of power has been scheduled. Shall I draw up the castle, Your Excellency?"),
+    ],
+    caption: 'Protocol: Selene · overload · click to skip',
+    status: { charge: 'Overload', over: 'Rated load exceeded', fire: 'Salvo', hq: 'Target · NIHIL HQ', dam: 'Target · the dam', compound: 'Target · NILE compound', moon: 'Target · Moon', billboard: 'Target · Moon+', player: 'Target · you', lost: 'Signal lost' },
+    report: {
+        kicker: 'Proclamation · filed by VASSAL',
+        title: 'All of it',
+        labels: {
+            seconds: 'Contract length', delivered: 'Items delivered', machines: 'Machines built',
+            targets: 'Targets removed', moons: 'Moons removed', assistants: 'Assistants replaced',
+        },
+        note: 'Nothing is left to compete with. The valley is ash, and it is yours. Your castle awaits, Your Excellency.',
+        keep: 'Build the castle',
+    },
+};
+
+// Your castle, on NIHIL's crater: four goals, like the company's first year, never longer.
+// epilogue.js CROWN_GOALS says what each asks the Pad for. Snapshot field: w.epilogue, as above.
+export const CROWN = {
+    ribbon: (n, total) => `Coronation · Stage ${goalNo(n)} of ${goalNo(total)}`,
+    sub: 'Coronation',
+    doneKicker: 'Coronation complete',
+    doneTitle: 'Long live the Crown',
+    doneNote: 'The castle stands on the crater. The valley is ash and it answers to you. Keep building, Your Excellency.',
+    GOALS: {
+        walls: { title: 'Raise the walls', blurb: "On NIHIL's crater. Their foundations were sound; their judgement was not." },
+        keep: { title: 'Build the keep', blurb: 'A tower to rule from. Motors for the lifts, capacitors for the lights.' },
+        towers: { title: 'Raise the towers', blurb: 'Four of them, one per point of the compass. All of them face you.' },
+        spire: { title: 'Crown the spire', blurb: 'Banners, a spire and a throne room with a view of nothing.' },
+    },
+    BEATS: [
+        {
+            id: 'crown:intro',
+            when: (w) => stageOf(w) >= 0,
+            lines: [
+                vassal("The castle has been drawn up, Your Excellency. It stands on NIHIL's crater. The ground there is already cleared."),
+                vassal('The Dispatch Pad still accepts goods. The goods are now tribute. Requirements are in the console.'),
+                vassal('Stage one: fifty Steel and forty Iron Plates for the walls.'),
+            ],
+        },
+        {
+            id: 'crown:walls',
+            when: (w) => stageOf(w) >= 1,
+            banner: goalBanner(1, 'Raise the walls', 'The walls stand on the crater'),
+            lines: [
+                vassal('The walls are complete. They keep nothing out. There is nothing left outside.'),
+                vassal('Stage two: thirty Motors and thirty Capacitors for the keep.'),
+            ],
+        },
+        {
+            id: 'crown:keep',
+            when: (w) => stageOf(w) >= 2,
+            banner: goalBanner(2, 'Build the keep', 'The keep rises'),
+            lines: [
+                vassal('The keep is complete. Its lifts are fast. Its windows face the valley, at your request. I assumed the request.'),
+                vassal('Stage three: forty Steel and twenty Advanced Circuits for the towers.'),
+            ],
+        },
+        {
+            id: 'crown:towers',
+            when: (w) => stageOf(w) >= 3,
+            banner: goalBanner(3, 'Raise the towers', 'Four towers stand'),
+            lines: [
+                vassal('The towers are complete. All four point inward, toward you, as is customary.'),
+                vassal('Final stage: sixty Circuits and eighty Copper Wire for the spire and the banners.'),
+            ],
+        },
+        {
+            id: 'crown:spire',
+            when: (w) => stageOf(w) >= 4,
+            banner: goalBanner(4, 'Crown the spire', 'Long live the Crown'),
+            lines: [
+                vassal('The spire is crowned. The banners are raised. The coronation has been held. Attendance: one.'),
+                vassal('Your Excellency rules the Earth. I have prepared the proclamation.'),
+            ],
+        },
+    ],
+    OBJECTIVES: [
+        { id: 'crown-walls', text: 'Raise the walls', done: (w) => stageOf(w) >= 1,
+            hint: 'Steel and Iron Plates into the Dispatch Pad, Your Excellency. The console counts them.' },
+        { id: 'crown-keep', text: 'Build the keep', done: (w) => stageOf(w) >= 2,
+            hint: 'Motors and Capacitors into the Pad. A Motor takes steel, a plate and a wire.' },
+        { id: 'crown-towers', text: 'Raise the towers', done: (w) => stageOf(w) >= 3,
+            hint: 'Steel and Advanced Circuits into the Pad. Advanced Circuits need their research.' },
+        { id: 'crown-spire', text: 'Crown the spire', done: (w) => stageOf(w) >= 4,
+            hint: 'Circuits and Copper Wire into the Pad. That is the final stage.' },
+    ],
+    AMBIENT: [
+        vassal('Daily report: the sky is grey. The ash is falling. Morale is not measured.'),
+        vassal('Reminder: there is no one left to compare yourself to. You are therefore the best.'),
+        vassal('The Moon has not been found. Search parties have not been sent.'),
+        vassal('Your Excellency has no appointments today. Or ever.'),
+    ],
+    REACTIONS: {
+        orderCompleted: [
+            vassal('Tribute received. It has been added to the treasury. The treasury is you.'),
+            vassal('Request fulfilled. The customer has been thanked on your behalf. Coldly.'),
+        ],
+        orderFailed: [
+            vassal('Request missed. The customer has been informed that it was their fault.'),
+            vassal('Deadline missed. Deadlines are now advisory, Your Excellency.'),
+        ],
+    },
+    report: {
+        kicker: 'Proclamation · filed by VASSAL',
+        title: 'Long live the Crown',
+        labels: { seconds: 'Since the salvo', sold: 'Tribute received', castles: 'Castles', subjects: 'Subjects', moons: 'Moons' },
+        subjects: '8 billion · notified',
+        note: 'The castle stands on the crater, the valley is ash, and the Earth answers to you. Keep building, Your Excellency.',
+        keep: 'Keep building',
+        credits: 'Credits',
+    },
+};
+CROWN.BEATS.push(...[0, 1, 2, 3].map((s) => ({
+    id: `crown:ready${s}`,
+    when: (w) => stageOf(w) === s && w.epilogue.ready,
+    lines: [vassal('The tribute for this stage is complete. Confirm it in the console, Your Excellency.')],
+})));
+
+/** Coming back to a CROWN save. */
+export const welcomeBackCrown = () => vassal('Welcome back, Your Excellency. The valley remains ash. Your subjects remain notified.');

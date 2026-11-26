@@ -113,6 +113,12 @@ export const POWER_DRAW = {
 export const OVERLOAD_RATIO = 1.25;
 export const OVERLOAD_TICKS = 20; // 5 s of warning at TICK_RATE 4
 
+// The hidden third ending (Story): confirm the last phase with at least this many Selene Shells
+// on the pad (twice the 15 it needs) and a power supply of at least this many kW, and the choice
+// offers to overload the cannon (grid.js confirmDelivery sets project.overload).
+export const OVERLOAD_SHELLS = 30;
+export const OVERLOAD_POWER = 100;
+
 // Research: labs convert `research` items (assembled from circuits) into
 // points; points buy permanent tech-tree unlocks. Costs are keyed by the
 // node ids in grid.js's `research.unlocked`. (Buildings — generator, lab… —

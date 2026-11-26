@@ -119,3 +119,27 @@ export function memoSVG() {
         <rect x="34" y="64" width="32" height="9" fill="#1c1608" transform="rotate(-6 50 68)" />
     </svg>`;
 }
+
+// ---- After the Overload ending (iteration 8): CROWN and VASSAL ---------------------------------
+const ASH = { bone: '#e4ded2', ash: '#8f8a83', soot: '#16161a', ember: '#ff5a3c' };
+
+/** CROWN's mark: a three-point crown over a bar, bone on soot, in a square frame. */
+export function crownMarkSVG(size = 30) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 74 74" aria-hidden="true">
+        <rect x="2" y="2" width="70" height="70" fill="none" stroke="${ASH.bone}" stroke-width="4" />
+        <path d="M16 50 L16 24 L28 38 L37 18 L46 38 L58 24 L58 50 Z" fill="none" stroke="${ASH.bone}" stroke-width="4.5" stroke-linejoin="miter" />
+        <path d="M16 58 H58" stroke="${ASH.ember}" stroke-width="5" stroke-linecap="square" />
+    </svg>`;
+}
+
+/** VASSAL: no face and no wave, a lens of nested squares with one ember pixel. */
+export function vassalSVG() {
+    return `<svg viewBox="0 0 96 96" class="portrait-svg vassal-svg" role="img" aria-label="VASSAL">
+        <rect x="2" y="2" width="92" height="92" fill="${ASH.soot}" stroke="${ASH.ash}" stroke-width="3" />
+        <rect x="18" y="18" width="60" height="60" fill="none" stroke="${ASH.ash}" stroke-width="2" />
+        <rect x="28" y="28" width="40" height="40" fill="none" stroke="${ASH.bone}" stroke-opacity="0.7" stroke-width="2" />
+        <rect x="38" y="38" width="20" height="20" fill="none" stroke="${ASH.bone}" stroke-width="3" />
+        <rect class="trace" x="44" y="44" width="8" height="8" fill="${ASH.ember}" />
+        <path d="M8 48 H18 M78 48 H88 M48 8 V18 M48 78 V88" stroke="${ASH.ash}" stroke-width="2" />
+    </svg>`;
+}

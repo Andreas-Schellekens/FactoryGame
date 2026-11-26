@@ -1,4 +1,5 @@
-// src/epilogue.js — the company's first year, after the NIHIL HQ ending (Story only).
+// src/epilogue.js — the company's first year, after the NIHIL HQ ending (Story only), or the
+// castle on NIHIL's crater after the Overload ending (CROWN_GOALS; the same machinery).
 // Four goals, one at a time, each paid for with deliveries to the Dispatch Pad and each
 // undoing a piece of what NIHIL did to the valley. Deliveries are counted from grid.js
 // `stats.delivered` since the goal began, so the pad needs no epilogue logic of its own.
@@ -25,10 +26,25 @@ export const GOALS = [
     { id: 'valley', requires: { advancedCircuit: 30, copperWire: 80 } },
 ];
 
+/**
+ * After the Overload ending (iteration 8): the castle on NIHIL's crater, four stages (story.js
+ * CROWN.GOALS has their names; renderer.js setCastle draws them from `stage`). No land changes,
+ * never longer than the company's first year.
+ */
+export const CROWN_GOALS = [
+    { id: 'walls', requires: { steel: 50, ironPlate: 40 } },
+    { id: 'keep', requires: { motor: 30, capacitor: 30 } },
+    { id: 'towers', requires: { steel: 40, advancedCircuit: 20 } },
+    { id: 'spire', requires: { circuit: 60, copperWire: 80 } },
+];
+
+/** The goals of this game's epilogue: the company's first year, or the castle. */
+export const goalsFor = (ending = project.ending) => (ending === 'overload' ? CROWN_GOALS : GOALS);
+
 const sum = (book) => Object.values(book ?? {}).reduce((a, n) => a + n, 0);
 
-/** Does this game get an epilogue: Story, Selene fired, and at NIHIL's headquarters? */
-export const epilogueDue = () => !isInfinite() && project.complete && project.ending === 'hq';
+/** Does this game get an epilogue: Story, Selene fired, at NIHIL's headquarters or at everything? */
+export const epilogueDue = () => !isInfinite() && project.complete && (project.ending === 'hq' || project.ending === 'overload');
 
 /** The live state, or null (not due, or not started yet). */
 const state = () => (epilogueDue() ? project.epilogue : null);
@@ -42,7 +58,7 @@ function start(tick) {
 
 /** Deliveries toward the active goal since it began: item → count. */
 function progress(e) {
-    const goal = GOALS[e.stage];
+    const goal = goalsFor()[e.stage];
     if (!goal) return {};
     return Object.fromEntries(Object.keys(goal.requires).map((k) => [k, Math.max(0, (stats.delivered[k] ?? 0) - (e.base?.[k] ?? 0))]));
 }
@@ -67,7 +83,7 @@ export function tickEpilogue(tick, { hold = false } = {}) {
     if (!epilogueDue() || hold) return null;
     if (!project.epilogue) start(tick);
     const e = project.epilogue;
-    const goal = GOALS[e.stage];
+    const goal = goalsFor()[e.stage];
     // A goal completes once the player confirms it (the console's Confirm delivery), like a phase.
     if (!e.confirm || !isReady(goal, progress(e)) || (goal.clearBed && bedLeft() > 0)) return null;
     e.confirm = false;
@@ -83,7 +99,7 @@ export function tickEpilogue(tick, { hold = false } = {}) {
 
 /** Can the active goal be confirmed: everything in (and, for the river, the bed clear)? */
 function canConfirm(e) {
-    const goal = GOALS[e.stage];
+    const goal = goalsFor()[e.stage];
     return !!goal && isReady(goal, progress(e)) && !(goal.clearBed && bedLeft() > 0);
 }
 
@@ -99,9 +115,9 @@ export function confirmEpilogueGoal() {
 export function epilogueSnapshot() {
     const e = state();
     if (!e) return null;
-    const goal = GOALS[e.stage];
+    const goal = goalsFor()[e.stage];
     return {
-        stage: e.stage, total: GOALS.length, ready: isReady(goal, progress(e)),
+        stage: e.stage, total: goalsFor().length, ready: isReady(goal, progress(e)), crown: project.ending === 'overload',
         bedLeft: goal?.clearBed ? bedLeft() : 0, closed: !!e.closed,
     };
 }
@@ -110,9 +126,9 @@ export function epilogueSnapshot() {
 export function epilogueInfo() {
     const e = state();
     if (!e) return null;
-    const goal = GOALS[e.stage] ?? null;
+    const goal = goalsFor()[e.stage] ?? null;
     return {
-        stage: e.stage, total: GOALS.length, closed: !!e.closed,
+        stage: e.stage, total: goalsFor().length, closed: !!e.closed, crown: project.ending === 'overload',
         goal: goal && { id: goal.id, requires: goal.requires, clearBed: !!goal.clearBed },
         got: progress(e), bedLeft: goal?.clearBed ? bedLeft() : 0,
         canConfirm: canConfirm(e) && !e.confirm,
@@ -120,7 +136,7 @@ export function epilogueInfo() {
 }
 
 /** Every goal done and its last lines said? Then the report can be shown. */
-export const epilogueFinished = () => !!state() && state().stage >= GOALS.length;
+export const epilogueFinished = () => !!state() && state().stage >= goalsFor().length;
 
 /** The report has been shown: the flight plan clears and the sandbox goes on. */
 export function closeEpilogue() {

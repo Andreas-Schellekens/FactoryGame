@@ -1,8 +1,8 @@
 // src/renderer.js — the 3D view (Three.js): an isometric diorama of the
 // simulation grid. Owns the scene, the per-phase lighting mood, the
 // machine/ore/item views (with build/demolish/upgrade juice), the build
-// overlay and cursor picking, and drives the environment, cannon and effects
-// modules. It reads the grid every frame to keep machine views in sync, and
+// overlay and cursor picking, and drives the environment, cannon, castle and
+// effects modules, and the endings in the world (the Moon, NIHIL HQ, Overload). It reads the grid every frame to keep machine views in sync, and
 // reacts to FactoryEvents for item meshes — it never changes simulation
 // state. Knows nothing about input or the loop.
 //
@@ -20,6 +20,7 @@ import {
 import { loadAssets, createItemMesh, tintTemplate, ORE_TINT } from './assets.js';
 import { buildEnvironment } from './environment.js';
 import { buildCannon } from './cannon.js';
+import { buildCastle } from './castle.js';
 import { createEffects, haloSprite } from './effects.js';
 import { createCameraRig } from './camera.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -53,6 +54,16 @@ const MOODS = [
 
 // After the NIHIL HQ ending: the valley's dawn (the Moon stays; the light comes back).
 const FREED = { sky: 0xffd9bf, ground: 0x5f6044, hemi: 1.05, sun: 0xffcf9a, sunI: 2.6, dir: [0.95, 0.42, -0.25], rim: 0xffb27a, rimI: 0.6, exposure: 1.02, env: 0.36 };
+// After the Overload ending: the ash world. Dim, cold grey light from a low sun behind the smoke.
+const ASH = { sky: 0xb9bec4, ground: 0x3c3a39, hemi: 0.95, sun: 0xd2d6dc, sunI: 1.5, dir: [0.85, 0.36, -0.55], rim: 0x9aa2ad, rimI: 0.35, exposure: 0.92, env: 0.2 };
+
+// The Overload ending's salvo: how long the turret takes to swing onto a target before it
+// fires, and each shell's flight (ms). The HUD gets the sums back from salvo().
+const SALVO_TURN_MS = 700;
+const SALVO_FLIGHT = { hq: HQ_FLIGHT_MS, dam: 1700, compound: 1300 };
+// The last shot, at the player: the turret swings round (ms), charges, fires into the lens.
+const PLAYER_SWING_MS = 1500;
+const PLAYER_CHARGE_MS = 1500;
 
 // Conveyors are laid by the hundred: they don't pave the grass (only real
 // buildings leave concrete), they just hide the flowers under them.
@@ -288,11 +299,13 @@ export async function createRenderer(container, { onProgress } = {}) {
     scene.add(rimLight, rimLight.target);
 
     const effects = createEffects(scene);
-    const env = buildEnvironment(scene, assets, effects);
+    const env = buildEnvironment(scene, assets, effects, { flash: (pos, opts) => salvoFlash(pos, opts) });
     // The cannon lives in its own group, hidden in an Infinite valley (which has no cannon).
     const cannonGroup = new THREE.Group();
     scene.add(cannonGroup);
     const cannon = buildCannon(cannonGroup, assets, effects, CANNON_AREA);
+    // The CROWN citadel on NIHIL HQ's crater (after the Overload ending; hidden until then).
+    const castle = buildCastle(scene, assets, effects, env.hqPoint());
 
     const oreLayer = new THREE.Group();
     const machineLayer = new THREE.Group();
@@ -1159,7 +1172,7 @@ export async function createRenderer(container, { onProgress } = {}) {
     let evilShown = null;
     function applyMood(dt, instant) {
         const freed = project.ending === 'hq' && !hqPending;
-        const m = freed ? FREED : MOODS[Math.min(visualPhase(), MOODS.length - 1)];
+        const m = ov.ash ? ASH : freed ? FREED : MOODS[Math.min(visualPhase(), MOODS.length - 1)];
         const k = instant ? 1 : 1 - Math.exp(-dt / 2200);
         hemi.color.lerp(tmpC.setHex(m.sky), k);
         hemi.groundColor.lerp(tmpC.setHex(m.ground), k);
@@ -1257,6 +1270,9 @@ export async function createRenderer(container, { onProgress } = {}) {
 
     function reset() {
         hqPending = false;
+        endOverload(); // a load: the Overload ending's world comes from the save on the next frame
+        ov.sync = true;
+        shownCastle = undefined;
         for (const id of [...items.keys()]) removeItem(id);
         quiet = true; // the next sync rebuilds a loaded factory: no juice
         shownPhase = -1;
@@ -1771,7 +1787,11 @@ export async function createRenderer(container, { onProgress } = {}) {
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2) * renderScale);
         renderer.setSize(w, h);
         rig.resize(w, h);
+        cineCam.aspect = w / Math.max(1, h);
+        cineCam.updateProjectionMatrix();
     }
+    // The Overload ending's last shot is filmed with a perspective camera, down the barrel.
+    const cineCam = new THREE.PerspectiveCamera(36, 1, 0.05, 200);
     new ResizeObserver(resize).observe(container);
     resize();
 
@@ -2088,7 +2108,8 @@ export async function createRenderer(container, { onProgress } = {}) {
         shownPhase = phase;
         // The epilogue after the NIHIL HQ ending (epilogue.js): each goal done mends the valley.
         // One step forward animates (and the view glides there unless the player is mid-drag).
-        const healed = project.epilogue?.stage ?? 0;
+        // (After the Overload ending the epilogue builds the castle instead: see below.)
+        const healed = project.ending === 'overload' ? 0 : project.epilogue?.stage ?? 0;
         if (healed !== shownHealed) {
             const step = shownHealed >= 0 && healed === shownHealed + 1;
             env.setEpilogue(healed, !step);
@@ -2101,15 +2122,36 @@ export async function createRenderer(container, { onProgress } = {}) {
         animateOre(dt);
         syncMachines();
         animateMachines(dtSim, dt);
-        const wantRuin = project.ending === 'hq' && !hqPending;
-        if (wantRuin !== hqRuinShown) {
-            hqRuinShown = wantRuin;
-            env.setHQRuined(wantRuin);
+        // The Overload ending's world: after a load, straight from the save (the whole aftermath);
+        // during the salvo, only what has been hit. Its castle follows the epilogue's stage.
+        if (ov.sync) syncOverload();
+        if (project.ending !== 'overload') {
+            const wantRuin = project.ending === 'hq' && !hqPending;
+            if (wantRuin !== hqRuinShown) {
+                hqRuinShown = wantRuin;
+                env.setHQRuined(wantRuin);
+            }
+        }
+        const castleWant = project.ending === 'overload' && !ov.running && project.epilogue ? project.epilogue.stage ?? 0 : -1;
+        if (castleWant !== shownCastle) {
+            const step = shownCastle !== undefined && shownCastle >= 0 && castleWant === shownCastle + 1;
+            setCastle(castleWant, !step);
+            if (step && !state.drag && !state.group && !state.cinematic) {
+                rig.focusOn(castle.point().x - 1.5, castle.point().z + 1);
+                rig.shake(0.3);
+            }
+            shownCastle = castleWant;
         }
         updateShots(dt);
+        updateCine(dt);
         env.update(dt);
         cannon.update(dt, performance.now());
-        effects.update(dt, rig.target, env.landPhase(), { width: W, height: H }); // ash and butterflies follow the land
+        castle.update(dt, performance.now());
+        // Ash and butterflies follow the land (the ash world has its own heavy fall).
+        effects.update(dt, cine.on ? cine.look : rig.target, ov.ash ? 6 : env.landPhase(), { width: W, height: H }, {
+            pixelScale: renderer.getPixelRatio() * Math.sqrt(Math.max(0.5, rig.camera.zoom)),
+            persp: cine.on,
+        });
         const now = performance.now();
         if (padCredits > 0 && now - lastFloat > 450) {
             lastFloat = now;
@@ -2121,12 +2163,13 @@ export async function createRenderer(container, { onProgress } = {}) {
         updatePorts(state, now);
         focusGroup.visible = !state.cinematic;
         updateFocus(state.focus ?? null);
-        renderer.render(scene, rig.camera);
+        renderer.render(scene, activeCamera());
     }
+    const activeCamera = () => (cine.on ? cineCam : rig.camera);
 
     /** Client (page) coordinates of a world point. */
     function toPage(p) {
-        const v = p.clone().project(rig.camera);
+        const v = p.clone().project(activeCamera());
         const r = renderer.domElement.getBoundingClientRect();
         return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
     }
@@ -2136,13 +2179,17 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
 
     // ---- The ending, in the world ------------------------------------------------------
-    /** Is there world geometry (not sky) under this page point? */
+    /** Is there world geometry (not sky) under this page point? (`visibleOnly`: hidden things don't count.) */
     const skyRay = new THREE.Raycaster();
-    function hitsWorld(p, targets) {
+    const shown = (o) => {
+        for (let p = o; p; p = p.parent) if (!p.visible) return false;
+        return true;
+    };
+    function hitsWorld(p, targets, visibleOnly = false) {
         const r = renderer.domElement.getBoundingClientRect();
         ndc.set(((p.x - r.left) / r.width) * 2 - 1, -((p.y - r.top) / r.height) * 2 + 1);
         skyRay.setFromCamera(ndc, rig.camera);
-        return skyRay.intersectObjects(targets, true).some((h) => h.object.isMesh);
+        return skyRay.intersectObjects(targets, true).some((h) => h.object.isMesh && (!visibleOnly || shown(h.object)));
     }
 
     /**
@@ -2155,6 +2202,7 @@ export async function createRenderer(container, { onProgress } = {}) {
      * sit at (below the letterbox). Returns the Moon's page point, or null.
      */
     function frameCannon({ radius, top, target = 'moon' }) {
+        endCine();
         const cx = CANNON_AREA.x + CANNON_AREA.w / 2;
         const cz = CANNON_AREA.y + CANNON_AREA.h / 2;
         if (target === 'hq') {
@@ -2165,22 +2213,34 @@ export async function createRenderer(container, { onProgress } = {}) {
             aimAtWorld(hp, false);
             return toPage(hp);
         }
+        const c = findSky(radius, top);
+        if (c) aimAt(c, false);
+        return c; // null: no clear sky, the HUD keeps the Moon where it is
+    }
+    /** The Moon shot's framing: the cannon's foot low and left of centre (zoom `zoom`). */
+    function skyFraming(zoom) {
+        const cx = CANNON_AREA.x + CANNON_AREA.w / 2;
+        const cz = CANNON_AREA.y + CANNON_AREA.h / 2;
+        const r = renderer.domElement.getBoundingClientRect();
+        rig.snap({ x: cx, z: cz, zoom });
+        const foot = toPage(new THREE.Vector3(cx, 0, cz));
+        rig.shiftPixels(r.left + r.width * 0.4 - foot.x, r.top + r.height * 0.74 - foot.y, r.height, { snap: true });
+    }
+    /** Cut to the Moon shot's framing, zooming out until a patch of clear sky is found; its page point, or null. */
+    function findSky(radius, top, visibleOnly = false) {
         const r = renderer.domElement.getBoundingClientRect();
         const targets = scene.children.filter((o) => o !== overlay && o.name !== 'cannon' && !o.isLight);
         const clear = (p, rad) => {
-            if (hitsWorld(p, targets)) return false;
+            if (hitsWorld(p, targets, visibleOnly)) return false;
             for (let i = 0; i < 8; i++) {
                 const a = (i / 8) * Math.PI * 2;
-                if (hitsWorld({ x: p.x + Math.cos(a) * rad, y: p.y + Math.sin(a) * rad }, targets)) return false;
+                if (hitsWorld({ x: p.x + Math.cos(a) * rad, y: p.y + Math.sin(a) * rad }, targets, visibleOnly)) return false;
             }
             return true;
         };
         let zoom = 0.95;
         for (let attempt = 0; attempt < 6; attempt++, zoom *= 0.88) {
-            rig.snap({ x: cx, z: cz, zoom });
-            // The cannon's foot low and left of centre; the sky is up to the right.
-            const foot = toPage(new THREE.Vector3(cx, 0, cz));
-            rig.shiftPixels(r.left + r.width * 0.4 - foot.x, r.top + r.height * 0.74 - foot.y, r.height, { snap: true });
+            skyFraming(zoom);
             const ideal = { x: r.left + r.width * 0.76, y: top + radius * 0.4 };
             const cands = [];
             const step = radius * 0.7;
@@ -2191,12 +2251,10 @@ export async function createRenderer(container, { onProgress } = {}) {
             }
             cands.sort((p, q) => p.d - q.d);
             for (const c of cands) {
-                if (!clear(c, radius * 1.2)) continue;
-                aimAt(c, false);
-                return { x: c.x, y: c.y };
+                if (clear(c, radius * 1.2)) return { x: c.x, y: c.y };
             }
         }
-        return null; // no clear sky: the HUD keeps the Moon where it is
+        return null;
     }
 
     // ---- The other ending: NIHIL HQ ---------------------------------------------------------
@@ -2207,11 +2265,12 @@ export async function createRenderer(container, { onProgress } = {}) {
 
     /** While the player chooses the target: a calm look at the cannon. */
     function lookAtCannon() {
+        endCine();
         rig.snap({ x: CANNON_AREA.x + CANNON_AREA.w / 2, z: CANNON_AREA.y + CANNON_AREA.h / 2, zoom: 0.8 });
     }
 
-    /** Turn the turret so the barrel points (in plan) at the world point `p`. */
-    function aimAtWorld(p, instant) {
+    /** Turn the turret so the barrel points (in plan) at the world point `p` (`tau`: how fast, ms). */
+    function aimAtWorld(p, instant, tau) {
         const pv = cannon.pivot();
         const want = Math.atan2(p.z - pv.z, p.x - pv.x);
         let best = 0;
@@ -2226,7 +2285,7 @@ export async function createRenderer(container, { onProgress } = {}) {
                 best = y;
             }
         }
-        cannon.aim(best, instant);
+        cannon.aim(best, instant, tau);
     }
 
     /** A glowing shell on a ballistic arc with a smoke trail; `onHit` when it lands. */
@@ -2267,7 +2326,7 @@ export async function createRenderer(container, { onProgress } = {}) {
                 f.ring.material.opacity = 0.85 * (1 - k);
             }
             if (k >= 1) {
-                if (f.light) scene.remove(f.light);
+                if (f.light && !f.keep) scene.remove(f.light); // (the salvo's light stays: see salvoFlash)
                 if (f.ring) scene.remove(f.ring);
                 flashes.splice(i, 1);
             }
@@ -2330,7 +2389,408 @@ export async function createRenderer(container, { onProgress } = {}) {
     }
     /** After the ending: ease back out to a wider view of the valley. */
     function releaseCinematic() {
+        endCine();
+        if (ov.running) {
+            // The Overload ending is over: whatever a skip left out of its aftermath is there now,
+            // and no shot still on its way goes off afterwards.
+            ov.running = false;
+            cues.length = 0;
+            for (const sh of shots) scene.remove(sh.obj);
+            shots.length = 0;
+            if (project.ending === 'overload') applyAftermath(true);
+            dropSalvoLight();
+        }
         rig.zoomBy(0.8);
+    }
+
+    // ---- The third ending: Overload --------------------------------------------------------
+    // The player overloads Selene and fires a salvo at everything: NIHIL HQ, the dam, NILE's
+    // compound, the Moon, the Moon+ billboard, and last the player. The HUD drives it
+    // (overloadCharge → salvo(target) × 6 → setAshen), then the epilogue builds the castle.
+    //   ov.running: the salvo is under way (first overloadCharge()/salvo() until releaseCinematic()
+    //     or a load); the world is left as it is but for what has been hit.
+    //   ov.hits: what the salvo has hit ('hq', 'dam', 'compound', 'player').
+    //   ov.ash: the ash world is shown. ov.sync: read it all from the save on the next frame.
+    const ov = { running: false, hits: new Set(), ash: false, sync: true, sky: null };
+    let shownCastle; // the castle stage the save asked for last (undefined: not looked yet)
+    const cannonCentre = () => new THREE.Vector3(CANNON_AREA.x + CANNON_AREA.w / 2, 0, CANNON_AREA.y + CANNON_AREA.h / 2);
+
+    // Timed steps of the salvo on real time (the cinematic runs while the sim may be paused).
+    let cueClock = 0;
+    const cues = [];
+    const later = (ms, run) => cues.push({ at: cueClock + ms, run });
+
+    // One point light for every explosion of the salvo, added when it starts (a single shader
+    // rebuild during the countdown rather than one per blast) and removed when it's over.
+    let salvoLight = null;
+    function ensureSalvoLight() {
+        if (salvoLight) return;
+        salvoLight = new THREE.PointLight(0xffb060, 0, 0, 2);
+        scene.add(salvoLight);
+    }
+    function dropSalvoLight() {
+        if (!salvoLight) return;
+        for (let i = flashes.length - 1; i >= 0; i--) if (flashes[i].light === salvoLight) flashes.splice(i, 1);
+        scene.remove(salvoLight);
+        salvoLight = null;
+    }
+    /** Light up an explosion (environment.js calls this through its `flash` hook). */
+    function salvoFlash(pos, { color = 0xffb060, peak = 600, ms = 900 } = {}) {
+        if (!salvoLight) return;
+        for (let i = flashes.length - 1; i >= 0; i--) if (flashes[i].light === salvoLight) flashes.splice(i, 1);
+        salvoLight.color.setHex(color);
+        salvoLight.position.copy(pos).add(new THREE.Vector3(0, 1.2, 0));
+        flashes.push({ light: salvoLight, keep: true, peak, t: 0, ms });
+    }
+    /** A shockwave ring over the ground. */
+    function shockRing(p, size = 1) {
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.8 * size, 1.0 * size, 48).rotateX(-Math.PI / 2),
+            new THREE.MeshBasicMaterial({ color: 0xffd0a0, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+        ring.position.set(p.x, 0.08, p.z);
+        scene.add(ring);
+        flashes.push({ light: null, ring, t: 0, ms: 1100 });
+    }
+
+    /** The salvo begins: a replayed ending starts from the standing world. */
+    function startSalvo() {
+        if (ov.running) return;
+        ov.sync = false;
+        restorePreSalvo();
+        ov.running = true;
+        ensureSalvoLight();
+    }
+    /** Back to the world before the salvo (only what the Overload ending changed). */
+    function restorePreSalvo() {
+        if (ov.hits.has('hq')) {
+            env.setHQRuined(false);
+            hqRuinShown = false;
+        }
+        if (ov.hits.has('dam')) env.restoreDam();
+        if (ov.hits.has('compound')) env.restoreCompound();
+        ov.hits.clear();
+        if (ov.ash) {
+            ov.ash = false;
+            env.setAshen(false, true);
+            effects.setAshfall(0, true);
+            applyMood(0, true);
+        }
+        cannon.setScorched(false, true);
+        cannon.cool();
+        castle.setStage(-1, true);
+        env.setHQCleared(false);
+        shownCastle = undefined;
+        cues.length = 0;
+    }
+    /** The whole aftermath: HQ ruined, dam burst, compound razed, the cannon charred, the ash world. */
+    function applyAftermath(instant) {
+        if (!ov.hits.has('hq')) {
+            ov.hits.add('hq');
+            hqRuinShown = true;
+            env.setHQRuined(true);
+        }
+        if (!ov.hits.has('dam')) {
+            ov.hits.add('dam');
+            env.burstDam(true);
+        }
+        if (!ov.hits.has('compound')) {
+            ov.hits.add('compound');
+            env.razeCompound(null, true);
+        }
+        ov.hits.add('player');
+        cannon.cool();
+        cannon.setScorched(true, instant);
+        if (!ov.ash) setAshen(true, instant);
+    }
+    /** After a load: the Overload ending's world straight from the save. */
+    function syncOverload() {
+        ov.sync = false;
+        if (project.ending === 'overload') applyAftermath(true);
+        else if (ov.ash || ov.hits.size) restorePreSalvo();
+    }
+    function endOverload() {
+        endCine();
+        ov.running = false;
+        cues.length = 0;
+        dropSalvoLight();
+    }
+
+    /**
+     * The Overload ending's countdown: `level` 0…2. Up to 1 it charges as usual; past 1 it goes
+     * wrong (the barrel red-hot, the rings alarm red and stuttering, sparks, smoke, shimmer) and
+     * the camera shake grows. The view glides in on the cannon and pushes in as it charges.
+     */
+    function overloadCharge(level) {
+        const first = !ov.running;
+        startSalvo();
+        endCine();
+        const l = Math.max(0, Math.min(2, Number(level) || 0));
+        cannon.overload(l);
+        const c = cannonCentre();
+        if (first) {
+            rig.focusOn(c.x, c.z + 0.4);
+            rig.zoomTo(1.0);
+        }
+        rig.zoomTo(1.0 + 0.3 * l);
+        rig.holdShake(0.1 + 0.16 * l + 0.4 * Math.max(0, l - 1));
+    }
+
+    /** Frame a shot: every point in view (above the subtitles, under the caption), the flight across the screen. */
+    function frameShot(points, from, to) {
+        const E = THREE.MathUtils.degToRad(38);
+        const r = renderer.domElement.getBoundingClientRect();
+        const aspect = r.width / Math.max(1, r.height);
+        let best = null;
+        for (const az of [Math.PI / 4, -Math.PI / 4, (3 * Math.PI) / 4, (-3 * Math.PI) / 4]) {
+            const R = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az));
+            const G = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az));
+            const scr = (p) => ({ x: p.x * R.x + p.z * R.z, y: (p.x * G.x + p.z * G.z) * Math.sin(E) + p.y * Math.cos(E) });
+            const a = scr(from);
+            const b = scr(to);
+            // A flight across the screen reads best; the usual view direction is preferred.
+            const score = Math.abs(b.y - a.y) / (Math.abs(b.x - a.x) + 1e-3) + (az === Math.PI / 4 ? 0 : 0.3);
+            if (!best || score < best.score) best = { az, R, G, scr, score };
+        }
+        const s = points.map(best.scr);
+        const x0 = Math.min(...s.map((p) => p.x));
+        const x1 = Math.max(...s.map((p) => p.x));
+        const y0 = Math.min(...s.map((p) => p.y));
+        const y1 = Math.max(...s.map((p) => p.y));
+        const zoom = Math.max(0.55, Math.min(1.6, Math.min((15 * 0.58) / (y1 - y0 + 1), (15 * aspect * 0.84) / (x1 - x0 + 1))));
+        const P = best.R.clone().multiplyScalar((x0 + x1) / 2).addScaledVector(best.G, (y0 + y1) / 2 / Math.sin(E));
+        rig.snap({ x: P.x, z: P.z, zoom, azimuth: best.az });
+    }
+    /** The shell's arc's highest point (launchShell's apex) between two points. */
+    const apexOf = (from, to) => from.clone().lerp(to, 0.5).setY((from.y + to.y) / 2 + 3 + from.distanceTo(to) * 0.18);
+
+    /** Swing onto `p` and fire a shell at it after SALVO_TURN_MS; `onHit` when it lands. */
+    function shootAt(p, kind, onHit) {
+        cannon.overload(1.75); // each shot flares the overloaded charge up again
+        aimAtWorld(p, false, 170);
+        const flight = SALVO_FLIGHT[kind];
+        later(SALVO_TURN_MS, () => {
+            cannon.fire({ force: true });
+            rig.shake(0.75);
+            rig.punch(0.08);
+            launchShell(cannon.muzzle(1).pos, p, flight, onHit);
+        });
+        return SALVO_TURN_MS + flight;
+    }
+
+    /**
+     * One shot of the Overload ending's salvo. `target`: 'hq' | 'dam' | 'compound' | 'moon' |
+     * 'billboard' | 'player'. Cuts to a framing of the cannon and the target, swings the turret
+     * onto it and fires. Returns `{ ms }`, the time until impact (for 'moon' and 'billboard' 0,
+     * plus `page`: the page point aimed at, where the HUD puts the Moon / draws the beam; 'player':
+     * the moment the flash fills the screen). 'compound' also gives `endMs`, when the last
+     * building is down. `opts.page` aims 'moon' / 'billboard' at a page point; `opts.radius` and
+     * `opts.top` are the Moon's radius and highest y when looking for clear sky (as frameCannon).
+     */
+    function salvo(target, opts = {}) {
+        startSalvo();
+        if (target !== 'player') endCine();
+        const c = cannonCentre();
+        const foot = c.clone();
+        const top = c.clone().setY(3.4);
+        if (target === 'hq') {
+            const hp = env.hqPoint();
+            rig.snap({ x: (c.x + hp.x) / 2, z: (c.z + hp.z) / 2 + 1.5, zoom: 0.64, azimuth: -Math.PI / 4 });
+            return { ms: shootAt(hp, 'hq', () => hitHQSalvo()) };
+        }
+        if (target === 'dam') {
+            const dp = env.damPoint();
+            frameShot([foot, top, dp, dp.clone().setY(1.6), apexOf(top, dp)], foot, dp);
+            return { ms: shootAt(dp, 'dam', () => {
+                ov.hits.add('dam');
+                env.burstDam();
+                shockRing(dp, 1.4);
+                rig.shake(1);
+                rig.punch(0.07);
+            }) };
+        }
+        if (target === 'compound') {
+            // The compound's buildings nearest the north-east of the cannon, beside the HQ's ruin.
+            const tp = env.compoundTarget(new THREE.Vector3(W + 2.5, 0, PAD_POS.y - 5));
+            const around = env.compoundNear(tp, 7);
+            const n = env.compoundNear(tp, 999).length;
+            frameShot([foot, top, tp, ...around, apexOf(top, tp)], foot, tp);
+            const ms = shootAt(tp, 'compound', () => {
+                ov.hits.add('compound');
+                env.razeCompound(tp);
+                shockRing(tp, 1.2);
+                rig.shake(0.9);
+                rig.punch(0.06);
+            });
+            return { ms, endMs: ms + 300 + n * 190 + 1300 };
+        }
+        if (target === 'moon' || target === 'billboard') return skyShot(target, opts);
+        if (target === 'player') return { ms: playerShot() };
+        return { ms: 0 };
+    }
+    /** The shell lands on NIHIL HQ (the salvo's version of hitHQ: the shared light, a bigger fireball). */
+    function hitHQSalvo() {
+        const p = env.hqPoint();
+        effects.puff(p, { count: 44, size: 1.15, spread: 2.8, color: 0x5e5550 });
+        effects.puff(p.clone().setY(0.6), { count: 30, size: 0.9, spread: 3.4, color: 0x9a8a78 });
+        effects.sparkle(p, { count: 70 });
+        env.fireball(p, 7.5, 1100);
+        env.fireball(p, 3.2, 450, 0xfff2c8);
+        env.fireball(p.clone().setY(p.y + 1.4), 4.5, 1500, 0xff6a20);
+        salvoFlash(p, { color: 0xffb060, peak: 900, ms: 1100 });
+        shockRing(p);
+        rig.shake(1);
+        rig.punch(0.08);
+        ov.hits.add('hq');
+        hqRuinShown = true;
+        env.ruinHQ();
+    }
+
+    /** 'moon' / 'billboard': a beam the HUD draws; aim at the page point and fire at once. */
+    function skyShot(target, opts) {
+        const r = renderer.domElement.getBoundingClientRect();
+        const vmin = Math.min(window.innerWidth, window.innerHeight);
+        const radius = opts.radius ?? vmin * 0.066;
+        const top = opts.top ?? r.top + r.height * 0.12 + vmin * 0.07;
+        let page = opts.page ?? null;
+        if (page) {
+            // Keep the framing if the cannon is in it; else the Moon shot's framing.
+            const pv = toPage(cannon.pivot());
+            if (pv.x < r.left || pv.x > r.right || pv.y < r.top || pv.y > r.bottom) skyFraming(0.95);
+        } else if (target === 'billboard' && ov.sky) {
+            page = ov.sky; // Moon+ hangs where the Moon was: same framing, same point
+        } else {
+            page = findSky(radius, top, true) ?? { x: r.left + r.width * 0.76, y: top + radius };
+        }
+        aimAt(page, true);
+        cannon.overload(1.75);
+        cannon.fire({ force: true });
+        rig.shake(1);
+        rig.punch(0.1);
+        ov.sky = { x: page.x, y: page.y };
+        return { ms: 0, page: { x: page.x, y: page.y } };
+    }
+
+    // ---- The last shot: at the player ----------------------------------------------------
+    // Filmed with a perspective camera placed where the barrel will point: the turret swings
+    // round toward the lens, the bore lights up white-hot as the camera pushes in down the
+    // barrel, and the shot fills the screen. The close-up stays until releaseCinematic(),
+    // another salvo()/frameCannon()/lookAtCannon(), a load, or the main camera being moved.
+    const cine = { on: false, t: 0, look: new THREE.Vector3(), rigAt: new THREE.Vector3(), shake: 0, fired: false };
+    scene.add(cineCam);
+    const whiteout = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xfff6e8, transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
+    whiteout.position.z = -0.12;
+    whiteout.scale.setScalar(0.5);
+    whiteout.renderOrder = 999;
+    whiteout.visible = false;
+    cineCam.add(whiteout);
+    let shakeOn = true;
+    function playerShot() {
+        const az = Math.PI / 4; // filmed from the usual view direction
+        const yawF = az + Math.PI;
+        const D = cannon.directionAt(yawF).normalize();
+        const pv = cannon.pivot();
+        const muzzleF = pv.clone().addScaledVector(D, 2.9);
+        const side = new THREE.Vector3().crossVectors(D, new THREE.Vector3(0, 1, 0)).normalize();
+        const up = new THREE.Vector3().crossVectors(side, D).normalize();
+        Object.assign(cine, {
+            on: true, t: 0, fired: false, shake: 0,
+            muzzle: muzzleF,
+            p0: muzzleF.clone().addScaledVector(D, 4.6).addScaledVector(side, 1.1).addScaledVector(up, 0.5),
+            // A touch off the axis at the end, so the tube and its rings run back from the mouth.
+            p1: muzzleF.clone().addScaledVector(D, 1.5).addScaledVector(side, 0.2).addScaledVector(up, 0.12),
+            l0: pv.clone().lerp(muzzleF, 0.35),
+        });
+        cannon.setHaze(false);
+        // Hold the main camera still, so moving it later (the game glides on) ends the close-up.
+        rig.snap({ x: rig.target.x, z: rig.target.z, zoom: rig.zoom, azimuth: rig.azimuth });
+        cine.rigAt.copy(rig.target);
+        cannon.overload(1.2);
+        cannon.aim(yawF, false, 420);
+        whiteout.visible = false;
+        updateCine(0);
+        return PLAYER_SWING_MS + PLAYER_CHARGE_MS;
+    }
+    function endCine() {
+        if (!cine.on) return;
+        cine.on = false;
+        whiteout.visible = false;
+        cannon.glowBore(0);
+        cannon.setHaze(true);
+    }
+    const cineLook = new THREE.Vector3();
+    function updateCine(dt) {
+        cueClock += dt;
+        for (let i = 0; i < cues.length; i++) {
+            if (cueClock < cues[i].at) continue;
+            const cue = cues.splice(i--, 1)[0];
+            cue.run();
+        }
+        if (!cine.on) return;
+        if (rig.target.distanceTo(cine.rigAt) > 0.05) {
+            endCine(); // the game moved the view on
+            return;
+        }
+        cine.t += dt;
+        const t = cine.t;
+        const swing = smooth(Math.min(1, t / PLAYER_SWING_MS));
+        const charge = Math.max(0, Math.min(1, (t - PLAYER_SWING_MS) / PLAYER_CHARGE_MS));
+        const pos = cine.p0.clone().lerp(cine.p1, charge * charge * (3 - 2 * charge));
+        cineLook.copy(cine.l0).lerp(cine.muzzle, Math.max(swing * 0.6, smooth(charge)));
+        cine.look.copy(cineLook).setY(0);
+        if (!cine.fired) {
+            cannon.overload(1.2 + 0.8 * charge);
+            cannon.glowBore(charge);
+            cine.shake = 0.15 + 0.25 * swing + 0.6 * charge;
+            if (charge >= 1) {
+                cine.fired = true;
+                cannon.fire({ force: true, big: true });
+                cine.shake = 1.6;
+                cine.flashT = 0;
+                whiteout.visible = true;
+            }
+        } else {
+            cine.shake = Math.max(0, cine.shake - dt / 900);
+            cine.flashT += dt;
+            const k = cine.flashT / 1400;
+            whiteout.material.opacity = k < 0.08 ? k / 0.08 : Math.max(0, 1 - (k - 0.08) / 0.92);
+            if (k >= 1) whiteout.visible = false;
+        }
+        const s = shakeOn ? cine.shake * cine.shake * 0.05 : 0;
+        const ts = performance.now() / 1000;
+        pos.x += (Math.sin(ts * 41.3) * 0.6 + Math.sin(ts * 67.1) * 0.4) * s;
+        pos.y += (Math.sin(ts * 47.9 + 1.1) * 0.6 + Math.sin(ts * 73.3) * 0.4) * s;
+        pos.z += (Math.sin(ts * 53.7 + 2.3) * 0.6 + Math.sin(ts * 59.9) * 0.4) * s;
+        cineCam.position.copy(pos);
+        cineCam.up.set(0, 1, 0);
+        cineCam.lookAt(cineLook);
+        if (shakeOn) cineCam.rotateZ(Math.sin(ts * 31.7) * cine.shake * cine.shake * 0.01);
+        cineCam.updateMatrixWorld();
+    }
+
+    /**
+     * The ash world after the Overload ending: the ASH light (dim, grey, a low cold sun), ashen
+     * land, burnt trees, heavy ashfall and embers, the ruins smouldering, the cannon charred.
+     * One call animates (the ash creeps in over a few seconds); `instant` snaps. While the
+     * salvo is under way the world stays as it is until the HUD calls this (after the Moon).
+     */
+    function setAshen(on, instant = false) {
+        on = !!on;
+        if (on === ov.ash && !instant) return;
+        ov.ash = on;
+        env.setAshen(on, instant);
+        effects.setAshfall(on ? 1 : 0, instant);
+        if (instant) applyMood(0, true);
+        if (on) rig.shake(instant ? 0 : 0.25);
+    }
+
+    /**
+     * The CROWN epilogue's castle on NIHIL HQ's crater: `stage` 0–4 (0 the cleared, scorched
+     * crater with survey stakes; 1 walls and gate; 2 the keep; 3 the towers; 4 the crown spire
+     * with banners; -1 none: the HQ ruin stands there). One step up animates; `instant` snaps.
+     */
+    function setCastle(stage, instant = false) {
+        const s = stage == null || stage < 0 ? -1 : stage;
+        env.setHQCleared(s >= 0);
+        castle.setStage(s, instant);
     }
 
     // ---- Settings (settings.js, applied by main.js) ---------------------------------------
@@ -2352,6 +2812,7 @@ export async function createRenderer(container, { onProgress } = {}) {
         }
         effects.setDensity(particles === 'off' ? 0 : particles === 'low' ? 0.35 : 1);
         rig.setShakeScale(shake ? 1 : 0);
+        shakeOn = !!shake; // (the last shot's close-up camera shakes on its own)
     }
     const PORT_COLORS = {
         normal: { in: 0x3cc8b4, out: 0xff7a2a, blocked: 0xff3b30 },
@@ -2382,6 +2843,11 @@ export async function createRenderer(container, { onProgress } = {}) {
         /** Item pictures for the codex: { [itemType]: PNG data URL }, from the belt meshes. */
         itemIcons,
         nudgeGhost, floatAt, frameCannon, muzzlePage, chargeCannon, fireCannon, releaseCinematic, lookAtCannon,
+        // The Overload ending (see the section above): the charge gone wrong, the salvo, the ash
+        // world, and the epilogue's castle.
+        overloadCharge, salvo, setAshen, setCastle,
+        /** Where to glide the camera to see the castle ({ x, z } on the ground). */
+        castlePoint: () => castle.point(),
         setGraphics, setPortPalette, setGuide,
         /** Render cost of the last frame (draw calls, triangles) — for profiling. */
         stats: () => ({ ...renderer.info.render }),

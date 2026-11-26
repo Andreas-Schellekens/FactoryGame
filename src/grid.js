@@ -27,6 +27,8 @@ import {
     INFINITE_STARTING_MONEY,
     LICENCE_COST,
     PLOT_COST,
+    OVERLOAD_SHELLS,
+    OVERLOAD_POWER,
 } from './config.js';
 import { PHASES, STARTING_BUILDINGS, unlockPhaseOf } from './campaign.js';
 import { challengeFor, countsTowardCap } from './challenge.js';
@@ -132,7 +134,8 @@ export const project = {
     phase: 0,
     delivered: {},
     complete: false,
-    ending: null,   // null | 'moon' | 'hq': the target chosen at the end
+    ending: null,   // null | 'moon' | 'hq' | 'overload': the target chosen at the end
+    overload: false, // the last delivery went in with twice the shells and a strong grid: the hidden third choice
     company: null,  // the player's company name after the 'hq' ending
     // The epilogue after the 'hq' ending (epilogue.js owns it; plain data, saved as-is), or null.
     // The sim reads only `eastRim` (the east-rim sulfur is laid) and `river` (NIHIL's dam is down).
@@ -199,9 +202,14 @@ export function isBuildingUnlocked(type) {
     return false;
 }
 
-/** The target chosen at the end: 'moon' or 'hq' (NIHIL's headquarters). */
+/** The target chosen at the end: 'moon', 'hq' (NIHIL's headquarters) or 'overload' (everything). */
 export function setEnding(kind) {
-    if (kind === 'moon' || kind === 'hq') project.ending = kind;
+    if (kind === 'moon' || kind === 'hq' || kind === 'overload') project.ending = kind;
+}
+
+/** The last phase's pad holds twice Selene's rated shells and the grid is strong enough: confirming now unlocks the third choice. */
+export function overloadPrimed() {
+    return isStory() && project.phase === PHASES.length - 1 && (project.delivered.seleneShell ?? 0) >= OVERLOAD_SHELLS && power.supply >= OVERLOAD_POWER;
 }
 /** Name the player's company (after the 'hq' ending). */
 export function setCompany(name) {
@@ -228,6 +236,7 @@ export function phaseReady() {
 /** Confirm a ready delivery: the phase completes (the next part of the cannon, the next unlocks). @returns {boolean} */
 export function confirmDelivery() {
     if (!phaseReady()) return false;
+    if (overloadPrimed()) project.overload = true; // read before the count resets
     project.phase++;
     project.delivered = {};
     if (project.phase >= PHASES.length) project.complete = true;
@@ -491,7 +500,8 @@ for (let x = 0; x < GRID_WIDTH; x++) {
 
 /** Has NIHIL dammed the river: RIVER.damPhase phases complete (until the epilogue opens it), or an Infinite aftermath? */
 export function riverDammed() {
-    return isStory() ? project.phase >= RIVER.damPhase && !project.epilogue?.river : game.world === 'aftermath';
+    // (Overload: Selene burst the dam; the main session floods the bed at the shot, applyEpilogueLand.)
+    return isStory() ? project.phase >= RIVER.damPhase && !project.epilogue?.river && project.ending !== 'overload' : game.world === 'aftermath';
 }
 
 /** Water flows in the river bed until it is dammed. */
@@ -508,7 +518,7 @@ export let oreRevision = 0;
 /** Is an ore field there yet: the riverbed sulfur once dammed, Infinite's own sulfur with its land. */
 function fieldDue(f) {
     // Infinite's east-rim sulfur; Story's epilogue digs it up too, once NIHIL's compound is cleared.
-    if (f.only === 'infinite') return (isInfinite() && game.world === 'valley' && game.plot >= (f.fromPlot ?? 0)) || (!isInfinite() && !!project.epilogue?.eastRim);
+    if (f.only === 'infinite') return (isInfinite() && game.world === 'valley' && game.plot >= (f.fromPlot ?? 0)) || (!isInfinite() && (!!project.epilogue?.eastRim || project.ending === 'overload'));
     if (f.fromPhase != null) return isInfinite() ? game.world === 'aftermath' : project.phase >= f.fromPhase;
     return true;
 }
@@ -610,7 +620,7 @@ export function serialize() {
         order: { ...order },
         research: { points: research.points, unlocked: { ...research.unlocked } },
         project: {
-            phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company,
+            phase: project.phase, delivered: { ...project.delivered }, complete: project.complete, ending: project.ending, company: project.company, overload: project.overload,
             epilogue: project.epilogue ? structuredClone(project.epilogue) : null,
         },
         game: { ...game, licences: [...game.licences] },
@@ -649,6 +659,7 @@ export function loadState(data) {
     project.delivered = { ...(data.project?.delivered ?? {}) };
     project.complete = data.project?.complete ?? false;
     project.ending = data.project?.ending ?? null;
+    project.overload = !!data.project?.overload;
     project.company = data.project?.company ?? null;
     const epi = data.project?.epilogue;
     project.epilogue = epi && typeof epi === 'object' ? structuredClone(epi) : null;

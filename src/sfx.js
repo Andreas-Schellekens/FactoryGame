@@ -47,6 +47,7 @@ export const CUE_META = {
     ending: { gap: 30000, gain: 1 },
     endingFinal: { gap: 2000, gain: 0.9 },
     endingFree: { gap: 2000, gain: 0.9 },
+    endingCold: { gap: 2000, gain: 0.9 },
     achievement: { gap: 1200, gain: 1.1 },
 };
 
@@ -236,7 +237,11 @@ export const CUES = {
      * the Moon breaking, debris, the Moon+ billboard flickering on (adAt, 6 s)
      * with its ad jingle, and the closing chord under the report (finalAt).
      */
-    ending(kit, t, { fireAt = 3.0, adAt = 6.0, finalAt = 16.5, variant = 'moon', impactAt = null } = {}) {
+    ending(kit, t, { fireAt = 3.0, adAt = 6.0, finalAt = 16.5, variant = 'moon', impactAt = null, beats = null } = {}) {
+        if (variant === 'overload') {
+            CUES.endingOver(kit, t, { fireAt, finalAt, beats });
+            return;
+        }
         const { ctx, out, wet } = kit;
         const shot = t + fireAt;
         sweep(ctx, out, t, 45, 62, fireAt + 0.2, { type: 'sine', gain: 0.16, cutoff: 300, attack: fireAt * 0.5 });
@@ -268,6 +273,66 @@ export const CUES = {
         });
         bell(ctx, wet, ad + 1.65, degreeFreq(0, 14, 0), { vel: 0.6, decay: 2.5 });
         CUES.endingFinal(kit, t + finalAt);
+    },
+    /**
+     * The Overload ending (ui.js runOverload): a six-second charge that goes wrong past halfway
+     * (a harsh climb, the breaker's alarm), then the salvo, one blast per target on `beats`
+     * (shells land ~1.2 s after the shot, the Moon and the billboard at once), the last shot at
+     * the player ending in breaking glass and silence, and a cold drone under the proclamation.
+     */
+    endingOver(kit, t, { fireAt = 9, finalAt = 30, beats = null } = {}) {
+        const { ctx, out, wet } = kit;
+        const charge = 6;
+        const c0 = t + fireAt - charge;
+        sweep(ctx, out, c0, 40, 70, charge + 0.2, { type: 'sine', gain: 0.18, cutoff: 320, attack: charge * 0.5 });
+        sweep(ctx, out, c0 + 0.3, 70, 2400, charge - 0.3, { type: 'sawtooth', gain: 0.05, cutoff: 700, cutoffEnd: 6000, attack: charge * 0.4 });
+        noise(ctx, out, c0 + 0.6, { dur: charge - 0.6, gain: 0.07, type: 'highpass', freq: 600, freqEnd: 9000, attack: charge * 0.6 });
+        for (let s = charge / 2; s < charge; s += 0.5) CUES.overload(kit, c0 + s);
+        const b = beats ?? {};
+        const blast = (at, big = 1) => {
+            kick(ctx, out, at, { gain: 0.85 * big, from: 70, to: 22, dur: 2.4 });
+            noise(ctx, out, at, { dur: 2.6, gain: 0.26 * big, type: 'lowpass', freq: 1400, freqEnd: 70, attack: 0.01 });
+            noise(ctx, wet, at, { dur: 3.2, gain: 0.16 * big, type: 'lowpass', freq: 600, freqEnd: 60 });
+            metal(ctx, wet, at + 0.05, 90 + Math.random() * 30, { vel: 0.9, decay: 2.6 });
+        };
+        const shot = (at) => {
+            kick(ctx, out, at, { gain: 0.6, from: 150, to: 40, dur: 0.45 });
+            sweep(ctx, out, at, 2400, 160, 0.5, { type: 'square', gain: 0.06, cutoff: 5000 });
+            noise(ctx, out, at, { dur: 0.45, gain: 0.12, type: 'highpass', freq: 3000 });
+        };
+        // renderer.salvo: the turret swings round first, then the shell flies; impacts land this long after the beat.
+        const LAND = { hq: 1.8, dam: 2.4, compound: 2.0 };
+        for (const k of ['hq', 'dam', 'compound']) {
+            if (b[k] == null) continue;
+            const fly = LAND[k] - 0.7;
+            shot(t + b[k] + 0.7);
+            sweep(ctx, out, t + b[k] + 0.8, 1900, 520, Math.max(0.3, fly - 0.1), { type: 'sine', gain: 0.045, cutoff: 4200 });
+            blast(t + b[k] + LAND[k], k === 'hq' ? 1 : 0.85);
+        }
+        for (const k of ['moon', 'billboard']) {
+            if (b[k] == null) continue;
+            shot(t + b[k]);
+            blast(t + b[k] + 0.15, k === 'moon' ? 1.1 : 0.7);
+        }
+        if (b.billboard != null) for (let i = 0; i < 3; i++) CUES.glitch(kit, t + b.billboard + 0.2 + i * 0.12);
+        if (b.player != null) {
+            // The turret swings round to the lens (1.5 s), the bore glows (1.5 s), then the flash.
+            const p = t + b.player + 3.0;
+            sweep(ctx, out, p - 1.6, 50, 900, 1.6, { type: 'sawtooth', gain: 0.06, cutoff: 900, cutoffEnd: 5000, attack: 1.2 });
+            shot(p);
+            // The glass: a hard crack, high shards, then nothing.
+            noise(ctx, out, p + 0.02, { dur: 0.35, gain: 0.32, type: 'highpass', freq: 2500, attack: 0.002 });
+            for (let i = 0; i < 14; i++) {
+                metal(ctx, out, p + 0.04 + Math.random() * 0.5, 2400 + Math.random() * 4200, { vel: 0.22, decay: 0.25, pan: (Math.random() - 0.5) * 1.8 });
+            }
+            kick(ctx, out, p + 0.02, { gain: 0.5, from: 90, to: 30, dur: 0.6 });
+        }
+        CUES.endingCold(kit, t + finalAt);
+    },
+    /** Under VASSAL's proclamation: a cold cluster, a minor second in the low register, no resolution. */
+    endingCold({ ctx, out, wet }, t) {
+        pad(ctx, out, t, [degreeFreq(5, 0, -2), degreeFreq(5, 1, -2), degreeFreq(5, 0, -1)], 6, { type: 'sawtooth', cutoff: 520, gain: 0.05, attack: 1.8, release: 5 });
+        bell(ctx, wet, t + 0.8, degreeFreq(5, 1, 0), { vel: 0.25, decay: 5 });
     },
     /** The other closing chord: a warm major triad, the valley is yours. */
     endingFree({ ctx, out, wet }, t) {

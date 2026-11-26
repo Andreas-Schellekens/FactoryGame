@@ -16,6 +16,7 @@ import { GRID_WIDTH, GRID_HEIGHT, TICK_RATE, LICENCE_COST, PLOTS, TECH_COST } fr
 import { PHASES } from './campaign.js';
 import { ACHIEVEMENT_TEXT, PROFILE_TEXT } from './story.js';
 import { call } from './account.js';
+import { postToLane } from './lane.js';
 
 const HOUR = 3600 * TICK_RATE; // ticks
 const sum = (o) => Object.values(o ?? {}).reduce((a, b) => a + b, 0);
@@ -58,6 +59,8 @@ export const ACHIEVEMENTS = [
     ...PHASES.map((_, i) => ({ id: `phase${i + 1}`, group: 'story', mode: 'story', when: (w) => w.phase > i || w.complete })),
     { id: 'endingMoon', group: 'story', mode: 'story', when: (w) => w.complete && w.ending === 'moon' },
     { id: 'endingHQ', group: 'story', mode: 'story', hidden: true, when: (w) => w.complete && w.ending === 'hq' },
+    { id: 'endingOverload', group: 'story', mode: 'story', hidden: true, when: (w) => w.complete && w.ending === 'overload' },
+    { id: 'crowned', group: 'story', mode: 'story', hidden: true, when: (w) => w.ending === 'overload' && (w.epilogue?.stage ?? 0) >= 4 },
     { id: 'company', group: 'story', mode: 'story', hidden: true, when: (w) => !!w.company },
     { id: 'bothEndings', group: 'story', hidden: true, when: (w) => !!(w.earned.endingMoon && w.earned.endingHQ) },
     { id: 'speedrun', group: 'story', mode: 'story', hidden: true, when: (w) => w.complete && w.tick < 2 * HOUR },
@@ -88,8 +91,8 @@ const freshRun = () => ({ income: 0, streak: 0, filled: 0, missed: false, clean:
 
 /**
  * @param {{ account: any, sound?: any, root?: HTMLElement, avatarFor?: (achievementId: string) => any, quiet?: () => boolean }} opts
- * `root`: where the toast goes (default #hud, looked up when the first one shows, since the
- * HUD clears #hud when it builds). `avatarFor` names the avatar an achievement unlocks
+ * `root`: where the toast goes (default: the HUD's message lane, lane.js, looked up when one
+ * shows, since the HUD is built after this). `avatarFor` names the avatar an achievement unlocks
  * (profile.js), for the toast. While `quiet()` is true (the ending's cinematic) achievements
  * are still earned, but their toasts wait.
  */
@@ -109,12 +112,9 @@ export function createAchievements({ account, sound, root = null, avatarFor = ()
     let samples = []; // [tick, income] over the last minute
     let lastCheck = -Infinity;
 
-    // ---- The toast --------------------------------------------------------------------------
+    // ---- The toast: in the HUD's message lane (lane.js), under the phase ribbon, one at a time ----
     const queue = [];
     let showing = false;
-    const toast = document.createElement('div');
-    toast.className = 'achv-toast';
-    toast.setAttribute('role', 'status');
     function next() {
         if (queue.length && quiet()) {
             showing = true;
@@ -127,11 +127,12 @@ export function createAchievements({ account, sound, root = null, avatarFor = ()
             return;
         }
         showing = true;
-        if (!toast.isConnected) (root ?? document.getElementById('hud') ?? document.body).appendChild(toast);
         const { name, desc } = achievementText(def, true);
         const n = Object.keys(store.earned).filter((id) => achievementById(id)).length;
         const avatar = avatarFor(def.id);
-        toast.innerHTML = '';
+        const toast = document.createElement('div'); // a new one each time: it slides in and out on its own
+        toast.className = 'achv-toast';
+        toast.setAttribute('role', 'status');
         const badge = document.createElement('span');
         badge.className = 'achv-badge';
         badge.innerHTML = BADGE;
@@ -154,14 +155,8 @@ export function createAchievements({ account, sound, root = null, avatarFor = ()
             text.appendChild(extra);
         }
         toast.append(badge, text);
-        toast.classList.remove('show');
-        void toast.offsetWidth;
-        toast.classList.add('show');
         sound?.cue('achievement');
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(next, 350);
-        }, 4600);
+        postToLane(toast, 4600, { host: root, onGone: next });
     }
 
     // ---- Account sync -----------------------------------------------------------------------

@@ -2,32 +2,24 @@
    Same design as the rest ("D · Mission Control"): square corners, 1 px hairlines, the
    3 px print offset only on mission moments (an achievement is one). */
 
-/* ---- Achievement toast (in #hud, top centre under the phase ribbon) ------------------------ */
-#hud > .achv-toast {
-  pointer-events: none;
-}
-
+/* ---- Achievement toast (in the HUD's message lane, under the phase ribbon: style.css .lane) -- */
 .achv-toast {
-  position: absolute;
-  left: 50%;
-  top: 124px;
-  z-index: 8;
   display: flex;
   align-items: center;
   gap: 14px;
-  min-width: 300px;
-  max-width: min(460px, calc(100vw - 32px));
+  min-width: min(300px, 100%);
+  max-width: min(460px, 100%);
   padding: 12px 18px 12px 12px;
   background: var(--well);
   box-shadow: inset 0 0 0 1px var(--mustard), 3px 3px 0 var(--console-edge);
   opacity: 0;
-  transform: translate(-50%, -14px);
+  transform: translateY(-14px);
   transition: opacity 0.25s, transform 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
 .achv-toast.show {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: none;
 }
 
 .achv-badge {
@@ -579,8 +571,5 @@ body.reduced-motion .achv-toast.show .achv-badge {
   }
   .pf-stats {
     grid-template-columns: 1fr;
-  }
-  .achv-toast {
-    top: 96px;
   }
 }

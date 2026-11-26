@@ -100,7 +100,8 @@ body[data-phase="2"] .sky[data-sky="2"],
 body[data-phase="3"] .sky[data-sky="3"],
 body[data-phase="4"] .sky[data-sky="4"],
 body[data-phase="5"] .sky[data-sky="5"],
-body[data-phase="6"] .sky[data-sky="6"] {
+body[data-phase="6"] .sky[data-sky="6"],
+body[data-phase="7"] .sky[data-sky="7"] {
   opacity: 1;
 }
 
@@ -206,9 +207,8 @@ body.sky-cut .sky {
   pointer-events: auto;
 }
 
-#hud > .ribbon,
+#hud > .lane,
 #hud > .tooltip,
-#hud > .toast,
 #hud > .keys,
 #hud > .phase-flash {
   pointer-events: none;
@@ -389,12 +389,51 @@ body.evil .tb-brand {
   color: var(--paper-2);
 }
 
-/* Phase ribbon */
-.ribbon {
+/* The message lane (lane.js): one column at top centre under the top bar. The phase ribbon on
+   top, then achievements and toasts stacked under it, newest at the bottom. The stack runs
+   bottom-up (column-reverse) because the newest item is first in the DOM. */
+.lane {
   position: absolute;
   top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* The ribbon stays under the panels where they meet (narrow windows), as it always has; the
+   toasts go over the HUD's panels. */
+.lane-stack {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  max-width: 100%;
+}
+
+/* One item's room: it folds away (height, set by lane.js) once the item has faded. */
+.lane-slot {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  margin-top: 8px;
+  transition: height 0.26s ease 0.14s, margin-top 0.26s ease 0.14s;
+}
+
+.lane-slot.gone {
+  margin-top: 0;
+  overflow: hidden;
+}
+
+body.reduced-motion .lane-slot {
+  transition: none;
+}
+
+/* Phase ribbon (the lane's top) */
+.ribbon {
+  flex: none;
   padding: 8px 46px 10px;
   background: var(--sunset);
   color: var(--midnight);
@@ -404,7 +443,7 @@ body.evil .tb-brand {
   align-items: center;
   gap: 1px;
   white-space: nowrap;
-  transition: padding 0.3s;
+  transition: padding 0.3s, margin 0.3s;
 }
 
 .ribbon-kicker {
@@ -429,7 +468,7 @@ body.evil .tb-brand {
 }
 
 .ribbon.celebrate {
-  top: 72px;
+  margin-top: 16px;
   padding: 14px 64px 16px;
   animation: ribbon-pop 0.55s cubic-bezier(0.2, 1.5, 0.4, 1);
 }
@@ -440,7 +479,7 @@ body.evil .tb-brand {
 
 @keyframes ribbon-pop {
   from {
-    transform: translateX(-50%) scale(0.5);
+    transform: scale(0.5);
     opacity: 0;
   }
 }
@@ -508,6 +547,85 @@ body.evil .tb-brand {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--label);
+}
+
+/* A folding header (ui.js foldHead): the section's label as a button, a summary while it is
+   shut, and a chevron (right when shut, down when open). Shut, the rest of the section hides. */
+.fold-head {
+  display: flex;
+  align-items: baseline;
+  column-gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fold-head:disabled {
+  cursor: default;
+}
+
+.fold-label {
+  flex: none;
+}
+
+.fold-sum {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 11px var(--f-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-2);
+}
+
+.fold-sum:not(:empty)::before {
+  content: '·';
+  margin-right: 0.6em;
+  color: var(--label);
+}
+
+.fold-chev {
+  flex: none;
+  align-self: center;
+  width: 0;
+  height: 0;
+  margin-left: auto;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid var(--label);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+
+.fold-shut .fold-chev {
+  transform: none;
+}
+
+.fold-head:disabled .fold-chev {
+  display: none;
+}
+
+.fold-head:not(:disabled):hover .fold-label,
+.fold-head:not(:disabled):hover .fold-sum {
+  color: var(--paper);
+}
+
+.fold-head:not(:disabled):hover .fold-chev {
+  border-left-color: var(--paper);
+}
+
+.fold-shut > :not(.fold-head) {
+  display: none;
+}
+
+body.reduced-motion .fold-chev {
+  transition: none;
 }
 
 .req-list {
@@ -1190,23 +1308,42 @@ body.reduced-motion .con-confirm {
   display: none;
 }
 
+/* A short toast, in the message lane under the ribbon (ui.js toast()). */
 .toast {
-  position: absolute;
-  left: 50%;
-  bottom: 112px;
-  transform: translateX(-50%);
+  max-width: min(560px, 100%);
   padding: 8px 14px;
   background: var(--well);
-  box-shadow: inset 0 0 0 1px var(--hair-2);
-  font: 600 12px var(--f-mono);
+  box-shadow: inset 0 0 0 1px var(--hair-2), 3px 3px 0 rgba(5, 10, 20, 0.5);
+  font: 600 12px/1.45 var(--f-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  text-align: center;
   opacity: 0;
-  transition: opacity 0.2s;
+  transform: translateY(-8px);
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
 .toast.show {
   opacity: 1;
+  transform: none;
+}
+
+/* The same message again: a small nudge instead of a copy. */
+.toast.again {
+  animation: toast-again 0.26s ease-out;
+}
+
+@keyframes toast-again {
+  40% { transform: scale(1.04); box-shadow: inset 0 0 0 1px var(--paper-2), 3px 3px 0 rgba(5, 10, 20, 0.5); }
+}
+
+body.reduced-motion .toast {
+  transform: none;
+  transition: opacity 0.2s;
+}
+
+body.reduced-motion .toast.again {
+  animation: none;
 }
 
 /* ---- Full-screen overlays: title + ending ------------------------------------ */
@@ -1605,15 +1742,6 @@ body.reduced-motion .con-confirm {
 
 @keyframes portrait-pop {
   0% { transform: scale(0.82); }
-}
-
-.toast {
-  transition: opacity 0.2s, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
-  transform: translate(-50%, 10px);
-}
-
-.toast.show {
-  transform: translate(-50%, 0);
 }
 
 /* A warm flash at the screen edges when a phase completes. */
@@ -2121,28 +2249,47 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
 }
 
 /* ---- Machine panel (click a machine) ----------------------------------------------- */
+/* The machine panel: head and actions stay put, the body between them scrolls. It reaches down
+   to just above the comms panel (bottom: 112px, its height in --comms-h from ui.js), so the
+   actions are always in reach. */
 .mpanel {
   position: absolute;
   top: 64px;
   right: 16px;
   width: 316px;
-  max-height: calc(100vh - 300px);
-  overflow-y: auto;
+  max-height: calc(100% - 64px - 112px - var(--comms-h, 110px) - 10px);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--well);
   box-shadow: inset 0 0 0 1px var(--hair), 3px 3px 0 rgba(5, 10, 20, 0.6);
 }
 
+.mp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mp-body > .mp-sec:last-child {
+  border-bottom: 0;
+}
+
+/* Picture | name | codex | close on the first row; the status line runs on under the buttons. */
 .mp-head {
-  display: flex;
+  flex: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   padding: 12px 12px 12px 14px;
   border-bottom: 1px solid var(--hair);
 }
 
 .mp-img {
+  grid-column: 1;
+  grid-row: 1 / span 2;
   width: 54px;
   height: 46px;
   object-fit: contain;
@@ -2150,14 +2297,30 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
 }
 
 .mp-titles {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  display: contents;
+}
+
+.mp-head .mp-codex {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+}
+
+.mp-head .mp-close {
+  grid-column: 4;
+  grid-row: 1;
+  align-self: start;
+}
+
+.mp-head .mp-status {
+  grid-column: 2 / -1;
+  grid-row: 2;
 }
 
 .mp-title {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
   font: 800 22px/1 var(--f-mission);
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -2180,6 +2343,14 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.mp-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mp-status::before {
@@ -2298,23 +2469,35 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
   color: var(--label);
 }
 
+/* The actions: one row under the body, never wrapping inside a label. Switch and Turn take what
+   their words need; Upgrade takes the rest. */
 .mp-actions {
+  flex: none;
   display: flex;
-  gap: 8px;
-  padding: 12px 14px;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--hair);
+}
+
+.mp-actions .mp-note {
+  flex: 1 1 auto;
+  align-self: center;
+  margin: 0;
 }
 
 .mp-btn {
-  flex: 1;
+  flex: none;
   min-height: 42px;
-  padding: 6px 10px;
+  padding: 6px 9px;
   border: 0;
   background: var(--console);
   box-shadow: inset 0 -3px 0 var(--console-edge);
   color: var(--paper);
   font: 600 11px var(--f-mono);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -2328,7 +2511,8 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
 }
 
 .mp-up {
-  flex: 1.6;
+  flex: 1 1 auto;
+  min-width: 0;
   background: var(--signal);
   color: var(--midnight);
   box-shadow: inset 0 -3px 0 var(--signal-edge);
@@ -2339,10 +2523,24 @@ body[data-phase="5"]:not(.moonplus-wait) .moonplus {
   filter: brightness(1.08);
 }
 
-.mp-up span {
-  font-weight: 500;
-  letter-spacing: 0.04em;
+/* Cost and gain: two pieces side by side, or the gain under the cost when they don't fit. */
+.mp-up-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1px 8px;
+  max-width: 100%;
+  font: 500 10px/1.25 var(--f-mono);
+  letter-spacing: 0.02em;
   text-transform: none;
+}
+
+.mp-up-meta span {
+  white-space: nowrap;
+}
+
+.mp-up-cost {
+  font-weight: 700;
 }
 
 .mp-up.broke {
@@ -2905,4 +3103,178 @@ body.reduced-motion .tb-power.pinged {
 
 .mp-or {
   color: var(--label);
+}
+
+/* ---- After the Overload ending (iteration 8): CROWN's ash theme, the ash sky, the salvo ---- */
+body.ash {
+  --midnight: #141416;
+  --panel: rgba(22, 22, 25, 0.94);
+  --well: rgba(16, 16, 18, 0.96);
+  --console: #2a2a2e;
+  --console-hover: #36363b;
+  --console-edge: #101012;
+  --hair: #3a3a3f;
+  --hair-2: #4a4a50;
+  --paper: #e4ded2;
+  --paper-2: #b5afa4;
+  --label: #8f8a83;
+  --muted: #6b6762;
+  --signal: #d9502f;
+  --signal-edge: #8a2c18;
+  --sunset: #ff5a3c;
+  --mustard: #c9b98f;
+  --teal: #a8b0b8;
+}
+
+/* No Moon, no advert: a low grey sky with the ember glow of what burned. */
+.sky[data-sky="7"] {
+  background:
+    radial-gradient(ellipse 60% 26% at 68% 12%, rgba(255, 255, 255, 0.05), transparent 70%),
+    radial-gradient(ellipse 50% 22% at 30% 30%, rgba(0, 0, 0, 0.18), transparent 70%),
+    radial-gradient(circle at 12% 100%, rgba(255, 90, 60, 0.2), transparent 42vmin),
+    radial-gradient(circle at 88% 100%, rgba(255, 90, 60, 0.12), transparent 36vmin),
+    linear-gradient(180deg, #232325 0%, #45433f 55%, #6d6862 100%);
+}
+
+/* The choice with its third, hidden button. */
+.end-choice.ec-three {
+  width: min(880px, calc(100% - 32px));
+}
+
+.end-choice.ec-three .ec-row {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.ec-overload {
+  box-shadow: inset 0 -4px 0 var(--console-edge), inset 0 0 0 1px rgba(255, 59, 48, 0.7);
+  animation: ec-hum 1.6s ease-in-out infinite;
+}
+
+.ec-overload b {
+  color: var(--alarm);
+}
+
+@keyframes ec-hum {
+  50% { box-shadow: inset 0 -4px 0 var(--console-edge), inset 0 0 0 1px var(--alarm), 0 0 18px rgba(255, 59, 48, 0.45); }
+}
+
+@media (max-width: 720px) {
+  .end-choice.ec-three .ec-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+body.overload-run .lb-clock {
+  color: var(--alarm);
+}
+
+/* The salvo's beams are red-hot; Moon+ dies under one. */
+.end-beam-over {
+  background: linear-gradient(180deg, transparent, #ff6a5a 25%, #fff 50%, #ff6a5a 75%, transparent);
+  box-shadow: 0 0 3vmin 1vmin rgba(255, 70, 50, 0.7);
+}
+
+body.moonplus-shot .moonplus {
+  animation: mp-die 0.5s steps(2) forwards !important;
+}
+
+@keyframes mp-die {
+  0% { opacity: 1; filter: brightness(3); }
+  100% { opacity: 0; }
+}
+
+.shards-billboard .shard {
+  border-radius: 0;
+  background: var(--alarm);
+}
+
+/* The last shot: the screen cracks from the middle, then black. */
+.end-crack {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  animation: crack-in 0.12s ease-out both;
+}
+
+.end-crack svg {
+  width: 100%;
+  height: 100%;
+}
+
+.end-crack .ec-lines path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.end-crack .ec-hole {
+  fill: rgba(255, 255, 255, 0.92);
+}
+
+@keyframes crack-in {
+  from { opacity: 0; transform: scale(1.04); }
+}
+
+body.end-black::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: #000;
+  animation: fade-black 0.9s ease-in both;
+}
+
+@keyframes fade-black {
+  from { opacity: 0; }
+}
+
+/* VASSAL's cold start, in the dark. */
+.end-boot {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 62;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: min(420px, calc(100% - 32px));
+  font: 600 14px/1.5 var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #e4ded2;
+  transition: opacity 0.8s;
+}
+
+.end-boot .eb-line {
+  animation: eb-in 0.3s steps(3) both;
+}
+
+.end-boot .eb-line:first-child {
+  color: #ff5a3c;
+}
+
+.end-boot.out {
+  opacity: 0;
+}
+
+@keyframes eb-in {
+  from { opacity: 0; }
+}
+
+/* VASSAL's portrait: one ember pixel, blinking. */
+.vassal-svg .trace {
+  animation: vassal-blink 2.4s steps(1) infinite;
+}
+
+@keyframes vassal-blink {
+  0%, 70% { opacity: 1; }
+  71%, 78% { opacity: 0.15; }
+}
+
+body.reduced-motion .ec-overload,
+body.reduced-motion .vassal-svg .trace {
+  animation: none;
 }

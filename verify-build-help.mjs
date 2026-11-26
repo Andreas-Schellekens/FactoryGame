@@ -177,6 +177,8 @@ check('…and goes through once the credits are there', (await typeAt(A)) === 's
 await page.keyboard.press('3');
 await clickCell(A); // a click on a machine opens its panel
 await page.waitForSelector('.mpanel:not(.hidden) .mp-ratios', { timeout: 5000 });
+check('the ratios start folded behind their header', await js(() => document.querySelector('.mp-ratios').classList.contains('fold-shut')));
+await page.click('.mpanel .mp-ratios .fold-head'); // open them (the panel remembers it)
 const ratios = await js(() => document.querySelector('.mp-ratios').innerText);
 check('the panel shows how many extractors feed the smelter', /Iron Ore[\s\S]*1 Extractor · T1/.test(ratios), ratios.replace(/\s+/g, ' '));
 check('…and how many presses it feeds', /Iron Ingot[\s\S]*Press(es)? → Iron Plate · T1/.test(ratios));

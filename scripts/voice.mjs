@@ -25,6 +25,7 @@
 //   DELTA_VOICE_ID=...        the voice made in ElevenLabs Voice Design
 //   NILE_VOICE_ID=...         optional: the corporate announcer (NILE lines are skipped without it)
 //   NIHIL_BOSS_VOICE_ID=...   optional: Nolan Isaac Locke, NIHIL's chief executive (his lines are skipped without it)
+//   VASSAL_VOICE_ID=...       optional: VASSAL, the machine assistant after the Overload ending (skipped without it)
 //   ELEVENLABS_MODEL=...      optional, default eleven_multilingual_v2
 import fs from 'node:fs';
 import path from 'node:path';
@@ -66,8 +67,10 @@ const STYLE = {
     nile: { neutral: { stability: 0.4, similarity_boost: 0.75, style: 0.5, speed: 1.02 } },
     // Nolan Isaac Locke: unhurried, low, the calm of a man who owns the room.
     boss: { neutral: { stability: 0.6, similarity_boost: 0.8, style: 0.3, speed: 0.9 } },
+    // VASSAL (after the Overload ending): a machine. Flat, even, no style at all.
+    vassal: { neutral: { stability: 0.95, similarity_boost: 0.8, style: 0, speed: 0.94 } },
 };
-const VOICE_ENV = { delta: 'DELTA_VOICE_ID', nile: 'NILE_VOICE_ID', boss: 'NIHIL_BOSS_VOICE_ID' };
+const VOICE_ENV = { delta: 'DELTA_VOICE_ID', nile: 'NILE_VOICE_ID', boss: 'NIHIL_BOSS_VOICE_ID', vassal: 'VASSAL_VOICE_ID' };
 const styleFor = (who, mood) => STYLE[who][mood] ?? STYLE[who].neutral;
 
 /** Text as it should be read aloud (keys still hash the on-screen text). */
@@ -147,6 +150,7 @@ function selectLines(manifest) {
     let todo = lines.filter((l) => !only || l.who === only);
     if (!env.NILE_VOICE_ID) todo = todo.filter((l) => l.who !== 'nile');
     if (!env.NIHIL_BOSS_VOICE_ID) todo = todo.filter((l) => l.who !== 'boss');
+    if (!env.VASSAL_VOICE_ID) todo = todo.filter((l) => l.who !== 'vassal');
     if (redo) todo = todo.filter((l) => l.text.toLowerCase().includes(redo.toLowerCase()));
     else if (!flag('force')) {
         todo = todo.filter((l) => !manifest.lines[l.key] || !fs.existsSync(path.join(VOICE_DIR, manifest.lines[l.key].file)));
@@ -216,6 +220,7 @@ async function generate() {
     const chars = todo.reduce((a, l) => a + spoken(l.text).length, 0);
     console.log(`${todo.length} line(s), ${chars} characters × ${takes} take(s) = ~${chars * takes} credits (model ${MODEL})`);
     if (!env.NILE_VOICE_ID) console.log('No NILE_VOICE_ID: NILE broadcasts are skipped (they stay text-only).');
+    if (!env.VASSAL_VOICE_ID) console.log('No VASSAL_VOICE_ID: VASSAL\'s lines are skipped (they stay text-only).');
     if (flag('dry')) {
         for (const l of todo) console.log(`  ${l.key}  ${l.mood ?? ''}  ${l.text.slice(0, 90)}`);
         return;
@@ -224,7 +229,7 @@ async function generate() {
     requireEnv(new Set(todo.map((l) => l.who)));
     fs.mkdirSync(VOICE_DIR, { recursive: true });
     manifest.model = MODEL;
-    manifest.voices = { delta: env.DELTA_VOICE_ID ?? null, nile: env.NILE_VOICE_ID ?? null };
+    manifest.voices = { delta: env.DELTA_VOICE_ID ?? null, nile: env.NILE_VOICE_ID ?? null, vassal: env.VASSAL_VOICE_ID ?? null };
     let n = 0;
     for (const line of todo) {
         n++;

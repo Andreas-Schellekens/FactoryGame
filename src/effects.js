@@ -1,8 +1,8 @@
 // src/effects.js — small, cheap visual effects: a pooled sprite particle
 // system (dust puffs, sparkles, smoke, bubbles, falling ash, rising embers), floating
-// "+credits" text, butterflies over the meadow, and additive halo sprites
-// that fake a glow without post-processing. Knows nothing about the game;
-// callers say where and when.
+// "+credits" text, butterflies over the meadow, the ash world's heavy ashfall (one
+// point cloud), and additive halo sprites that fake a glow without post-processing.
+// Knows nothing about the game; callers say where and when.
 import * as THREE from 'three';
 
 function softTexture() {
@@ -179,15 +179,112 @@ export function createEffects(scene) {
         { butterflies: 0, ash: 9, embers: 0 },
         { butterflies: 0, ash: 16, embers: 7 },
         { butterflies: 0, ash: 26, embers: 18 },
+        // 6: the ash world after the Overload ending (the heavy fall itself is the ashfall below).
+        { butterflies: 0, ash: 5, embers: 10 },
     ];
+
+    // ---- Ashfall: the dead world's steady snow of ash (one draw call) ---------------------
+    // Flakes in a box round the camera target that drift down and wrap round, so it falls
+    // wherever you look. Sized in pixels (the view is orthographic); `pixelScale` scales them.
+    const ASH_N = 1800;
+    const ASH_BOX = 17;
+    const ASH_TOP = 10;
+    const ashPos = new Float32Array(ASH_N * 3);
+    const ashSize = new Float32Array(ASH_N);
+    const ashShade = new Float32Array(ASH_N);
+    const ashSpeed = new Float32Array(ASH_N);
+    for (let i = 0; i < ASH_N; i++) {
+        ashPos[i * 3] = rand(-ASH_BOX, ASH_BOX);
+        ashPos[i * 3 + 1] = rand(0, ASH_TOP);
+        ashPos[i * 3 + 2] = rand(-ASH_BOX, ASH_BOX);
+        ashSize[i] = rand(1.6, 4.4);
+        ashShade[i] = Math.random();
+        ashSpeed[i] = rand(0.35, 0.8);
+    }
+    const ashGeo = new THREE.BufferGeometry();
+    ashGeo.setAttribute('position', new THREE.BufferAttribute(ashPos, 3));
+    ashGeo.setAttribute('aSize', new THREE.BufferAttribute(ashSize, 1));
+    ashGeo.setAttribute('aShade', new THREE.BufferAttribute(ashShade, 1));
+    const ashMat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        uniforms: { uScale: { value: 1 }, uOpacity: { value: 0 }, uPersp: { value: 0 } },
+        vertexShader: /* glsl */ `
+            attribute float aSize;
+            attribute float aShade;
+            uniform float uScale;
+            uniform float uPersp;
+            varying float vShade;
+            varying float vNear;
+            void main() {
+                vShade = aShade;
+                vec4 mv = modelViewMatrix * vec4(position, 1.0);
+                gl_Position = projectionMatrix * mv;
+                // (A perspective close-up: flakes shrink with distance, capped, and fade right at the lens.)
+                gl_PointSize = aSize * uScale * mix(1.0, clamp(4.0 / max(0.5, -mv.z), 0.5, 2.5), uPersp);
+                vNear = mix(1.0, smoothstep(1.0, 3.0, -mv.z), uPersp);
+            }`,
+        fragmentShader: /* glsl */ `
+            uniform float uOpacity;
+            varying float vShade;
+            varying float vNear;
+            void main() {
+                float d = length(gl_PointCoord - 0.5);
+                float a = (1.0 - smoothstep(0.18, 0.5, d)) * uOpacity * (0.55 + 0.45 * vShade) * vNear;
+                if (a < 0.01) discard;
+                gl_FragColor = vec4(mix(vec3(0.33, 0.32, 0.32), vec3(0.86, 0.85, 0.83), vShade), a);
+            }`,
+    });
+    const ashPoints = new THREE.Points(ashGeo, ashMat);
+    ashPoints.frustumCulled = false;
+    ashPoints.renderOrder = 5;
+    ashPoints.visible = false;
+    root.add(ashPoints);
+    let ashfall = 0;      // shown 0..1
+    let ashfallGoal = 0;
+    const ashCentre = new THREE.Vector2();
+    function updateAshfall(dt, centre, pixelScale, persp) {
+        ashfall += (ashfallGoal - ashfall) * Math.min(1, dt / 2600);
+        if (Math.abs(ashfall - ashfallGoal) < 0.002) ashfall = ashfallGoal;
+        ashPoints.visible = ashfall > 0.005 && density > 0;
+        if (!ashPoints.visible) return;
+        ashMat.uniforms.uOpacity.value = 0.9 * ashfall * Math.max(0.35, density);
+        ashMat.uniforms.uScale.value = pixelScale;
+        ashMat.uniforms.uPersp.value = persp ? 1 : 0;
+        const s = dt / 1000;
+        const t = performance.now() / 1000;
+        ashCentre.set(centre.x, centre.z);
+        for (let i = 0; i < ASH_N; i++) {
+            const k = i * 3;
+            let x = ashPos[k] + (0.18 + Math.sin(t * 0.7 + i) * 0.22) * s;
+            let y = ashPos[k + 1] - ashSpeed[i] * s;
+            let z = ashPos[k + 2] + Math.cos(t * 0.5 + i * 1.7) * 0.12 * s;
+            if (y < 0) y += ASH_TOP;
+            // Wrap round the camera target, so the fall follows the view.
+            const B2 = ASH_BOX * 2;
+            if (Math.abs(x - ashCentre.x) > ASH_BOX) x = ashCentre.x + ((((x - ashCentre.x + ASH_BOX) % B2) + B2) % B2) - ASH_BOX;
+            if (Math.abs(z - ashCentre.y) > ASH_BOX) z = ashCentre.y + ((((z - ashCentre.y + ASH_BOX) % B2) + B2) % B2) - ASH_BOX;
+            ashPos[k] = x;
+            ashPos[k + 1] = y;
+            ashPos[k + 2] = z;
+        }
+        ashGeo.attributes.position.needsUpdate = true;
+    }
+    /** The ash world's heavy, steady ashfall: on (1) or off (0); eases unless `instant`. */
+    function setAshfall(level, instant = false) {
+        ashfallGoal = Math.max(0, Math.min(1, level));
+        if (instant) ashfall = ashfallGoal;
+    }
 
     /**
      * @param {number} dt  real milliseconds since last frame
      * @param {THREE.Vector3} centre  where the camera looks (weather spawns around it)
      * @param {number} phase  campaign phases completed (0..5)
      * @param {{ width: number, height: number }} bounds  playfield size (butterfly homes)
+     * @param {{ pixelScale?: number, persp?: boolean }} [view]  the ashfall's flake scale; a perspective camera
      */
-    function update(dt, centre, phase, bounds) {
+    function update(dt, centre, phase, bounds, view = {}) {
+        updateAshfall(dt, centre, view.pixelScale ?? 1, !!view.persp);
         const s = dt / 1000;
         for (let i = live.length - 1; i >= 0; i--) {
             const p = live[i];
@@ -268,5 +365,5 @@ export function createEffects(scene) {
     const setDensity = (d) => {
         density = Math.max(0, Math.min(1, d));
     };
-    return { puff, sparkle, smoke, bubble, floatText, update, setDensity };
+    return { puff, sparkle, smoke, bubble, floatText, update, setDensity, setAshfall };
 }

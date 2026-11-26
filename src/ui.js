@@ -5,14 +5,17 @@
 //
 // Layout (all inside `root`, which ignores the pointer except on panels):
 //   top bar   — company mark, credits, power gauge, sim speed, save/load/keys
-//   ribbon    — the current phase, hanging under the top bar; celebrates completions
-//   console   — Protocol: Selene patch, phase requirements, flight plan
-//               (objectives), research, priority request
+//   lane      — top centre under the top bar (lane.js): the phase ribbon (it celebrates
+//               completions), and under it achievements and toasts, stacked
+//   console   — Protocol: Selene patch, the tutorial card, phase requirements, flight plan
+//               (objectives; one line while the card shows its step), research and priority
+//               request (both fold on their header)
 //   keys      — build tools and edit tools as hardware keys
 //   comms     — DELTA's CAPCOM terminal (message queue + typewriter + log)
 //   tooltip   — the inspector, following the hovered cell
-//   panel     — the machine panel (click a machine): recipe, rates, upgrade,
-//               on/off; the Dispatch Pad's shows the market
+//   panel     — the machine panel (click a machine): recipe, rates, ratios (folded),
+//               and one row of actions (upgrade, on/off, turn) under a scrolling body;
+//               the Dispatch Pad's shows the market
 //   production — top bar popover: items made / used / sold per minute
 // Title screen and mission report are overlays on <body>; the ending itself
 // plays in the 3D world (letterbox, the shot, the Moon breaking, Moon+).
@@ -25,12 +28,14 @@ import { PHASES, unlockPhaseOf } from './campaign.js';
 import {
     AI, BOSS, GAME_TITLE, ITEM_NAMES, BUILDING_NAMES, BUILDING_DESC, TECH_TEXT, PHASE_TEXT, ENDING, BRAND, brandFor, RECIPE_NAMES,
     CHOICE, ENDING_HQ, COMPANY, CREDITS, INFINITE_TEXT, BUILD_HELP, CODEX, CHALLENGE_TEXT, challengeName, EPILOGUE, LOCKE, TUTORIAL,
+    VASSAL, ENDING_OVER, CROWN, HUD_TEXT,
 } from './story.js';
-import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG } from './brand.js';
+import { markSVG, patchSVG, deltaSVG, broadcastSVG, memoSVG, bossSVG, companyMarkSVG, crownMarkSVG, vassalSVG } from './brand.js';
 import { DEFAULT_KEYS, keyLabel } from './settings.js';
 import { MADE_BY } from './menus.js';
 import { createCodexPanel } from './codexPanel.js';
 import { entryForCell } from './codex.js';
+import { createLane, postToLane } from './lane.js';
 
 const ICON = {
     belt: 'M6 7l5 5-5 5M13 7l5 5-5 5',
@@ -155,6 +160,61 @@ export function createUI({
     let brandPhase = 0;  // for comms headers / portraits
     let brandEnding = null;
     let brandCompany = null;
+
+    // ---- Folding headers: a section's label as a button that folds the rest of it away ----------
+    // Research, the Priority Request and the machine panel's Ratios remember their fold (in this
+    // browser); the Flight plan's is for this visit (it folds itself while the tutorial card shows
+    // its step, and a click opens it).
+    const FOLDS_KEY = 'selene.hud.folds.v1';
+    const folds = (() => {
+        try {
+            const v = JSON.parse(localStorage.getItem(FOLDS_KEY) ?? '{}');
+            return v && typeof v === 'object' ? v : {};
+        } catch {
+            return {};
+        }
+    })();
+    /**
+     * A folding header for `sec`: [LABEL · summary   ▸]. Everything else in `sec` hides while it
+     * is shut (CSS .fold-shut). `key` remembers the fold; `tip` heads the header's tooltip.
+     */
+    function foldHead(sec, label, { key = null, shut = false, tip = '', onToggle = null } = {}) {
+        const head = el('button', 'fold-head');
+        head.type = 'button';
+        const lab = el('span', 'con-label fold-label', label);
+        const sum = el('span', 'fold-sum');
+        head.append(lab, sum, el('i', 'fold-chev'));
+        let isShut = key && key in folds ? !!folds[key] : shut;
+        const apply = () => {
+            sec.classList.toggle('fold-shut', isShut);
+            head.setAttribute('aria-expanded', String(!isShut));
+            const how = isShut ? HUD_TEXT.show : HUD_TEXT.fold;
+            head.title = tip ? `${tip}\n${how}` : how;
+        };
+        head.addEventListener('click', () => {
+            if (head.disabled) return;
+            isShut = !isShut;
+            if (key) {
+                folds[key] = isShut;
+                try {
+                    localStorage.setItem(FOLDS_KEY, JSON.stringify(folds));
+                } catch { /* blocked: kept for this visit */ }
+            }
+            cue(isShut ? 'close' : 'open');
+            apply();
+            onToggle?.(isShut);
+        });
+        apply();
+        return {
+            head, label: lab, sum,
+            shut: () => isShut,
+            set(v) {
+                if (!!v === isShut) return;
+                isShut = !!v;
+                apply();
+            },
+        };
+    }
 
     // ---- Top bar ----------------------------------------------------------------
     const top = el('header', 'topbar');
@@ -372,7 +432,8 @@ export function createUI({
     const ribbonTitle = el('span', 'ribbon-title');
     const ribbonExtra = el('span', 'ribbon-extra');
     ribbon.append(ribbonKicker, ribbonTitle, ribbonExtra);
-    root.appendChild(ribbon);
+    // The message lane (lane.js): the ribbon on top, achievements and toasts stacking under it.
+    const { stack: laneStack } = createLane(root, ribbon);
     let celebrating = false;
     let celebrateTimer = null;
 
@@ -400,15 +461,20 @@ export function createUI({
     /** @type {Record<string, {count: HTMLElement, fill: HTMLElement, n: number}>} */
     let reqRows = {};
 
-    const planSec = el('div', 'con-sec');
+    // The Flight plan: in full, except while the tutorial card shows its step (it would say the
+    // same thing twice): then one line, "Flight plan · 2 of 5 done ▸", that a click opens.
+    const planSec = el('div', 'con-sec con-plan');
     const planList = el('ul', 'plan');
-    planSec.append(el('span', 'con-label', 'Flight plan'), planList);
+    let planOpen = false; // opened by a click while folded (for this visit)
+    const planFold = foldHead(planSec, HUD_TEXT.plan, { onToggle: (shut) => (planOpen = !shut) });
+    planSec.append(planFold.head, planList);
     let planSig = null;
 
-    const researchSec = el('div', 'con-sec');
+    const researchSec = el('div', 'con-sec con-research');
     const researchPoints = el('span', 'con-points');
     const techGrid = el('div', 'tech-grid');
-    researchSec.append(el('span', 'con-label', 'Research'), researchPoints, techGrid);
+    const researchFold = foldHead(researchSec, HUD_TEXT.research, { key: 'research' });
+    researchSec.append(researchFold.head, researchPoints, techGrid);
     const techButtons = {};
     for (const id of Object.keys(TECH_TEXT)) {
         const b = el('button', 'tech');
@@ -424,10 +490,11 @@ export function createUI({
     }
 
     const orderSec = el('div', 'con-sec con-order');
-    const orderTitle = el('span', 'con-label');
+    const orderFold = foldHead(orderSec, '', { key: 'order' });
+    const orderTitle = orderFold.label;
     const orderDemand = el('span', 'order-demand');
     const orderProgress = el('span', 'order-progress');
-    orderSec.append(orderTitle, orderDemand, orderProgress);
+    orderSec.append(orderFold.head, orderDemand, orderProgress);
 
     // ---- The tutorial card: the console's "Now" block (tutorial.js decides what it says) --------
     const nowSec = el('div', 'con-sec now hidden');
@@ -587,6 +654,10 @@ export function createUI({
     const logPanel = el('div', 'comms-log hidden');
     comms.append(portrait, body, logBtn, logPanel);
     root.appendChild(comms);
+    // The machine panel ends where the comms panel starts, and the comms panel grows and shrinks
+    // with its line: keep its height in a CSS variable (style.css .mpanel max-height).
+    const commsHeight = () => root.style.setProperty('--comms-h', `${comms.offsetHeight}px`);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(commsHeight).observe(comms);
 
     const queue = [];
     const log = [];
@@ -609,10 +680,11 @@ export function createUI({
             brandCompany = now.project.company ?? null;
         }
         const b = brandFor(brandPhase, brandEnding, brandCompany);
-        const evil = brandPhase >= 4 && !b.own;
+        const evil = brandPhase >= 4 && !b.own && !b.crown;
         if (line.who === 'nile') return { name: `${b.name} BROADCAST`, role: 'Office of Planetary Continuity', svg: broadcastSVG(evil) };
         if (line.who === 'memo') return { name: 'INTERCEPTED MEMO', role: `not for ${b.player} eyes`, svg: memoSVG() };
         if (line.who === 'boss') return { name: BOSS.name.toUpperCase(), role: BOSS.title, svg: bossSVG() };
+        if (line.who === 'vassal') return { name: VASSAL.name, role: `sovereign assistant · ${BRAND.crown.name}`, svg: vassalSVG() };
         return { name: AI.name, role: b.own ? `co-founder · ${b.full}` : `${b.name} dispatch AI`, svg: deltaSVG(line.mood) };
     }
 
@@ -777,7 +849,10 @@ export function createUI({
     function ratioRows(ratios) {
         const R = BUILD_HELP.ratios;
         const sec = el('div', 'mp-sec mp-ratios');
-        sec.appendChild(el('span', 'con-label', R.title));
+        // Folded by default behind "Ratios ▸" (the choice is remembered); "· to run at full speed" when open.
+        const fold = foldHead(sec, R.title, { key: 'ratios', shut: true, tip: R.note, onToggle: (shut) => (fold.sum.textContent = shut ? '' : R.sub) });
+        fold.sum.textContent = fold.shut() ? '' : R.sub;
+        sec.appendChild(fold.head);
         const row = (label, item, texts) => {
             const r = el('div', 'mp-ratio');
             const v = el('span', 'mp-v');
@@ -790,7 +865,6 @@ export function createUI({
         };
         for (const { item, options } of ratios.needs) row(R.needs, item, options.map((o) => R.supply(o.n, o.type, o.tier)));
         for (const { item, options } of ratios.feeds) row(R.feeds, item, options.map((o) => R.feed(o.n, o.type, o.tier, o.product ? itemName(o.product) : null)));
-        sec.appendChild(el('p', 'mp-note', R.note));
         return sec;
     }
     function buildPanel(sel) {
@@ -806,7 +880,10 @@ export function createUI({
         const titles = el('div', 'mp-titles');
         const name = el('span', 'mp-title', BUILDING_NAMES[sel.type] ?? sel.type);
         if (sel.tier) name.appendChild(el('span', 'mp-tier', `T${sel.tier}`));
+        // The status on one line (the whole of it in the tooltip).
         const status = el('span', 'mp-status');
+        const statusText = el('span', 'mp-status-text');
+        status.appendChild(statusText);
         titles.append(name, status);
         const close = el('button', 'mp-close', '×');
         close.type = 'button';
@@ -822,13 +899,17 @@ export function createUI({
         toCodex.innerHTML = iconSVG(ICON.book, 15);
         toCodex.addEventListener('click', () => codex.open(`building:${sel.type}`));
         head.append(titles, toCodex, close);
-        mp.appendChild(head);
+        // Head and actions stay put; the body between them scrolls when the panel runs out of room
+        // (it ends where the comms panel starts: style.css .mpanel, --comms-h).
+        const body = el('div', 'mp-body');
+        mp.append(head, body);
         mpRefs.status = status;
+        mpRefs.statusText = statusText;
 
         if (sel.type === 'sink' && sel.challenge) {
             const sec = el('div', 'mp-sec');
             sec.append(el('span', 'con-label', CHALLENGE_TEXT.kicker), el('p', 'mp-note', CHALLENGE_TEXT.padNote(sel.challenge)));
-            mp.appendChild(sec);
+            body.appendChild(sec);
             return;
         }
         if (sel.type === 'sink') {
@@ -846,7 +927,7 @@ export function createUI({
                 mpRefs.market[m.item] = { fill, price };
             }
             sec.appendChild(el('p', 'mp-note', 'Every sale lowers that item’s price; prices recover over time. Priority Requests pay their bonus in full.'));
-            mp.appendChild(sec);
+            body.appendChild(sec);
             return;
         }
 
@@ -868,7 +949,7 @@ export function createUI({
                 mpRefs.recipeBtns[r.id] = b;
                 sec.appendChild(b);
             }
-            mp.appendChild(sec);
+            body.appendChild(sec);
         }
 
         if (sel.rates) {
@@ -878,16 +959,21 @@ export function createUI({
             const holds = el('p', 'mp-note');
             sec.appendChild(holds);
             mpRefs.holds = holds;
-            mp.appendChild(sec);
+            body.appendChild(sec);
         }
-        if (sel.ratios) mp.appendChild(ratioRows(sel.ratios));
+        if (sel.ratios) body.appendChild(ratioRows(sel.ratios));
 
+        // One row: Upgrade (its cost and gain as two pieces that never break apart, the gain
+        // dropping under the cost when they don't fit side by side), Switch off/on, Turn.
         const actions = el('div', 'mp-actions');
         if (sel.upgrade) {
             const up = el('button', 'mp-btn mp-up');
             up.type = 'button';
-            const gain = sel.upgrade.gain ? ` · ${sel.upgrade.gain}` : '';
-            up.append(el('b', null, `Upgrade → T${sel.tier + 1}`), el('span', null, `CR ${sel.upgrade.cost}${gain}`));
+            const meta = el('span', 'mp-up-meta');
+            meta.appendChild(el('span', 'mp-up-cost', `CR ${sel.upgrade.cost}`));
+            if (sel.upgrade.gain) meta.appendChild(el('span', 'mp-up-gain', sel.upgrade.gain));
+            up.append(el('b', null, `Upgrade → T${sel.tier + 1}`), meta);
+            up.title = [`Upgrade → T${sel.tier + 1}`, `CR ${sel.upgrade.cost}`, sel.upgrade.gain].filter(Boolean).join(' · ');
             up.addEventListener('click', () => {
                 if (!onUpgradeSelected()) cue('deny');
             });
@@ -897,7 +983,7 @@ export function createUI({
             actions.appendChild(el('span', 'mp-note', sel.tierCap));
         }
         if (sel.canToggle) {
-            const tg = el('button', 'mp-btn mp-toggle', sel.off ? 'Switch on' : 'Switch off');
+            const tg = el('button', 'mp-btn mp-toggle', sel.off ? HUD_TEXT.switchOn : HUD_TEXT.switchOff);
             tg.type = 'button';
             tg.addEventListener('click', () => onToggleSelected());
             actions.appendChild(tg);
@@ -932,7 +1018,10 @@ export function createUI({
         if (st.code === 'input') text += ' ' + (st.missing ?? []).map(itemName).join(', ');
         if (st.code === 'slow') text += ` · ${Math.round((sel.throttle ?? 1) * 100)}%`;
         if (sel.type === 'sink') text = sel.challenge ? CHALLENGE_TEXT.padStatus(sel.challenge) : sel.infinite ? 'Buys goods at market prices' : 'Takes deliveries for the cannon and buys goods';
-        mpRefs.status.textContent = text;
+        if (mpRefs.statusText.textContent !== text) {
+            mpRefs.statusText.textContent = text;
+            mpRefs.status.title = text;
+        }
         mpRefs.status.dataset.code = sel.type === 'sink' ? 'working' : st.code;
         if (mpRefs.holds) {
             const buf = Object.entries(sel.buffer ?? {}).filter(([, n]) => n > 0);
@@ -951,16 +1040,26 @@ export function createUI({
         }
     }
 
-    const toastEl = el('div', 'toast');
-    root.appendChild(toastEl);
-    let toastTimer = null;
+    // Short toasts go to the message lane under the ribbon. They don't wait for anything: each is
+    // its own item, stacked under what's already there (at most TOAST_MAX; the oldest makes way).
+    // The same message again keeps its toast up a little longer instead of stacking a copy.
+    const TOAST_MAX = 3;
+    const toasts = []; // lane posts, oldest first
+    const toastMs = (msg) => Math.min(3200, 1400 + String(msg).length * 25);
     function toast(msg) {
-        toastEl.textContent = msg;
-        toastEl.classList.remove('show');
-        void toastEl.offsetWidth;
-        toastEl.classList.add('show');
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+        const text = String(msg ?? '');
+        if (!text) return;
+        for (let i = toasts.length - 1; i >= 0; i--) if (toasts[i].leaving()) toasts.splice(i, 1);
+        const last = toasts[toasts.length - 1];
+        if (last && last.item.textContent === text) {
+            last.hold(toastMs(text));
+            bump(last.item, 'again', 260);
+            return;
+        }
+        while (toasts.length >= TOAST_MAX) toasts.shift().leave();
+        const item = el('div', 'toast', text);
+        item.setAttribute('role', 'status');
+        toasts.push(postToLane(item, toastMs(text), { host: laneStack }));
     }
 
     /**
@@ -1046,7 +1145,7 @@ export function createUI({
      *   stage?: { lookAtCannon(): void, start(opts: { radius: number, top: number, target?: string }): {x:number,y:number}|null,
      *             charge(level: number): void, fire(opts?: { target?: string }): void, muzzle(): {x:number,y:number}, end(): void } }} opts
      */
-    function showEnding({ stats: s, onChoose, onFound, onContinue, onNewGame, stage, decided = null }) {
+    function showEnding({ stats: s, onChoose, onFound, onContinue, onNewGame, stage, decided = null, overload = false }) {
         cinematic = true;
         // Whatever DELTA was saying waits until after the ending.
         if (current && (typeTimer || holdTimer || held)) {
@@ -1093,7 +1192,7 @@ export function createUI({
         function subtitle(line) {
             subWho.textContent = line.who === 'nile'
                 ? `${BRAND.nihil.name} BROADCAST`
-                : line.who === 'boss' ? BOSS.name.toUpperCase() : AI.name;
+                : line.who === 'boss' ? BOSS.name.toUpperCase() : line.who === 'vassal' ? VASSAL.name : AI.name;
             subWho.className = `lb-who who-${line.who}`;
             subText.textContent = line.text;
             bottom.classList.remove('show');
@@ -1127,7 +1226,10 @@ export function createUI({
             panel = el('div', 'end-choice');
             panel.append(el('span', 'ec-kicker', CHOICE.kicker), el('span', 'ec-title', CHOICE.title));
             const row = el('div', 'ec-row');
-            for (const [k, key] of [['moon', '1'], ['hq', '2']]) {
+            // The third button only for a cannon loaded past its rated load (grid.js project.overload).
+            const choices = [['moon', '1'], ['hq', '2'], ...(overload ? [['overload', '3']] : [])];
+            if (overload) panel.classList.add('ec-three');
+            for (const [k, key] of choices) {
                 const b = el('button', `ec-btn ec-${k}`);
                 b.type = 'button';
                 b.append(el('span', 'ec-key', key), el('b', null, CHOICE[k].label), el('span', 'ec-note', CHOICE[k].note));
@@ -1139,7 +1241,7 @@ export function createUI({
             requestAnimationFrame(() => panel.classList.add('in'));
             // Nolan and DELTA weigh in while you decide.
             let t = 0.8;
-            for (const line of CHOICE.lines) {
+            for (const line of overload ? [...CHOICE.lines, ...CHOICE.overloadLines] : CHOICE.lines) {
                 const when = t;
                 at(when, () => {
                     subtitle(line);
@@ -1150,10 +1252,11 @@ export function createUI({
             window.addEventListener('keydown', onChoiceKey, true);
         }
         function onChoiceKey(e) {
-            if (e.key === '1' || e.key === '2') {
+            const k = { 1: 'moon', 2: 'hq', ...(overload ? { 3: 'overload' } : {}) }[e.key];
+            if (k) {
                 e.preventDefault();
                 e.stopPropagation();
-                pick(e.key === '1' ? 'moon' : 'hq');
+                pick(k);
             }
         }
         function pick(k) {
@@ -1174,6 +1277,7 @@ export function createUI({
         function run() {
             catcher.classList.remove('done');
             if (kind === 'hq') runHQ();
+            else if (kind === 'overload') runOverload();
             else runMoon();
         }
 
@@ -1314,6 +1418,260 @@ export function createUI({
             };
         }
 
+        // ---- 2c. Overload: everything ------------------------------------------------------
+        // DELTA objects and Nolan misreads it (before the countdown); a longer countdown that
+        // charges past the rated load; then the salvo, one target after another, each line
+        // after its shot; the turret turns on the player: a cracked screen and black; VASSAL
+        // boots in the dark; the ash world; the proclamation. A click skips to the report.
+        function runOverload() {
+            caption.textContent = ENDING_OVER.caption;
+            clock.textContent = ENDING_OVER.status.charge;
+            document.body.classList.add('overload-run');
+            stage?.lookAtCannon?.();
+            const O = ENDING_OVER;
+            const say = (line) => {
+                subtitle(line);
+                sound?.lineStart?.(line, { fresh: false });
+            };
+            const clipSec = (line) => {
+                const ms = sound?.clipMs?.(line);
+                return ms ? ms / 1000 + 0.35 : 3.2;
+            };
+            let ended = false;
+            let ashen = false;
+            let moonPage = null;
+            // 1. Before the countdown.
+            let t = 0.4;
+            for (const line of O.before) {
+                const when = t;
+                at(when, () => say(line));
+                t = when + clipSec(line);
+            }
+            // 2. The countdown: twice as long, the charge running to 2 (past the rated load at 1).
+            const T0 = t + 0.2;
+            const CHARGE = 6;
+            const fireAt = T0 + CHARGE;
+            at(T0, () => {
+                const t0 = performance.now();
+                countdown = setInterval(() => {
+                    const s = (performance.now() - t0) / 1000;
+                    if (s >= CHARGE) return clearInterval(countdown);
+                    const level = (s / CHARGE) * 2;
+                    clock.textContent = `${level > 1 ? `${O.status.over} · ` : ''}T−${(CHARGE - s).toFixed(1).padStart(4, '0')}`;
+                    stage?.overloadCharge?.(level);
+                }, 50);
+            });
+            at(fireAt - clipSec(O.countdown) + 0.3, () => say(O.countdown));
+            // 3. The salvo: the beats are fixed, each line follows its shot.
+            const shot = (target, opts = {}) => {
+                clock.textContent = O.status[target];
+                return stage?.salvo?.(target, opts) ?? { ms: 0 };
+            };
+            const flash = (cls = 'end-flash end-flash-warm') => front.appendChild(el('div', cls));
+            // Fitted to renderer.salvo: shells land 1.8 s (HQ), 2.4 s (dam) and 2.0 s (compound) after
+            // their beat, the Moon and the billboard at once, the player's flash 3.0 s after its beat.
+            const beats = { hq: fireAt, dam: fireAt + 3.0, compound: fireAt + 7.0, moon: fireAt + 11.0, billboard: fireAt + 13.6, player: fireAt + 16.4 };
+            at(beats.hq, () => {
+                clearInterval(countdown);
+                const { ms } = shot('hq');
+                at(ms / 1000, () => {
+                    flash();
+                    say(O.salvo.hq);
+                });
+            });
+            at(beats.dam, () => {
+                const { ms } = shot('dam');
+                at(ms / 1000, () => {
+                    flash();
+                    say(O.salvo.dam);
+                });
+            });
+            at(beats.compound, () => {
+                const { ms } = shot('compound');
+                at(ms / 1000, () => flash());
+            });
+            at(beats.moon, () => {
+                const res = shot('moon', { radius: vmin * 0.066, top: vr.top + vr.height * 0.12 + vmin * 0.07 });
+                moonPage = res.page ?? null;
+                if (moonPage) {
+                    view.style.setProperty('--moon-x', `${(((moonPage.x - vr.left) / vr.width) * 100).toFixed(2)}%`);
+                    view.style.setProperty('--moon-y', `${(((moonPage.y - vr.top) / vr.height) * 100).toFixed(2)}%`);
+                    document.body.classList.add('sky-cut');
+                    requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
+                }
+                at(0.15, () => {
+                    beamTo(moonPage);
+                    shatter(moonPage, 'moon');
+                    // The sky turns to the aftermath, and Moon+ flickers on where the Moon was.
+                    document.body.classList.add('sky-cut');
+                    skyOverride = 5;
+                    document.body.dataset.phase = '5';
+                    requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('sky-cut')));
+                });
+            });
+            at(beats.billboard, () => {
+                shot('billboard', { page: moonPage });
+                at(0.15, () => {
+                    beamTo(moonPage);
+                    document.body.classList.add('moonplus-shot');
+                    shatter(moonPage, 'billboard');
+                    // Now the world goes grey: no Moon, no advert, ash.
+                    skyOverride = 7;
+                    document.body.dataset.phase = '7';
+                    document.body.classList.add('ash');
+                    document.body.classList.remove('evil');
+                    if (!ashen) {
+                        ashen = true;
+                        stage?.ashen?.(true, false);
+                    }
+                    say(O.salvo.moon); // "The Moon is gone. So is the advert."
+                });
+            });
+            at(beats.player + 0.1, () => say(O.salvo.player)); // as the turret swings round to the lens
+            at(beats.player, () => {
+                const { ms } = shot('player');
+                at(ms / 1000, () => crack());
+            });
+            // 4. After the crack (chained from it): black, VASSAL's cold start, its lines, the report.
+            const BLACK = 1.1;
+            const BOOT = 2.2;
+            const bootSec = O.boot.length * 0.45 + 0.9;
+            const reportEst = beats.player + 3.0 + BOOT + bootSec + O.after.reduce((a, l) => a + clipSec(l), 0) + 0.6;
+            sound?.ending([], [], { fire: fireAt, report: reportEst, variant: 'overload', beats });
+            function afterBoot() {
+                let tv = 0.2;
+                for (const line of O.after) {
+                    const when = tv;
+                    at(when, () => say(line));
+                    tv = when + clipSec(line);
+                }
+                at(tv + 0.6, () => showReport());
+            }
+
+            /** A beam from the muzzle to a page point (the Moon, then Moon+). */
+            function beamTo(page) {
+                if (!page) return;
+                const m = local(stage?.muzzle() ?? page);
+                const p = local(page);
+                const beam = el('div', 'end-beam end-beam-over');
+                beam.style.left = `${m.x}px`;
+                beam.style.top = `${m.y}px`;
+                beam.style.width = `${Math.hypot(p.x - m.x, p.y - m.y)}px`;
+                beam.style.transform = `rotate(${Math.atan2(p.y - m.y, p.x - m.x)}rad)`;
+                front.appendChild(beam);
+                setTimeout(() => beam.remove(), 900);
+            }
+            /** The Moon (or the billboard) breaks into wedges under a flash. */
+            function shatter(page, what) {
+                if (!page) return;
+                const p = local(page);
+                const pieces = el('div', `moon-shards shards-${what}`);
+                pieces.style.left = `${p.x}px`;
+                pieces.style.top = `${p.y}px`;
+                const n = 9;
+                for (let i = 0; i < n; i++) {
+                    const a0 = (i / n) * Math.PI * 2 + 0.2;
+                    const a1 = ((i + 1) / n) * Math.PI * 2 + 0.2;
+                    const am = (a0 + a1) / 2;
+                    const pt = (a) => `${(50 + 50 * Math.cos(a)).toFixed(1)}% ${(50 + 50 * Math.sin(a)).toFixed(1)}%`;
+                    const shard = el('span', 'shard');
+                    shard.style.clipPath = `polygon(50% 50%, ${pt(a0)}, ${pt(am)}, ${pt(a1)})`;
+                    const dist = 18 + Math.random() * 22;
+                    shard.style.setProperty('--tx', `${(Math.cos(am) * dist).toFixed(1)}vmin`);
+                    shard.style.setProperty('--ty', `${(Math.sin(am) * dist + 6).toFixed(1)}vmin`);
+                    shard.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 300)}deg`);
+                    pieces.appendChild(shard);
+                }
+                pieces.appendChild(el('span', 'moon-ring'));
+                front.appendChild(pieces);
+                flash('end-flash');
+            }
+            /** The last shot hits the screen: it cracks from the middle, then black. */
+            function crack() {
+                clock.textContent = O.status.lost;
+                const glass = el('div', 'end-crack');
+                // Centred on the muzzle (the close-up camera looks down the barrel).
+                const m = stage?.muzzle?.();
+                const cx = m ? Math.max(10, Math.min(90, ((m.x - vr.left) / vr.width) * 100)) : 50;
+                const cy = m ? Math.max(10, Math.min(90, ((m.y - vr.top) / vr.height) * 100)) : 50;
+                glass.innerHTML = crackSVG(cx, cy);
+                document.body.appendChild(glass);
+                flash('end-flash');
+                at(BLACK, () => document.body.classList.add('end-black'));
+                at(BOOT, () => boot());
+            }
+            /** In the dark: VASSAL's cold start, line by line, then the ash world fades in behind it. */
+            function boot() {
+                const term = el('div', 'end-boot');
+                document.body.appendChild(term);
+                O.boot.forEach((text, i) => setTimeout(() => {
+                    term.appendChild(el('span', 'eb-line', text));
+                }, i * 450));
+                at(bootSec, () => {
+                    document.querySelector('.end-crack')?.remove();
+                    document.body.classList.remove('end-black');
+                    term.classList.add('out');
+                    setTimeout(() => term.remove(), 900);
+                    afterBoot();
+                });
+            }
+            skip = () => {
+                if (ended) return;
+                ended = true;
+                clearInterval(countdown);
+                if (!ashen) {
+                    ashen = true;
+                    stage?.ashen?.(true, true);
+                }
+                skyOverride = 7;
+                document.body.dataset.phase = '7';
+                document.body.classList.add('ash', 'moonplus-shot');
+                document.body.classList.remove('evil', 'end-black');
+                document.querySelector('.end-crack')?.remove();
+                document.querySelector('.end-boot')?.remove();
+                subtitle(O.after[O.after.length - 1]);
+                showReport();
+                sound?.endingSkip('overload');
+            };
+        }
+        /** A spider-web crack from the middle of the screen (SVG, white lines on clear glass). */
+        function crackSVG(cx = 50, cy = 50) {
+            const lines = [];
+            const rings = [];
+            const n = 14;
+            const pts = [];
+            for (let i = 0; i < n; i++) {
+                const a = (i / n) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+                const len = 55 + Math.random() * 40;
+                let x = cx;
+                let y = cy;
+                let d = `M${cx} ${cy}`;
+                const ray = [];
+                for (let k = 1; k <= 5; k++) {
+                    const r = (len * k) / 5;
+                    const j = (Math.random() - 0.5) * 0.18;
+                    x = cx + Math.cos(a + j) * r;
+                    y = cy + Math.sin(a + j) * r * 0.62;
+                    d += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
+                    ray.push([x, y]);
+                }
+                lines.push(`<path d="${d}" />`);
+                pts.push(ray);
+            }
+            for (let k = 0; k < 3; k++) {
+                let d = '';
+                pts.forEach((ray, i) => {
+                    const [x, y] = ray[k];
+                    d += `${i ? ' L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
+                });
+                rings.push(`<path d="${d} Z" />`);
+            }
+            return `<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <circle cx="${cx}" cy="${cy}" r="2.2" class="ec-hole" />
+                <g class="ec-lines">${lines.join('')}${rings.join('')}</g>
+            </svg>`;
+        }
+
         // ---- 3. Your company (NIHIL HQ only) ---------------------------------------------
         function showCompany() {
             if (panel || report) return;
@@ -1351,6 +1709,7 @@ export function createUI({
         // ---- 4. The report, in the console's style ----------------------------------------------
         function showReport(company = null) {
             if (report) return;
+            if (kind === 'overload') return showOverReport();
             const hq = kind === 'hq';
             const R = ENDING.report;
             const RH = ENDING_HQ.report;
@@ -1392,6 +1751,45 @@ export function createUI({
             fresh.addEventListener('click', onNewGame);
         }
 
+        /** The Overload ending's report: VASSAL's proclamation; Build the castle starts the epilogue. */
+        function showOverReport() {
+            const R = ENDING.report;
+            const RO = ENDING_OVER.report;
+            const b = BRAND.crown;
+            report = el('div', 'report report-over');
+            const head = el('div', 'rep-head');
+            const patch = el('span', 'rep-patch');
+            patch.innerHTML = crownMarkSVG(64);
+            const headText = el('div', 'rep-headtext');
+            headText.append(el('span', 'rep-kicker', RO.kicker), el('span', 'rep-title', RO.title), el('span', 'rep-sub', `${b.name} · ${b.full} · ${b.motto}`));
+            head.append(patch, headText);
+            const grid = el('div', 'rep-grid');
+            for (const [key, value] of [['seconds', fmtTime(s.seconds)], ['delivered', s.delivered], ['machines', s.machines], ['targets', 6], ['moons', 1], ['assistants', 1]]) {
+                const cell = el('div', `rep-stat stat-${key}`);
+                cell.append(el('span', 'rep-value', String(value)), el('span', 'rep-label', RO.labels[key]));
+                grid.appendChild(cell);
+            }
+            const actions = el('div', 'rep-actions');
+            const keep = el('button', 'btn-primary', RO.keep);
+            keep.type = 'button';
+            const credits = el('button', 'btn-secondary', R.credits);
+            credits.type = 'button';
+            const fresh = el('button', 'btn-secondary', R.fresh);
+            fresh.type = 'button';
+            actions.append(keep, credits, fresh);
+            report.append(head, grid, el('p', 'rep-note', RO.note), actions);
+            document.body.appendChild(report);
+            catcher.classList.add('done');
+            requestAnimationFrame(() => keep.focus());
+            keep.addEventListener('click', () => {
+                finish();
+                sound?.afterEnding('overload');
+                onContinue();
+            });
+            credits.addEventListener('click', () => showCredits('overload'));
+            fresh.addEventListener('click', onNewGame);
+        }
+
         catcher.addEventListener('click', () => {
             if (report || panel || !kind) return;
             timers.forEach(clearTimeout);
@@ -1405,12 +1803,16 @@ export function createUI({
             lb.classList.remove('in');
             setTimeout(() => lb.remove(), 700);
             for (const n of [catcher, back, front, report, panel]) n?.remove();
-            document.body.classList.remove('cinematic', 'moonplus-wait');
+            document.body.classList.remove('cinematic', 'moonplus-wait', 'overload-run', 'moonplus-shot', 'end-black');
+            document.querySelector('.end-crack')?.remove();
+            document.querySelector('.end-boot')?.remove();
             view.style.removeProperty('--moon-x'); // Moon+ goes back to the Moon's usual spot in the sky
             view.style.removeProperty('--moon-y');
             skyOverride = null;
             cinematic = false;
             phaseSig = ''; // repaint the brand, the sky and the console for how it ended
+            // After the Overload ending DELTA is gone: nothing she still had queued is said.
+            if (kind === 'overload') for (let i = queue.length - 1; i >= 0; i--) if (queue[i].who === 'delta') queue.splice(i, 1);
             stage?.end();
             if (queue.length && !typeTimer && !holdTimer) nextLine();
         }
@@ -1430,7 +1832,7 @@ export function createUI({
             names.forEach((n, i) => sec.appendChild(el('span', i === 0 ? 'cr-name' : 'cr-small', n)));
             inner.appendChild(sec);
         }
-        inner.append(el('p', 'cr-end', CREDITS.end[kind === 'hq' ? 'hq' : 'moon']), el('p', 'cr-thanks', CREDITS.thanks));
+        inner.append(el('p', 'cr-end', CREDITS.end[kind in CREDITS.end ? kind : 'moon']), el('p', 'cr-thanks', CREDITS.thanks));
         // The maker's badge closes the roll (menus.js MADE_BY).
         const badge = el('img', 'cr-made-by');
         badge.src = MADE_BY.src;
@@ -1459,7 +1861,8 @@ export function createUI({
      * of the mission and founding reports. Keep building returns to the sandbox.
      * @param {{ stats: { seconds: number, sold: number }, company?: string|null, onContinue: () => void }} opts
      */
-    function showEpilogueReport({ stats: s, company = null, onContinue }) {
+    function showEpilogueReport({ stats: s, company = null, crown = false, onContinue }) {
+        if (crown) return showCrownReport({ stats: s, onContinue });
         const R = EPILOGUE.report;
         const name = company ?? COMPANY.defaultName;
         const report = el('div', 'report report-epilogue');
@@ -1491,6 +1894,41 @@ export function createUI({
             onContinue?.();
         });
         credits.addEventListener('click', () => showCredits('hq'));
+    }
+
+    /** The castle's close (after the Overload ending): VASSAL's proclamation, then the sandbox. */
+    function showCrownReport({ stats: s, onContinue }) {
+        const R = CROWN.report;
+        const b = BRAND.crown;
+        const report = el('div', 'report report-epilogue report-over');
+        const head = el('div', 'rep-head');
+        const patch = el('span', 'rep-patch');
+        patch.innerHTML = crownMarkSVG(64);
+        const headText = el('div', 'rep-headtext');
+        headText.append(el('span', 'rep-kicker', R.kicker), el('span', 'rep-title', R.title), el('span', 'rep-sub', `${b.name} · ${b.full} · ${b.motto}`));
+        head.append(patch, headText);
+        const grid = el('div', 'rep-grid');
+        for (const [key, value] of [['seconds', fmtTime(s.seconds)], ['sold', s.sold], ['castles', 1], ['subjects', R.subjects], ['moons', 0]]) {
+            const cell = el('div', `rep-stat stat-${key}`);
+            cell.append(el('span', 'rep-value', String(value)), el('span', 'rep-label', R.labels[key]));
+            grid.appendChild(cell);
+        }
+        const actions = el('div', 'rep-actions');
+        const keep = el('button', 'btn-primary', R.keep);
+        keep.type = 'button';
+        const credits = el('button', 'btn-secondary', R.credits);
+        credits.type = 'button';
+        actions.append(keep, credits);
+        report.append(head, grid, el('p', 'rep-note', R.note), actions);
+        document.body.appendChild(report);
+        cue('open');
+        requestAnimationFrame(() => keep.focus());
+        keep.addEventListener('click', () => {
+            report.remove();
+            cue('close');
+            onContinue?.();
+        });
+        credits.addEventListener('click', () => showCredits('overload'));
     }
 
     // ---- Per-frame refresh -------------------------------------------------------------------
@@ -1548,15 +1986,17 @@ export function createUI({
         brandEnding = ending;
         brandCompany = company;
         const free = ending === 'hq';
-        const evil = phase >= 4 && !free;
+        const crown = ending === 'overload';
+        const evil = phase >= 4 && !free && !crown;
         const b = brandFor(phase, ending, company);
         document.body.classList.toggle('evil', evil);
-        // Sky layers (style.css): one per phase, the aftermath (5), or the freed valley's dawn (6).
-        document.body.dataset.phase = String(skyOverride ?? (free ? 6 : Math.min(phase, 5)));
-        brandMark.innerHTML = free ? companyMarkSVG(company, 28) : markSVG(evil, 28);
+        document.body.classList.toggle('ash', crown);
+        // Sky layers (style.css): one per phase, the aftermath (5), the freed valley's dawn (6), or ash (7).
+        document.body.dataset.phase = String(skyOverride ?? (free ? 6 : crown ? 7 : Math.min(phase, 5)));
+        brandMark.innerHTML = free ? companyMarkSVG(company, 28) : crown ? crownMarkSVG(28) : markSVG(evil, 28);
         brandWord.textContent = b.name;
         brandCell.title = `${b.name} · ${b.full} · ${b.motto}`;
-        patchBox.innerHTML = free ? companyMarkSVG(company, 48) : patchSVG(evil, 48, { text: false });
+        patchBox.innerHTML = free ? companyMarkSVG(company, 48) : crown ? crownMarkSVG(48) : patchSVG(evil, 48, { text: false });
         reqList.innerHTML = '';
         reqRows = {};
         const done = complete || phase >= PHASES.length;
@@ -1571,7 +2011,7 @@ export function createUI({
             return;
         }
         if (done) {
-            unlockLine.textContent = free ? ENDING_HQ.report.note : 'The sky is now a subscription. Keep building, if you like.';
+            unlockLine.textContent = free ? ENDING_HQ.report.note : crown ? CROWN.doneNote : 'The sky is now a subscription. Keep building, if you like.';
             return;
         }
         const def = PHASES[phase];
@@ -1605,15 +2045,16 @@ export function createUI({
     }
     function buildEpilogueDom(epi, b) {
         const goal = epi.goal;
-        const text = goal ? EPILOGUE.GOALS[goal.id] : null;
-        headSub.textContent = `${EPILOGUE.sub} · ${b.byline}`;
+        const E = epi.crown ? CROWN : EPILOGUE;
+        const text = goal ? E.GOALS[goal.id] : null;
+        headSub.textContent = `${E.sub} · ${b.byline}`;
         if (!celebrating) {
-            ribbonKicker.textContent = goal ? EPILOGUE.ribbon(epi.stage + 1, epi.total) : EPILOGUE.doneKicker;
-            ribbonTitle.textContent = goal ? text.title : EPILOGUE.doneTitle;
+            ribbonKicker.textContent = goal ? E.ribbon(epi.stage + 1, epi.total) : E.doneKicker;
+            ribbonTitle.textContent = goal ? text.title : E.doneTitle;
             ribbonExtra.textContent = '';
         }
         if (!goal) {
-            unlockLine.textContent = EPILOGUE.doneNote;
+            unlockLine.textContent = E.doneNote;
             return;
         }
         for (const [item, n] of Object.entries(goal.requires)) reqRow(item, ITEM_NAMES[item] ?? item, n);
@@ -1731,9 +2172,24 @@ export function createUI({
         planIds = new Set(list.map((o) => o.id));
         planSec.classList.toggle('hidden', list.length === 0);
     }
+    /** The tutorial card shows a step: the plan folds to its one-line summary (unless opened). */
+    let planFoldSig = '';
+    function updatePlanFold(list) {
+        const foldable = tutorialNow?.kind === 'step' && list.length > 0;
+        const done = list.filter((o) => o.done).length;
+        const sig = `${foldable}|${planOpen}|${done}/${list.length}`;
+        if (sig === planFoldSig) return;
+        planFoldSig = sig;
+        planFold.head.disabled = !foldable;
+        planFold.set(foldable && !planOpen);
+        planFold.sum.textContent = foldable ? HUD_TEXT.planSummary(done, list.length) : '';
+        if (!foldable) planFold.head.removeAttribute('title');
+    }
 
     function renderOrder(o) {
         orderSec.classList.remove('completed', 'failed');
+        // Folded: the count stays in the header.
+        orderFold.sum.textContent = orderFold.shut() && o?.status === 'active' ? HUD_TEXT.orderSummary(o.delivered, o.target) : '';
         if (!o || o.status === 'none') {
             orderTitle.textContent = 'Priority request';
             orderDemand.textContent = 'Awaiting request…';
@@ -1841,6 +2297,7 @@ export function createUI({
             row.got = got;
         }
         renderPlan(s.objectives ?? []);
+        updatePlanFold(s.objectives ?? []);
 
         for (const [tool, btn] of Object.entries(toolButtons)) {
             btn.classList.toggle('active', s.tool === tool);
@@ -1867,6 +2324,7 @@ export function createUI({
 
         researchSec.classList.toggle('hidden', !s.unlocked.lab);
         researchPoints.textContent = `${s.research.points} research points`;
+        researchFold.sum.textContent = researchFold.shut() ? HUD_TEXT.researchSummary(s.research.points) : '';
         for (const id of Object.keys(TECH_TEXT)) {
             const btn = techButtons[id];
             const unlocked = s.research.unlocked[id];
@@ -1928,7 +2386,8 @@ export function createUI({
             case 'order': return orderSec.classList.contains('hidden') ? null : orderSec;
             case 'research':
                 if (researchSec.classList.contains('hidden')) return null;
-                return arg && techButtons[arg] && !s.research.unlocked[arg] ? techButtons[arg] : researchSec;
+                // Folded: the section glows (its header is what to click).
+                return arg && techButtons[arg] && !s.research.unlocked[arg] && !researchFold.shut() ? techButtons[arg] : researchSec;
             case 'licence': return infRefs.find((r) => r.type === arg)?.btn ?? null;
             case 'land': return infRefs.find((r) => r.land)?.btn ?? null;
             default: return null;

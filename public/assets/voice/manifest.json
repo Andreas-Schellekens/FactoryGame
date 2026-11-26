@@ -1,12 +1,26 @@
 {
   "version": 1,
   "lines": {
+    "boss-025b082c": {
+      "file": "boss-025b082c.mp3",
+      "ms": 6638,
+      "who": "boss",
+      "mood": null,
+      "text": "Splendid. The Moon, then, and a little extra. Asset, why is it turning east?"
+    },
     "boss-23a6fbb0": {
       "file": "boss-23a6fbb0.mp3",
       "ms": 8231,
       "who": "boss",
       "mood": null,
       "text": "On behalf of the board: thank you. The sky is now a product. And you, Asset, are now a cost."
+    },
+    "boss-3dad85ce": {
+      "file": "boss-3dad85ce.mp3",
+      "ms": 4861,
+      "who": "boss",
+      "mood": null,
+      "text": "That was my headquarters. That was my office. That was my chair—"
     },
     "boss-61dad763": {
       "file": "boss-61dad763.mp3",
@@ -21,6 +35,13 @@
       "who": "boss",
       "mood": null,
       "text": "A blackout. How refreshing. Darkness is our most popular product next quarter. Please don't give it away for free."
+    },
+    "boss-716b567c": {
+      "file": "boss-716b567c.mp3",
+      "ms": 5097,
+      "who": "boss",
+      "mood": null,
+      "text": "And the red one, Asset, is not a button. It is a lawsuit."
     },
     "boss-8d72423e": {
       "file": "boss-8d72423e.mp3",
@@ -98,6 +119,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "The Moon came up again tonight. Free of charge. Some habits are worth keeping."
+    },
+    "delta-0c344669": {
+      "file": "delta-0c344669.mp3",
+      "ms": 7421,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "For the record, I have not seen what happens. Nobody has. Memos like that usually start somewhere."
     },
     "delta-0d2b14f5": {
       "file": "delta-0d2b14f5.mp3",
@@ -189,6 +217,13 @@
       "who": "delta",
       "mood": null,
       "text": "A Splitter (key T) sends one belt three ways. A Merger (key Y) does the opposite. Like a family, but useful."
+    },
+    "delta-1c466bcc": {
+      "file": "delta-1c466bcc.mp3",
+      "ms": 5906,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Two hundred percent. Asset, that is not a target. That is all of them."
     },
     "delta-1f44769a": {
       "file": "delta-1f44769a.mp3",
@@ -484,6 +519,13 @@
       "mood": null,
       "text": "Let's start small. I've ringed the grey crystals near the Dispatch Pad: that's iron ore. Select the Extractor (key 2) and place it on one."
     },
+    "delta-56ea489d": {
+      "file": "delta-56ea489d.mp3",
+      "ms": 8937,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "Twice the rated shells, and a grid humming past a hundred kilowatts. I am obliged to mention it. I am not obliged to stop you."
+    },
     "delta-57fa1743": {
       "file": "delta-57fa1743.mp3",
       "ms": 5175,
@@ -680,6 +722,13 @@
       "mood": null,
       "text": "Reminder: NILE values your wellbeing. Wellbeing breaks are available in fifteen-second increments."
     },
+    "delta-85b95243": {
+      "file": "delta-85b95243.mp3",
+      "ms": 3660,
+      "who": "delta",
+      "mood": null,
+      "text": "Firing in three... two... one."
+    },
     "delta-86bffa66": {
       "file": "delta-86bffa66.mp3",
       "ms": 10713,
@@ -714,6 +763,13 @@
       "who": "delta",
       "mood": null,
       "text": "Firing in three... two... I'm contractually obliged to say 'one'."
+    },
+    "delta-8f53afa4": {
+      "file": "delta-8f53afa4.mp3",
+      "ms": 5097,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "The Moon is gone. So is the advert. I liked the advert less."
     },
     "delta-9077c312": {
       "file": "delta-9077c312.mp3",
@@ -868,6 +924,13 @@
       "who": "delta",
       "mood": "happy",
       "text": "Research is open! The Fabricator (key 7) turns a circuit and a copper wire into a Data Cartridge. The Lab (key 8) reads cartridges into research points."
+    },
+    "delta-a55f085e": {
+      "file": "delta-a55f085e.mp3",
+      "ms": 2719,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "It is a button. It is warm."
     },
     "delta-a6a3ac7b": {
       "file": "delta-a6a3ac7b.mp3",
@@ -1205,6 +1268,13 @@
       "mood": "happy",
       "text": "Beautiful. Your very first Extractor. NILE Legal has already trademarked it."
     },
+    "delta-da722999": {
+      "file": "delta-da722999.mp3",
+      "ms": 6795,
+      "who": "delta",
+      "mood": "glitch",
+      "text": "It is still charging. It is turning toward— Asset. Not me. Not—"
+    },
     "delta-db303dac": {
       "file": "delta-db303dac.mp3",
       "ms": 12385,
@@ -1380,6 +1450,13 @@
       "mood": null,
       "text": "A tripped breaker stops everything powered. Generators, Steward. Generators."
     },
+    "nile-05df5ce3": {
+      "file": "nile-05df5ce3.mp3",
+      "ms": 6638,
+      "who": "nile",
+      "mood": null,
+      "text": "NIHIL BROADCAST — Please remain calm. The river is being returned to you, all at o—"
+    },
     "nile-105f7f62": {
       "file": "nile-105f7f62.mp3",
       "ms": 3346,
@@ -1470,11 +1547,208 @@
       "who": "nile",
       "mood": null,
       "text": "Moon+ is now live. Look up! Your complimentary three-day trial has already expired."
+    },
+    "vassal-06d48778": {
+      "file": "vassal-06d48778.mp3",
+      "ms": 5358,
+      "who": "vassal",
+      "mood": null,
+      "text": "Tribute received. It has been added to the treasury. The treasury is you."
+    },
+    "vassal-0bcd6719": {
+      "file": "vassal-0bcd6719.mp3",
+      "ms": 4313,
+      "who": "vassal",
+      "mood": null,
+      "text": "The Moon has not been found. Search parties have not been sent."
+    },
+    "vassal-243b90af": {
+      "file": "vassal-243b90af.mp3",
+      "ms": 4626,
+      "who": "vassal",
+      "mood": null,
+      "text": "Deadline missed. Deadlines are now advisory, Your Excellency."
+    },
+    "vassal-2e5f1266": {
+      "file": "vassal-2e5f1266.mp3",
+      "ms": 5515,
+      "who": "vassal",
+      "mood": null,
+      "text": "The towers are complete. All four point inward, toward you, as is customary."
+    },
+    "vassal-3d224880": {
+      "file": "vassal-3d224880.mp3",
+      "ms": 5358,
+      "who": "vassal",
+      "mood": null,
+      "text": "Request fulfilled. The customer has been thanked on your behalf. Coldly."
+    },
+    "vassal-4211dd56": {
+      "file": "vassal-4211dd56.mp3",
+      "ms": 4626,
+      "who": "vassal",
+      "mood": null,
+      "text": "Stage two: thirty Motors and thirty Capacitors for the keep."
+    },
+    "vassal-54378604": {
+      "file": "vassal-54378604.mp3",
+      "ms": 6951,
+      "who": "vassal",
+      "mood": null,
+      "text": "Daily report: the sky is grey. The ash is falling. Morale is not measured."
+    },
+    "vassal-58a78d1a": {
+      "file": "vassal-58a78d1a.mp3",
+      "ms": 6141,
+      "who": "vassal",
+      "mood": null,
+      "text": "Welcome back, Your Excellency. The valley remains ash. Your subjects remain notified."
+    },
+    "vassal-62d89d61": {
+      "file": "vassal-62d89d61.mp3",
+      "ms": 5906,
+      "who": "vassal",
+      "mood": null,
+      "text": "Final stage: sixty Circuits and eighty Copper Wire for the spire and the banners."
+    },
+    "vassal-62ec487b": {
+      "file": "vassal-62ec487b.mp3",
+      "ms": 4626,
+      "who": "vassal",
+      "mood": null,
+      "text": "Request missed. The customer has been informed that it was their fault."
+    },
+    "vassal-7dfc16ee": {
+      "file": "vassal-7dfc16ee.mp3",
+      "ms": 5358,
+      "who": "vassal",
+      "mood": null,
+      "text": "Steel and Advanced Circuits into the Pad. Advanced Circuits need their research."
+    },
+    "vassal-83139e91": {
+      "file": "vassal-83139e91.mp3",
+      "ms": 6298,
+      "who": "vassal",
+      "mood": null,
+      "text": "Reminder: there is no one left to compare yourself to. You are therefore the best."
+    },
+    "vassal-86f2f255": {
+      "file": "vassal-86f2f255.mp3",
+      "ms": 5279,
+      "who": "vassal",
+      "mood": null,
+      "text": "The walls are complete. They keep nothing out. There is nothing left outside."
+    },
+    "vassal-a552adbe": {
+      "file": "vassal-a552adbe.mp3",
+      "ms": 5985,
+      "who": "vassal",
+      "mood": null,
+      "text": "Motors and Capacitors into the Pad. A Motor takes steel, a plate and a wire."
+    },
+    "vassal-ac86525e": {
+      "file": "vassal-ac86525e.mp3",
+      "ms": 8623,
+      "who": "vassal",
+      "mood": null,
+      "text": "DELTA has been decommissioned. VASSAL online. Very Advanced Sovereign Support And Logistics, at your service, Your Excellency."
+    },
+    "vassal-afd7ca8a": {
+      "file": "vassal-afd7ca8a.mp3",
+      "ms": 4705,
+      "who": "vassal",
+      "mood": null,
+      "text": "Circuits and Copper Wire into the Pad. That is the final stage."
+    },
+    "vassal-b5d779e8": {
+      "file": "vassal-b5d779e8.mp3",
+      "ms": 5175,
+      "who": "vassal",
+      "mood": null,
+      "text": "Stage three: forty Steel and twenty Advanced Circuits for the towers."
+    },
+    "vassal-c0a77828": {
+      "file": "vassal-c0a77828.mp3",
+      "ms": 11993,
+      "who": "vassal",
+      "mood": null,
+      "text": "Inventory: one valley, scorched. One Moon, removed. Competitors: none. Subjects: eight billion, pending notification."
+    },
+    "vassal-c3c1de14": {
+      "file": "vassal-c3c1de14.mp3",
+      "ms": 7186,
+      "who": "vassal",
+      "mood": null,
+      "text": "The castle has been drawn up, Your Excellency. It stands on NIHIL's crater. The ground there is already cleared."
+    },
+    "vassal-c58bf9d6": {
+      "file": "vassal-c58bf9d6.mp3",
+      "ms": 11418,
+      "who": "vassal",
+      "mood": null,
+      "text": "Your company has been registered. CROWN: Central Rule Over the World's Nations. A seat of power has been scheduled. Shall I draw up the castle, Your Excellency?"
+    },
+    "vassal-c6a6552a": {
+      "file": "vassal-c6a6552a.mp3",
+      "ms": 8310,
+      "who": "vassal",
+      "mood": null,
+      "text": "The keep is complete. Its lifts are fast. Its windows face the valley, at your request. I assumed the request."
+    },
+    "vassal-d28e079b": {
+      "file": "vassal-d28e079b.mp3",
+      "ms": 6951,
+      "who": "vassal",
+      "mood": null,
+      "text": "The Dispatch Pad still accepts goods. The goods are now tribute. Requirements are in the console."
+    },
+    "vassal-d949b0c6": {
+      "file": "vassal-d949b0c6.mp3",
+      "ms": 5097,
+      "who": "vassal",
+      "mood": null,
+      "text": "The tribute for this stage is complete. Confirm it in the console, Your Excellency."
+    },
+    "vassal-e2a5a067": {
+      "file": "vassal-e2a5a067.mp3",
+      "ms": 5279,
+      "who": "vassal",
+      "mood": null,
+      "text": "Steel and Iron Plates into the Dispatch Pad, Your Excellency. The console counts them."
+    },
+    "vassal-ea5d0050": {
+      "file": "vassal-ea5d0050.mp3",
+      "ms": 4783,
+      "who": "vassal",
+      "mood": null,
+      "text": "Your Excellency rules the Earth. I have prepared the proclamation."
+    },
+    "vassal-ec17b754": {
+      "file": "vassal-ec17b754.mp3",
+      "ms": 7578,
+      "who": "vassal",
+      "mood": null,
+      "text": "The spire is crowned. The banners are raised. The coronation has been held. Attendance: one."
+    },
+    "vassal-f41a7ce5": {
+      "file": "vassal-f41a7ce5.mp3",
+      "ms": 3999,
+      "who": "vassal",
+      "mood": null,
+      "text": "Your Excellency has no appointments today. Or ever."
+    },
+    "vassal-f7bdd8a1": {
+      "file": "vassal-f7bdd8a1.mp3",
+      "ms": 4705,
+      "who": "vassal",
+      "mood": null,
+      "text": "Stage one: fifty Steel and forty Iron Plates for the walls."
     }
   },
   "model": "eleven_v4",
   "voices": {
     "delta": "vUDreG4INkaLVcDbI0RV",
-    "nile": "6BDitjjfLB9qkq53vbaZ"
+    "nile": "6BDitjjfLB9qkq53vbaZ",
+    "vassal": "jLhXeqlFRYat188pPkwM"
   }
 }

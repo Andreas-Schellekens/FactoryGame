@@ -120,6 +120,19 @@ export function createCameraRig(bounds) {
         shake(amount) {
             trauma = Math.min(1, trauma + amount * shakeScale);
         },
+        /** Keep the shake at least this strong (0..1) while it's called (a sustained rumble). */
+        holdShake(level) {
+            trauma = Math.max(trauma, Math.min(1, level) * shakeScale);
+        },
+        /** Ease the zoom toward `z` (cinematic push-ins). */
+        zoomTo(z) {
+            goal.zoom = z;
+            clampGoal();
+        },
+        /** The current view direction (radians). */
+        get azimuth() {
+            return azimuth;
+        },
         /** A quick zoom-in kick that springs back (e.g. 0.05 = 5%). */
         punch(amount) {
             kick += amount * shakeScale;

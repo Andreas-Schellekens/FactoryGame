@@ -185,13 +185,32 @@ export function createAudio() {
 
     /**
      * DELTA: a touch of presence. NILE broadcasts: a narrow PA-system band with a little room.
-     * Nolan: a warm low end and the room of a large, quiet boardroom.
+     * Nolan: a warm low end and the room of a large, quiet boardroom. VASSAL (after the Overload
+     * ending): a faint digital edge, a little presence and a very short, quiet metallic echo
+     * mixed in underneath (the voice itself is already a machine's; more made it tiring).
      */
     function voiceChain(line) {
         const hp = ctx.createBiquadFilter();
         hp.type = 'highpass';
-        hp.frequency.value = line.who === 'nile' ? 280 : line.who === 'boss' ? 70 : 90;
+        hp.frequency.value = line.who === 'nile' ? 280 : line.who === 'boss' ? 70 : line.who === 'vassal' ? 120 : 90;
         const eq = ctx.createBiquadFilter();
+        if (line.who === 'vassal') {
+            eq.type = 'peaking';
+            eq.frequency.value = 2200;
+            eq.gain.value = 2.5;
+            eq.Q.value = 1;
+            const comb = ctx.createDelay(0.05);
+            comb.delayTime.value = 0.005;
+            const fb = ctx.createGain();
+            fb.gain.value = 0.18;
+            comb.connect(fb).connect(comb);
+            const wet = ctx.createGain();
+            wet.gain.value = 0.22;
+            hp.connect(eq).connect(n.voice);
+            eq.connect(comb);
+            comb.connect(wet).connect(n.voice);
+            return hp;
+        }
         if (line.who === 'boss') {
             eq.type = 'lowshelf';
             eq.frequency.value = 220;
@@ -222,7 +241,10 @@ export function createAudio() {
         v.timers.forEach(clearTimeout);
         v.el.pause();
         v.el.removeAttribute('src');
-        setTimeout(() => v.src.disconnect(), 50);
+        setTimeout(() => {
+            v.src.disconnect();
+            v.chain?.dispose?.();
+        }, 50);
         duck(false);
     }
 
@@ -235,8 +257,9 @@ export function createAudio() {
         const el = new Audio(VOICE_BASE + clip.file);
         el.preload = 'auto';
         const src = ctx.createMediaElementSource(el);
-        src.connect(voiceChain(line));
-        const v = { el, src, timers: [] };
+        const chain = voiceChain(line);
+        src.connect(chain);
+        const v = { el, src, chain, timers: [] };
         voice = v;
         if (line.mood === 'glitch') {
             // DELTA's voice catches on itself: brief pitch wobbles.
@@ -387,18 +410,22 @@ export function createAudio() {
             bus.connect(n.sfx);
             wetBus.connect(n.sfxWet);
             n.ending = [bus, wetBus];
-            cue('ending', { bus, wetBus, fireAt: times.fire, adAt: times.ad, finalAt: times.report, variant: times.variant, impactAt: times.hit });
+            cue('ending', { bus, wetBus, fireAt: times.fire, adAt: times.ad, finalAt: times.report, variant: times.variant, impactAt: times.hit, beats: times.beats });
             speakSequence(lines, delaysSec);
         },
         endingSkip(variant = 'moon') {
             if (!n?.ending) return;
             for (const b of n.ending) b.gain.setTargetAtTime(0, ctx.currentTime, 0.15);
             n.ending = null;
-            cue(variant === 'hq' ? 'endingFree' : 'endingFinal');
+            cue(variant === 'hq' ? 'endingFree' : variant === 'overload' ? 'endingCold' : 'endingFinal');
         },
-        /** After the report: the aftermath's music, or (NIHIL HQ gone) the bright early mood, birds and all. */
-        afterEnding(free = false) {
+        /**
+         * After the report: the aftermath's music, or (NIHIL HQ gone: `kind` true or 'hq') the bright
+         * early mood, birds and all. After the Overload ending ('overload') the aftermath's too.
+         */
+        afterEnding(kind = false) {
             if (!ctx) return;
+            const free = kind === true || kind === 'hq';
             awaitingEnding = false;
             music.resume(free ? 1 : 5);
             amb.setMood(free ? 1 : 5);

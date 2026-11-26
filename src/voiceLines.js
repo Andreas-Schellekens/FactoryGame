@@ -6,11 +6,11 @@
 // A key hashes speaker, mood and text, so editing a line (or its mood) makes
 // it a new key: the old clip simply stops matching and the generator records
 // the new one. Lines are enumerated exactly as director.js builds them.
-import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack, INFINITE, LOCKE, EPILOGUE, challengeScript } from './story.js';
+import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, ENDING, ENDING_HQ, CHOICE, welcomeBack, INFINITE, LOCKE, EPILOGUE, challengeScript, ENDING_OVER, CROWN } from './story.js';
 import { challengeFor } from './challenge.js';
 
 /** Speakers with a voice. Memos are read, not spoken. */
-export const VOICED = new Set(['delta', 'nile', 'boss']);
+export const VOICED = new Set(['delta', 'nile', 'boss', 'vassal']);
 
 function fnv1a(str) {
     let h = 0x811c9dc5;
@@ -41,6 +41,7 @@ export function collectVoiceLines() {
     add(welcomeBack(0));
     add(welcomeBack(4));
     add(welcomeBack(5, 'hq'));
+    add(welcomeBack(5, 'overload'));
     // The campaign's beats, Nolan's pre-reveal ones (story.js LOCKE) slotted in where they play.
     for (const beat of STORY_BEATS) {
         let prev = null;
@@ -54,7 +55,11 @@ export function collectVoiceLines() {
     for (const t of AMBIENT.late) add(typeof t === 'string' ? delta(t, 'sinister') : t);
     for (const text of [...REACTIONS.orderCompleted, ...REACTIONS.orderFailed]) add(delta(text));
     for (const text of AMBIENT.free) add(delta(text, 'happy'));
-    for (const lines of [CHOICE.lines, ENDING.lines, ENDING_HQ.lines]) {
+    // The Overload ending (iteration 8): the choice's extra lines, before the countdown, the
+    // countdown, one line per shot, and VASSAL after the black.
+    const O = ENDING_OVER;
+    const overLines = [...O.before, O.countdown, O.salvo.hq, O.salvo.dam, O.salvo.moon, O.salvo.player, ...O.after];
+    for (const lines of [CHOICE.lines, CHOICE.overloadLines, ENDING.lines, ENDING_HQ.lines, overLines]) {
         let prev = null;
         for (const line of lines) {
             add(line, prev && prev.who === line.who ? prev.text : null);
@@ -83,6 +88,16 @@ export function collectVoiceLines() {
     for (const o of EPILOGUE.OBJECTIVES) if (o.hint) add(delta(o.hint));
     for (const text of EPILOGUE.AMBIENT) add(delta(text, 'happy'));
     for (const text of [...EPILOGUE.REACTIONS.orderCompleted, ...EPILOGUE.REACTIONS.orderFailed]) add(delta(text));
+    // The castle after the Overload ending: VASSAL's beats, hints, chatter and reactions.
+    for (const beat of CROWN.BEATS) {
+        let before = null;
+        for (const line of beat.lines) {
+            add(line, before && before.who === line.who ? before.text : null);
+            before = line;
+        }
+    }
+    for (const o of CROWN.OBJECTIVES) if (o.hint) add({ who: 'vassal', text: o.hint });
+    for (const line of [...CROWN.AMBIENT, ...CROWN.REACTIONS.orderCompleted, ...CROWN.REACTIONS.orderFailed]) add(line);
     // The weekly challenge's script (iteration 7): only the lines that read the same every week
     // can have a clip (names, numbers and targets change), so keep what three weeks have in common.
     const weekLines = (key) => {

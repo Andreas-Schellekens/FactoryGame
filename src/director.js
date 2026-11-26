@@ -3,7 +3,7 @@
 // objectives, nudges for a stuck player, order reactions, ambient chatter and
 // the ending trigger. No DOM, no Pixi — it talks to the UI through callbacks.
 // All text comes from story.js.
-import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack, LOCKE, EPILOGUE } from './story.js';
+import { STORY_BEATS, OBJECTIVES, AMBIENT, REACTIONS, welcomeBack, LOCKE, EPILOGUE, CROWN } from './story.js';
 
 // Timings are in simulation ticks (4/s at 1× speed), so pausing the game
 // also pauses DELTA's nagging.
@@ -37,6 +37,21 @@ export const EPILOGUE_SCRIPT = {
     REACTIONS: EPILOGUE.REACTIONS,
     welcomeBack,
     finale: 'epi:valley',
+};
+
+/**
+ * After the Overload ending: the castle on NIHIL's crater (story.js CROWN, epilogue.js CROWN_GOALS),
+ * spoken by VASSAL: its beats, chatter and reactions are line objects, and its hints speak as
+ * `speaker`. Then the proclamation (`finale`) and the sandbox.
+ */
+export const CROWN_SCRIPT = {
+    BEATS: CROWN.BEATS,
+    OBJECTIVES: (w) => (w.epilogue && !w.epilogue.closed ? CROWN.OBJECTIVES : []),
+    AMBIENT: { early: [], late: [], free: CROWN.AMBIENT },
+    REACTIONS: CROWN.REACTIONS,
+    welcomeBack,
+    speaker: 'vassal',
+    finale: 'crown:spire',
 };
 
 /**
@@ -103,7 +118,7 @@ export function createDirector({ say, banner, ending, finale = () => {}, isBusy,
         const last = lastHintAt.get(key);
         if (last != null && w.tick - last < HINT_REPEAT) return;
         lastHintAt.set(key, w.tick);
-        say({ who: 'delta', text: open.hint });
+        say({ who: script().speaker ?? 'delta', text: open.hint });
     }
 
     function maybeReactToOrder(w) {
@@ -114,7 +129,8 @@ export function createDirector({ say, banner, ending, finale = () => {}, isBusy,
         lastOrderKey = key;
         if (isBusy() || Math.random() > REACTION_CHANCE) return;
         const { REACTIONS } = script();
-        say({ who: 'delta', text: pick(o.status === 'completed' ? REACTIONS.orderCompleted : REACTIONS.orderFailed) });
+        const r = pick(o.status === 'completed' ? REACTIONS.orderCompleted : REACTIONS.orderFailed);
+        say(typeof r === 'string' ? { who: 'delta', text: r } : r);
     }
 
     function maybeAmbient(w) {
@@ -123,8 +139,9 @@ export function createDirector({ say, banner, ending, finale = () => {}, isBusy,
         // Plain strings are DELTA; a line object (Nolan's memo) speaks as itself.
         const textOf = (t) => (typeof t === 'string' ? t : t.text);
         const { AMBIENT, lateFrom = Infinity } = script();
-        // After the HQ ending (Story) DELTA is a co-founder: her own, happier chatter.
-        const free = w.ending === 'hq' && !!AMBIENT.free;
+        // After the HQ ending (Story) DELTA is a co-founder: her own, happier chatter (and after the
+        // Overload ending VASSAL has its own, as line objects).
+        const free = (w.ending === 'hq' || w.ending === 'overload') && !!AMBIENT.free;
         const late = !free && w.phase >= lateFrom;
         const pool = (free ? AMBIENT.free : late ? AMBIENT.late : AMBIENT.early).filter((t) => !flags.has(`amb:${textOf(t)}`));
         if (!pool.length) return;

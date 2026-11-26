@@ -24,7 +24,7 @@ import {
     RECIPES, recipeUnlocked, setRecipe, setMachineOn, resetBreaker, machineStatus, machineRates,
     salePrice, flow, UPGRADABLE, machinesIn, planGroup, applyGroup, removeGroup, setEnding, setCompany,
     game, isInfinite, visualPhase, newGame, licenceAvailable, buyLicence, nextPlotCost, buyPlot, isLoadableSave,
-    planStored, turnMachine, inPlot,
+    planStored, turnMachine, inPlot, overloadPrimed, applyEpilogueLand,
 } from './grid.js';
 import { unlockPhaseOf, PHASES } from './campaign.js';
 import { BUILDING_NAMES, ITEM_NAMES, INFINITE, BUILD_HELP, TUTORIAL } from './story.js';
@@ -32,7 +32,7 @@ import { tutorialCard, tutorialGuide, tutorialProblem } from './tutorial.js';
 import { createRenderer } from './renderer.js';
 import { startGameLoop } from './gameLoop.js';
 import { createUI } from './ui.js';
-import { createDirector, STORY_SCRIPT, EPILOGUE_SCRIPT } from './director.js';
+import { createDirector, STORY_SCRIPT, EPILOGUE_SCRIPT, CROWN_SCRIPT } from './director.js';
 import { tickEpilogue, epilogueSnapshot, epilogueInfo, epilogueStats, closeEpilogue, confirmEpilogueGoal } from './epilogue.js';
 import { createAudio, BUILD_SIZE } from './audio.js';
 import { createSettings, keyLabel } from './settings.js';
@@ -232,7 +232,8 @@ function snapshot() {
             return need ? req.reduce((a, [k, n]) => a + Math.min(n, project.delivered[k] ?? 0), 0) / need : 1;
         })(),
         ending: project.ending,
-        epilogue: epilogueSnapshot(), // the company's goals after the NIHIL HQ ending (epilogue.js)
+        epilogue: epilogueSnapshot(), // the goals after the NIHIL HQ or the Overload ending (epilogue.js)
+        overloadPrimed: overloadPrimed(), // twice the rated shells and a strong grid: the hidden third choice
         minPrice: Math.min(1, ...Object.keys(SINK_VALUE).map((k) => salePrice(k) / SINK_VALUE[k])),
         order: { status: order.status, startTick: order.startTick },
         capped: activeChallenge ? cappedCount() : 0, // the weekly challenge (story.js challengeScript)
@@ -588,7 +589,9 @@ const director = createDirector({
     say: (line) => ui.say(line),
     banner: (i) => ui.showBanner(i),
     isBusy: () => ui.isBusy() || menus.isOpen(),
-    script: () => (isChallenge() ? weekScript() : isInfinite() ? INFINITE : project.ending === 'hq' && project.epilogue ? EPILOGUE_SCRIPT : STORY_SCRIPT),
+    script: () => (isChallenge() ? weekScript() : isInfinite() ? INFINITE
+        : project.epilogue && project.ending === 'hq' ? EPILOGUE_SCRIPT
+            : project.epilogue && project.ending === 'overload' ? CROWN_SCRIPT : STORY_SCRIPT),
     hints: () => settings.get().gameplay.hints,
     ending: () => playEnding(),
     finale: () => showEpilogueReport(),
@@ -615,6 +618,7 @@ function showEpilogueReport() {
     ui.showEpilogueReport({
         stats: epilogueStats(tickCount),
         company: project.company,
+        crown: project.ending === 'overload',
         onContinue: () => {
             state.paused = wasPaused;
             saveGame();
@@ -640,6 +644,7 @@ function playEnding() {
             machines,
         },
         decided: project.ending,
+        overload: !!project.overload, // the hidden third choice (grid.js confirmDelivery)
         onChoose: (kind) => {
             setEnding(kind);
             saveGame();
@@ -655,8 +660,19 @@ function playEnding() {
             charge: (level) => renderer.chargeCannon(level),
             fire: (opts) => renderer.fireCannon(opts),
             muzzle: () => renderer.muzzlePage(),
+            // The Overload ending: the charge past the rated load, the salvo, the ash world.
+            overloadCharge: (level) => renderer.overloadCharge?.(level),
+            salvo: (target, opts) => {
+                const res = renderer.salvo?.(target, opts) ?? { ms: 0 };
+                // The dam bursts: the river takes its bed back (what stands in it goes, its ore drowns).
+                if (target === 'dam') setTimeout(() => renderer.applyEvents(applyEpilogueLand(), 0), res.ms);
+                return res;
+            },
+            ashen: (on, instant) => renderer.setAshen?.(on, instant),
             end() {
                 state.cinematic = false;
+                // A skipped salvo still burst the dam (idempotent once the bed is flooded).
+                if (project.ending === 'overload') renderer.applyEvents(applyEpilogueLand(), 0);
                 renderer.releaseCinematic();
             },
         },
@@ -698,7 +714,7 @@ const ui = createUI({
     // Everything for the phase (or the epilogue's goal) is in: the player sends it.
     onConfirmDelivery: () => {
         if (state.cinematic) return false;
-        const ok = project.epilogue && project.ending === 'hq' ? confirmEpilogueGoal() : confirmDelivery();
+        const ok = project.epilogue && (project.ending === 'hq' || project.ending === 'overload') ? confirmEpilogueGoal() : confirmDelivery();
         if (ok) audio.cue('click');
         return ok;
     },
@@ -1001,7 +1017,7 @@ async function beginSlot(slot) {
     audio.begin(project.complete ? (project.ending === 'hq' ? 1 : 5) : project.phase);
     // Saved after the last phase but before choosing the target: choose now.
     if (project.complete && !project.ending) playEnding();
-    else if (director.ended()) ui.toast(project.ending === 'hq' ? `${project.company ?? 'Your company'} · the valley is yours` : 'Protocol: Selene is complete. Sandbox mode');
+    else if (director.ended()) ui.toast(project.ending === 'overload' ? 'CROWN · the Earth answers to you' : project.ending === 'hq' ? `${project.company ?? 'Your company'} · the valley is yours` : 'Protocol: Selene is complete. Sandbox mode');
 }
 function showTitle() {
     menus.showTitle({

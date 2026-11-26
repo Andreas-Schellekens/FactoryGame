@@ -161,7 +161,7 @@ export function createProfile({ account, menus, achievements, saves, icons = {},
     function endingsRow(earned) {
         const box = el('div', 'pf-endings');
         box.appendChild(el('span', 'pf-label', T.endings));
-        for (const [id, label] of [['endingMoon', T.endingMoon], ['endingHQ', T.endingHQ]]) {
+        for (const [id, label] of [['endingMoon', T.endingMoon], ['endingHQ', T.endingHQ], ['endingOverload', T.endingOverload]]) {
             const got = id in earned;
             const def = achievementById(id);
             const chip = el('span', `pf-ending${got ? ' on' : ''}`, got || !def?.hidden ? label : T.hidden);

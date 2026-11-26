@@ -127,8 +127,24 @@ left." DELTA: "The button on the right is also a button.").
   the river back (blow the dam once nothing of ours stands in the bed), let
   the valley grow back; every goal turns the land a phase greener. It closes
   with DELTA's annual report, "Year one", then sandbox.
-- Both end in a report (a mission report, or a founding report) and the
-  credits roll.
+- **Overload** (hidden, iteration 8): in the last phase a memo of Nolan's
+  gives Selene's rated load, fifteen shells on a grid under 100 kW, and
+  forbids exceeding it. A player who confirms the last delivery with twice
+  the shells on the pad and a grid of 100 kW or more finds a third button.
+  DELTA objects, Nolan misreads it, the charge runs past the rated load, and
+  Selene fires at everything: NIHIL HQ, the dam (the river floods back),
+  NILE's compound, the Moon, Moon+ the moment it switches on, and last it
+  turns on the player: the screen cracks and goes black. DELTA goes with it.
+  In the dark a new assistant boots, **VASSAL** (Very Advanced Sovereign
+  Support And Logistics), a machine voice that calls you "Your Excellency";
+  your company is **CROWN** (Central Rule Over the World's Nations). The
+  valley is ash grey and dead, the Moon gone, the HUD grey with an ember red.
+- **The castle** (Overload only): a short epilogue, never longer than the
+  company's first year: four stages paid in tribute at the Dispatch Pad
+  raise your castle on NIHIL's crater (walls, keep, towers, the crown spire),
+  closed by VASSAL's proclamation, "Long live the Crown", then sandbox.
+- All end in a report (a mission report, a founding report, or a
+  proclamation) and the credits roll.
 
 ## Visual arc: from cozy to NIHIL
 
@@ -381,3 +397,14 @@ Each iteration should be playable on its own before the next one starts.
             Request after the first Circuit.
       - [ ] Examples on the map for phase 2's machines too (Press, Assembler, Splitter).
       - [ ] Playtest the epilogue's goal sizes and the challenge's weeks at real pace.
+- [ ] **Iteration 8 — a third ending, and a calmer HUD.**
+      - [x] Overload: the hidden third choice (twice the rated shells and a 100 kW grid at the
+            last confirm, foreshadowed by Nolan's memo), the salvo at everything ending on the
+            player, DELTA's end and VASSAL's cold start, CROWN in an ash-grey world, and the
+            castle epilogue on NIHIL's crater with its proclamation. Two hidden achievements.
+      - [x] DELTA's countdown is just a countdown ("Firing in three... two... one.").
+      - [x] A calmer HUD: one lane for banners, achievements and toasts; a console that doesn't
+            repeat the tutorial card's step, with foldable Research and Priority Request; a
+            compact machine panel that always fits above the comms panel.
+      - [x] The new lines recorded (39, VASSAL in its own robotic ElevenLabs voice with a light
+            digital edge in the game).

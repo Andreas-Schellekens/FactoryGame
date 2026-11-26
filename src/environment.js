@@ -8,11 +8,13 @@
 // everything the player builds (and stays paved), smelters and generators
 // scorch the ground. NILE's survey fence marks the plot you lease (config.js
 // PLOTS); the land outside it is dimmed and hatched until the plot grows.
-// Purely visual; the sky and moon are CSS behind the canvas.
+// The hidden Overload ending turns it all to ash (setAshen), bursts the dam,
+// razes NILE's compound into burning rubble and clears the HQ's site for the
+// castle (castle.js). Purely visual; the sky and moon are CSS behind the canvas.
 import * as THREE from 'three';
 import { GRID_WIDTH as W, GRID_HEIGHT as H, PAD_POS, CANNON_AREA, ORE_FIELDS, PLOTS, RIVER } from './config.js';
 import { grid, cellHash } from './grid.js';
-import { natureMaterial } from './assets.js';
+import { natureMaterial, NATURE_PALETTE } from './assets.js';
 import { haloSprite } from './effects.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -30,6 +32,15 @@ const LAND = [
     { ground: 0x6f5d47, grass: 0x705e42, leafs: 0x5a5038, dirt: 0x5e4232, water: 0x62602a },
     { ground: 0x4d3c35, grass: 0x4f3f33, leafs: 0x3e3430, dirt: 0x4a3028, water: 0x4e4a22 },
 ];
+// After the Overload ending: the ash world. Grey land, charcoal leaves, charred wood, grey water.
+const ASH = { ground: 0x8f8d8a, grass: 0x74726f, leafs: 0x343231, dirt: 0x4c4947, water: 0x6a6c6e };
+// The other shared nature materials (not in LAND) burnt too; NATURE_PALETTE is their living colour.
+const ASH_NATURE = {
+    leafsFall: 0x3a3736, leafsDark: 0x2c2a29, woodBark: 0x2a2624, woodBarkDark: 0x1e1b1a, woodBirch: 0x55524f,
+    woodInner: 0x4a4440, wood: 0x3b3531, woodDark: 0x2a2522, dirtDark: 0x3c3836,
+    colorRed: 0x5a4c4a, colorYellow: 0x6a655b, colorPurple: 0x544f58,
+};
+const ASH_KEEP = /^(stone|log)/; // props that survive the fire (the rest burns away)
 
 const TREE_KINDS = ['default', 'oak', 'detailed', 'tall', 'simple', 'cone', 'plateau'];
 const STUMPS = ['stump_old', 'stump_oldTall', 'stump_round', 'stump_roundDetailed'];
@@ -411,6 +422,67 @@ function flagTexture() {
     return tex;
 }
 
+/**
+ * The ash world's ground: charred black blotches, pale drifts of ash and a fine speckle,
+ * transparent between them, over the whole ground plane (one texel row per 1/16 cell).
+ */
+function ashGroundTexture() {
+    const PX = 16;
+    const cw = W + RIM * 2;
+    const ch = H + RIM * 2;
+    const c = document.createElement('canvas');
+    c.width = cw * PX;
+    c.height = ch * PX;
+    const g = c.getContext('2d');
+    const r = prng(77);
+    const blob = (x, y, rad, rgba) => {
+        const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+        grad.addColorStop(0, rgba);
+        grad.addColorStop(1, rgba.replace(/[\d.]+\)$/, '0)'));
+        g.fillStyle = grad;
+        g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    };
+    for (let i = 0; i < 220; i++) blob(r() * c.width, r() * c.height, (0.8 + r() * 2) * PX, `rgba(208,206,202,${(0.14 + r() * 0.2).toFixed(2)})`);
+    for (let i = 0; i < 420; i++) blob(r() * c.width, r() * c.height, (0.3 + r() * 1.1) * PX, `rgba(26,23,22,${(0.14 + r() * 0.3).toFixed(2)})`);
+    for (let i = 0; i < 9000; i++) {
+        const dark = r() < 0.55;
+        g.fillStyle = dark ? `rgba(22,20,19,${(0.15 + r() * 0.35).toFixed(2)})` : `rgba(228,225,221,${(0.15 + r() * 0.3).toFixed(2)})`;
+        g.fillRect(r() * c.width, r() * c.height, 1 + r() * 1.5, 1 + r() * 1.5);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+}
+
+/** A soft, sooty scorch mark (rubble piles, the dam, the castle's crater). */
+function scorchTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const r = prng(19);
+    const grad = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+    grad.addColorStop(0, 'rgba(16,13,12,0.92)');
+    grad.addColorStop(0.55, 'rgba(26,22,20,0.6)');
+    grad.addColorStop(1, 'rgba(30,26,24,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 40; i++) {
+        const a = r() * Math.PI * 2;
+        const d = 30 + r() * 30;
+        const x = 64 + Math.cos(a) * d;
+        const y = 64 + Math.sin(a) * d;
+        const gr = g.createRadialGradient(x, y, 0, x, y, 6 + r() * 10);
+        gr.addColorStop(0, 'rgba(20,17,16,0.5)');
+        gr.addColorStop(1, 'rgba(20,17,16,0)');
+        g.fillStyle = gr;
+        g.fillRect(x - 18, y - 18, 36, 36);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+}
+
 // GLSL for the river's two layers. Both read the mask over MASK in world
 // space; `vRiver` is (across, s = distance downstream, fall depth, soft edge).
 const RIVER_COMMON = /* glsl */ `
@@ -487,8 +559,10 @@ const BED_GLSL = /* glsl */ `
  * @param {THREE.Scene} scene
  * @param {{ get: (key: string) => THREE.Object3D }} assets
  * @param {ReturnType<typeof import('./effects.js').createEffects>} effects
+ * @param {{ flash?: (pos: THREE.Vector3, opts?: { color?: number, peak?: number, ms?: number }) => void }} [hooks]
+ *   `flash` lights up an explosion (the renderer's salvo light)
  */
-export function buildEnvironment(scene, assets, effects) {
+export function buildEnvironment(scene, assets, effects, hooks = {}) {
     const root = new THREE.Group();
     root.name = 'environment';
     scene.add(root);
@@ -527,6 +601,21 @@ export function buildEnvironment(scene, assets, effects) {
     ground.position.set(W / 2, 0, H / 2);
     ground.receiveShadow = true;
     root.add(ground);
+    // The ash world's ground (the Overload ending): charred blotches and pale drifts of ash over
+    // the whole valley, faded in over the land colours (under the river, the paving and the shade).
+    const ashOverlay = new THREE.Mesh(
+        new THREE.PlaneGeometry(W + RIM * 2, H + RIM * 2),
+        new THREE.MeshStandardMaterial({
+            map: ashGroundTexture(), transparent: true, opacity: 0, roughness: 1, depthWrite: false,
+            polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+        }),
+    );
+    ashOverlay.rotation.x = -Math.PI / 2;
+    ashOverlay.position.set(W / 2, 0.002, H / 2);
+    ashOverlay.receiveShadow = true;
+    ashOverlay.renderOrder = -5;
+    ashOverlay.visible = false;
+    root.add(ashOverlay);
 
     // Paving layer over the buildable area: concrete under built cells, the
     // cannon site's gravel, scorch marks. Transparent where untouched.
@@ -661,7 +750,7 @@ export function buildEnvironment(scene, assets, effects) {
     }
     function addProp(key, x, z, min, max, opts) {
         const obj = place(key, x, z, opts);
-        const p = { obj, min, max, shown: true, k: 1 };
+        const p = { obj, min, max, shown: true, k: 1, x, z, ashKeep: ASH_KEEP.test(key) };
         props.push(p);
         return p;
     }
@@ -672,6 +761,8 @@ export function buildEnvironment(scene, assets, effects) {
             scale: 0.8 + cellHash(x * 3, z * 11) * 0.55,
             rot: cellHash(z, x) * Math.PI * 2,
             stump: STUMPS[Math.floor(cellHash(x + 9, z) * STUMPS.length)],
+            // In the ash world most trees are burnt to stumps; a few stand on, charred and bare.
+            ash: cellHash(x * 7 + 3, z * 5 - 1) < 0.28 ? 'dark' : 'stump',
         };
         trees.push(t);
         return t;
@@ -947,6 +1038,79 @@ export function buildEnvironment(scene, assets, effects) {
     root.add(dam);
     const damHalos = dam.children.filter((c) => c.isSprite);
 
+    // The dam after the Overload ending's shot: two jagged stubs on the banks (with their
+    // buttresses and beacon posts) and the blown-out middle strewn down the bed in chunks.
+    const damRuin = new THREE.Group();
+    damRuin.position.set(damPt.x, 0, damPt.z);
+    damRuin.rotation.y = dam.rotation.y;
+    damRuin.visible = false;
+    root.add(damRuin);
+    const damChunks = []; // { from, to, q0, q1, s, t }
+    let damChunkMesh;
+    {
+        const concrete = dam.children.find((c) => c.isMesh && !Array.isArray(c.material))?.material
+            ?? new THREE.MeshStandardMaterial({ color: 0xb4aea2, roughness: 0.92 });
+        const sooty = new THREE.MeshStandardMaterial({ color: 0x5b5753, roughness: 0.95 });
+        const geos = { concrete: [], sooty: [] };
+        const box = (kind, w, h, d, x, y, z, rx = 0, rz = 0) => {
+            const g = new THREE.BoxGeometry(w, h, d);
+            g.rotateX(rx);
+            g.rotateZ(rz);
+            geos[kind].push(g.translate(x, y, z));
+        };
+        for (const side of [-1, 1]) {
+            // A stub of the wall, broken off in steps toward the gap, soot round the break.
+            box('concrete', 0.62, 0.8, 0.44, side * 1.49, 0.4, 0);
+            box('concrete', 0.34, 0.56, 0.44, side * 1.03, 0.28, 0, 0, side * 0.12);
+            box('sooty', 0.22, 0.3, 0.46, side * 0.83, 0.15, 0, 0, side * 0.3);
+            box('concrete', 0.24, 0.44, 0.34, side * 1.2, 0.22, 0.38); // its buttress
+            box('concrete', 0.08, 0.2, 0.08, side * 1.72, 0.98, 0);    // the beacon post, beacon gone
+            box('sooty', 0.66, 0.06, 0.5, side * 1.49, 0.83, 0);       // scorched cap
+        }
+        const mk = (geo, mat) => {
+            const m = new THREE.Mesh(mergeGeometries(geo), mat);
+            m.castShadow = true;
+            m.receiveShadow = true;
+            damRuin.add(m);
+        };
+        mk(geos.concrete, concrete);
+        mk(geos.sooty, sooty);
+        // The middle, in pieces: thrown downstream (local +z) and across the bed.
+        const r = prng(41);
+        const N = 18;
+        damChunkMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), concrete, N);
+        damChunkMesh.castShadow = damChunkMesh.receiveShadow = true;
+        damChunkMesh.frustumCulled = false;
+        damRuin.add(damChunkMesh);
+        for (let i = 0; i < N; i++) {
+            const s = new THREE.Vector3(0.16 + r() * 0.34, 0.12 + r() * 0.24, 0.16 + r() * 0.3);
+            const fx = (r() - 0.5) * 1.3;
+            damChunks.push({
+                from: new THREE.Vector3(fx, 0.2 + r() * 0.5, 0),
+                to: new THREE.Vector3(fx * 1.5 + (r() - 0.5) * 0.8, s.y * 0.35, 0.35 + r() * 2.6),
+                q0: new THREE.Quaternion(),
+                q1: new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3)),
+                s,
+                t: 1,
+            });
+        }
+    }
+    const tmpQ2 = new THREE.Quaternion();
+    const tmpV2 = new THREE.Vector3();
+    /** Lay the dam's chunks out: in flight (k < 1) along an arc, or at rest. */
+    function writeDamChunks() {
+        const m = new THREE.Matrix4();
+        damChunks.forEach((c, i) => {
+            const k = ease(Math.min(1, c.t));
+            tmpV2.lerpVectors(c.from, c.to, k);
+            tmpV2.y += Math.sin(Math.min(1, c.t) * Math.PI) * 1.4;
+            tmpQ2.slerpQuaternions(c.q0, c.q1, k);
+            damChunkMesh.setMatrixAt(i, m.compose(tmpV2, tmpQ2, c.s));
+        });
+        damChunkMesh.instanceMatrix.needsUpdate = true;
+    }
+    writeDamChunks();
+
     // The river's state: `reveal` is the clock time NIHIL started damming it
     // (null while it flows, -Infinity when it was already dammed on load).
     let reveal = null;
@@ -965,11 +1129,18 @@ export function buildEnvironment(scene, assets, effects) {
     const DAM_SINK = [350, 1900]; // ms after the blast: the dam goes down
     const FILL_AT = 1100;         // the water starts down the bed
     const FILL_MS = 5600;         // and reaches past the falls
+    // (The Overload ending's shot bursts the dam instead: the flood comes at once and faster.)
+    let fillAt = FILL_AT;
+    let fillMs = FILL_MS;
     function riverFill(now) {
         if (freed === null) return -1e4;
-        const t = (now - freed - FILL_AT) / FILL_MS;
+        const t = (now - freed - fillAt) / fillMs;
         return t >= 1 ? 1e4 : S_DAM - 0.5 + (S_GONE + 3 - S_DAM + 0.5) * Math.max(0, t);
     }
+    // The Overload ending: `burst` is the clock time the shell broke the dam (null while it
+    // stands, -Infinity when it was already broken on load). Its middle is blown out, two
+    // jagged stubs stay, the chunks lie strewn down the bed, and the reservoir floods back down.
+    let burst = null;
 
     // Rim: forest, meadow and NILE's compound.
     const BIG_BY_PHASE = {
@@ -1174,7 +1345,7 @@ export function buildEnvironment(scene, assets, effects) {
         if (hq.ruined && healed >= 2) {
             // The epilogue cleared the compound: the ruin's fires are out at last.
             hq.fires.forEach((fl) => (fl.material.opacity = Math.max(0, fl.material.opacity - dt / 1500)));
-        } else if (hq.ruined) {
+        } else if (hq.ruined && !hqCleared) {
             hq.fires.forEach((fl, i) => (fl.material.opacity = 0.55 + 0.35 * Math.sin(clock / (70 + i * 17) + i)));
             hq.smoke += dt;
             if (hq.smoke > 260) {
@@ -1198,9 +1369,215 @@ export function buildEnvironment(scene, assets, effects) {
         addTree(s.x, s.z, s.h, appear);
     });
 
+    // ---- The compound razed (the Overload ending) --------------------------------------
+    // Every building gets a rubble pile (instanced chunks and charred girders, one draw call
+    // each) and a scorch mark, hidden until it is blown up; every other pile burns on.
+    const RUBBLE_N = 9;
+    const GIRDER_N = 3;
+    const rubbleMat = new THREE.MeshStandardMaterial({ color: 0x8b8782, roughness: 0.95, flatShading: true });
+    const girderMat = new THREE.MeshStandardMaterial({ color: 0x2c2a29, roughness: 0.7, metalness: 0.3 });
+    const decalMat = new THREE.MeshBasicMaterial({ map: scorchTexture(), transparent: true, depthWrite: false });
+    const rubbleMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.5, 0), rubbleMat, compound.length * RUBBLE_N);
+    const girderMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), girderMat, compound.length * GIRDER_N);
+    const decalMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), decalMat, compound.length + 2);
+    for (const m of [rubbleMesh, girderMesh]) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+    }
+    decalMesh.renderOrder = -2;
+    for (const m of [rubbleMesh, girderMesh, decalMesh]) {
+        m.frustumCulled = false;
+        root.add(m);
+    }
+    {
+        const r = prng(23);
+        compound.forEach((c, i) => {
+            const p = c.obj.position;
+            const foot = Math.max(c.obj.userData.width ?? 2, c.obj.userData.depth ?? 2);
+            const chunk = () => {
+                const a = r() * Math.PI * 2;
+                const d = Math.sqrt(r()) * foot * 0.42;
+                return { x: p.x + Math.cos(a) * d, z: p.z + Math.sin(a) * d };
+            };
+            const chunks = [];
+            for (let k = 0; k < RUBBLE_N; k++) {
+                const at = chunk();
+                const s = (0.25 + r() * 0.45) * Math.min(1.4, foot / 1.8);
+                chunks.push({ p: new THREE.Vector3(at.x, s * 0.22, at.z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3)), s: new THREE.Vector3(s, s * (0.5 + r() * 0.4), s * (0.7 + r() * 0.5)) });
+            }
+            const girders = [];
+            for (let k = 0; k < GIRDER_N; k++) {
+                const at = chunk();
+                const len = 0.5 + r() * 0.7;
+                girders.push({ p: new THREE.Vector3(at.x, 0.12 + r() * 0.15, at.z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler((r() - 0.5) * 0.8, r() * 3, (r() - 0.5) * 0.9)), s: new THREE.Vector3(len, 0.05, 0.06) });
+            }
+            let fire = null;
+            if (i % 2 === 0) {
+                fire = haloSprite(i % 4 ? 0xff7a1a : 0xffa040, 0.8 + r() * 0.5);
+                fire.position.set(p.x + (r() - 0.5) * 0.5, 0.35, p.z + (r() - 0.5) * 0.5);
+                fire.material.opacity = 0;
+                fire.visible = false;
+                root.add(fire);
+            }
+            c.pile = { chunks, girders, fire, k: 0, cleared: false, size: foot * 1.25 };
+        });
+    }
+    let razed = false;
+    let rubbleDirty = true;
+    const tmpM2 = new THREE.Matrix4();
+    const tmpS2 = new THREE.Vector3();
+    function writeRubble() {
+        rubbleDirty = false;
+        let ri = 0;
+        let gi = 0;
+        compound.forEach((c, i) => {
+            const k = c.pile.cleared ? 0 : ease(clamp01(c.pile.k));
+            const sink = (1 - k) * 0.35;
+            for (const ch of c.pile.chunks) {
+                tmpV2.copy(ch.p);
+                tmpV2.y -= sink;
+                rubbleMesh.setMatrixAt(ri++, tmpM2.compose(tmpV2, ch.q, tmpS2.copy(ch.s).multiplyScalar(Math.max(1e-4, k))));
+            }
+            for (const gd of c.pile.girders) {
+                tmpV2.copy(gd.p);
+                tmpV2.y -= sink;
+                girderMesh.setMatrixAt(gi++, tmpM2.compose(tmpV2, gd.q, tmpS2.copy(gd.s).multiplyScalar(Math.max(1e-4, k))));
+            }
+            const ds = Math.max(1e-4, c.pile.size * clamp01(k * 1.6));
+            decalMesh.setMatrixAt(i, tmpM2.compose(tmpV2.set(c.obj.position.x, 0.014, c.obj.position.z), tmpQ2.identity(), tmpS2.set(ds, 1, ds)));
+        });
+        // The last two scorch marks: under the broken dam and the castle's crater (see below).
+        decalMesh.setMatrixAt(compound.length, tmpM2.compose(tmpV2.set(damPt.x, 0.014, damPt.z), tmpQ2.identity(), tmpS2.setScalar(burst !== null ? 4.2 : 1e-4)));
+        decalMesh.setMatrixAt(compound.length + 1, tmpM2.compose(tmpV2.set(HQ.x, 0.016, HQ.z), tmpQ2.identity(), tmpS2.setScalar(hqCleared ? 6.4 : 1e-4)));
+        rubbleMesh.instanceMatrix.needsUpdate = true;
+        girderMesh.instanceMatrix.needsUpdate = true;
+        decalMesh.instanceMatrix.needsUpdate = true;
+    }
+    // Explosions: a few pooled fireballs (additive halos that swell and fade).
+    const fireballs = [];
+    function fireball(pos, size = 2.4, ms = 700, color = 0xff9a3a) {
+        let f = fireballs.find((b) => b.t >= b.ms);
+        if (!f) {
+            if (fireballs.length >= 14) f = fireballs.reduce((a, b) => (b.t / b.ms > a.t / a.ms ? b : a));
+            else {
+                f = { s: haloSprite(color, 1), t: 0, ms: 1 };
+                f.s.material.depthTest = false; // a blast shows through what it's tearing apart
+                f.s.renderOrder = 6;
+                root.add(f.s);
+                fireballs.push(f);
+            }
+        }
+        f.s.material.color.setHex(color);
+        f.s.position.copy(pos);
+        f.s.visible = true;
+        Object.assign(f, { t: 0, ms, size });
+    }
+    function updateFireballs(dt) {
+        for (const f of fireballs) {
+            if (f.t >= f.ms) {
+                f.s.visible = false;
+                continue;
+            }
+            f.t += dt;
+            const k = Math.min(1, f.t / f.ms);
+            f.s.scale.setScalar(f.size * (0.5 + 1.0 * Math.sqrt(k)));
+            f.s.material.opacity = Math.min(1, (1 - k) ** 1.2 * 1.3);
+        }
+    }
+    /** One compound building goes up: fireball, sparks, smoke, and it starts to come down. */
+    function blastBuilding(c) {
+        c.grow = null;
+        c.sink = null;
+        const p = c.obj.position;
+        const h = c.obj.userData.height ?? 2;
+        const at = new THREE.Vector3(p.x, Math.min(2.2, h * 0.5), p.z);
+        fireball(at, 4.6 + h * 0.8, 1100);
+        fireball(at, 2.2 + h * 0.3, 450, 0xfff2c8);
+        fireball(at.clone().setY(at.y + 0.9), 3 + h * 0.5, 1500, 0xff6a20);
+        effects.sparkle(at, { count: 26, power: 2.6, color: 0xffb040, size: 0.14 });
+        effects.sparkle(at, { count: 14, power: 2, color: 0xff4a1a, size: 0.12 });
+        effects.puff(new THREE.Vector3(p.x, 0.4, p.z), { count: 12, size: 1.05, spread: 1.9, color: 0x3e3a38 });
+        effects.puff(new THREE.Vector3(p.x, 0.1, p.z), { count: 10, size: 0.8, spread: 1.4, color: 0x9a8a78 });
+        hooks.flash?.(at, { color: 0xffa050, peak: 260, ms: 700 });
+        c.fall = { t: 0, axis: Math.random() * Math.PI * 2, h };
+    }
+    /**
+     * The Overload ending's shell lands in the compound: a chain of explosions building by
+     * building, nearest `from` first, each collapsing into a burning pile. `instant` (a load)
+     * leaves the rubble. Returns the ms until the last building is down.
+     */
+    function razeCompound(from = null, instant = false) {
+        const list = compound
+            .filter((c) => c.shown && !c.razed)
+            .map((c) => ({ c, d: from ? Math.hypot(c.obj.position.x - from.x, c.obj.position.z - from.z) : 0 }))
+            .sort((a, b) => a.d - b.d);
+        razed = true;
+        let last = 0;
+        list.forEach(({ c }, i) => {
+            c.razed = true;
+            if (instant || phase < 0) {
+                c.obj.visible = false;
+                c.fall = null;
+                c.grow = null;
+                c.pile.k = 1;
+                return;
+            }
+            const wait = i === 0 ? 0 : 150 + i * 190 + Math.random() * 140;
+            last = wait;
+            pending.push({ at: clock + wait, run: () => blastBuilding(c), blast: true });
+        });
+        rubbleDirty = true;
+        return instant ? 0 : last + 1300;
+    }
+    /** Stand NIHIL's compound up again (a replayed ending). */
+    function restoreCompound() {
+        razed = false;
+        for (const c of compound) {
+            c.razed = false;
+            c.fall = null;
+            c.pile.k = 0;
+            c.shown = phase >= c.appear && healed < 2;
+            c.obj.visible = c.shown && !c.cleared;
+            c.obj.position.y = 0;
+            c.obj.rotation.x = c.obj.rotation.z = 0;
+            c.obj.scale.setScalar(c.obj.userData.baseScale);
+            if (c.pile.fire) c.pile.fire.visible = false;
+        }
+        for (let i = pending.length - 1; i >= 0; i--) if (pending[i].blast) pending.splice(i, 1);
+        rubbleDirty = true;
+    }
+    /** The standing compound building nearest `near` (its middle), for the shell to aim at. */
+    function compoundTarget(near) {
+        let best = null;
+        let bd = Infinity;
+        for (const c of compound) {
+            if (!c.shown || c.razed || !c.obj.visible) continue;
+            const d = Math.hypot(c.obj.position.x - near.x, c.obj.position.z - near.z);
+            if (d < bd) {
+                bd = d;
+                best = c;
+            }
+        }
+        if (!best) return new THREE.Vector3(HQ.x, 1, HQ.z - 6);
+        return new THREE.Vector3(best.obj.position.x, Math.min(2.2, (best.obj.userData.height ?? 2) * 0.5), best.obj.position.z);
+    }
+    /** The tops of the `n` standing compound buildings nearest `p` (to frame the shot). */
+    function compoundNear(p, n = 8) {
+        return compound
+            .filter((c) => c.shown && !c.razed)
+            .map((c) => ({ c, d: Math.hypot(c.obj.position.x - p.x, c.obj.position.z - p.z) }))
+            .sort((a, b) => a.d - b.d)
+            .slice(0, n)
+            .map(({ c }) => new THREE.Vector3(c.obj.position.x, c.obj.userData.height ?? 2, c.obj.position.z));
+    }
+
     // Nile floodlights along the plateau edge; they switch on at golden hour.
+    const lampPosts = []; // { obj, rx, rz }: how each leans, knocked askew in the ash world
     const lampAt = (x, z, rot) => {
         const o = place('lamp', x, z, { rot });
+        const a = rand(Math.round(x * 3), Math.round(z * 3), 11) * Math.PI * 2;
+        const lean = 0.35 + rand(Math.round(z * 5), Math.round(x * 5), 12) * 0.9;
+        lampPosts.push({ obj: o, rx: Math.cos(a) * lean, rz: Math.sin(a) * lean });
         const halo = haloSprite(0xffb050, 1.1);
         halo.position.set(x, o.userData.height - 0.08, z);
         halo.material.opacity = 0;
@@ -1453,8 +1830,12 @@ export function buildEnvironment(scene, assets, effects) {
     let healed = 0;
     const landFor = (p) => (healed ? Math.max(1, p - healed) : p);
     const landP = () => landFor(phase);
+    // The Overload ending's ash world (setAshen): grey land, burnt trees, nothing growing.
+    let ashen = false;
 
     function treeTarget(t, p) {
+        if (t.cleared) return 'none';
+        if (ashen) return t.ash;
         if (p >= t.fellPhase) return 'stump';
         if (p <= 1) return 'normal';
         return p === 2 ? 'fall' : 'dark';
@@ -1466,7 +1847,28 @@ export function buildEnvironment(scene, assets, effects) {
     function setTree(t, state) {
         if (t.obj) root.remove(t.obj);
         t.state = state;
-        t.obj = place(treeKey(t, state), t.x, t.z, { rot: t.rot, scale: state === 'stump' ? 1 : t.scale });
+        t.obj = state === 'none' ? null : place(treeKey(t, state), t.x, t.z, { rot: t.rot, scale: state === 'stump' ? 1 : t.scale });
+    }
+    /** Every tree to its target now (animated: staggered over `spread` ms, falling ones tip over). */
+    function retargetTrees(animate, spread = 4200) {
+        for (const t of trees) {
+            const target = treeTarget(t, landP());
+            if (target === t.state) continue;
+            if (!animate || !t.obj || target === 'none') {
+                t.anim = null;
+                setTree(t, target);
+                continue;
+            }
+            pending.push({ at: clock + 300 + Math.random() * spread, run: () => {
+                const now = treeTarget(t, landP());
+                if (now === t.state) return;
+                if (now === 'stump' && t.obj) t.anim = { kind: 'fall', t: 0, axis: Math.random() * Math.PI * 2, burn: ashen };
+                else {
+                    setTree(t, now);
+                    if (t.obj) t.anim = { kind: 'shiver', t: 0 };
+                }
+            } });
+        }
     }
 
     /** Apply a phase. `instant` skips the staggered animations (first load, saves). */
@@ -1490,7 +1892,7 @@ export function buildEnvironment(scene, assets, effects) {
             }
         }
         compound.forEach((c) => {
-            const show = p >= c.appear && healed < 2;
+            const show = p >= c.appear && healed < 2 && !c.razed;
             if (show === c.shown) return;
             c.shown = show;
             if (!animate) {
@@ -1516,19 +1918,30 @@ export function buildEnvironment(scene, assets, effects) {
     function snapLand() {
         const p = landP();
         for (const pr of props) {
-            pr.shown = p >= pr.min && p <= pr.max && !pr.gone && !pr.covered && !pr.ore;
+            pr.shown = propWanted(pr, p);
             pr.k = pr.shown ? 1 : 0;
             pr.obj.visible = pr.shown;
             pr.obj.scale.setScalar(pr.obj.userData.baseScale * pr.k);
         }
-        const land = LAND[Math.max(0, Math.min(p, LAND.length - 1))];
+        const land = landColours(p);
         groundMat.color.setHex(land.ground);
         natureMaterial('grass').color.setHex(land.grass);
         natureMaterial('leafsGreen').color.setHex(land.leafs);
         natureMaterial('dirt').color.setHex(land.dirt);
-        waterMat.color.setHex(land.water);
+        waterMat.color.setHex(waterColour(land));
         bankTarget(riverU.uBankWet.value, land);
+        for (const name of Object.keys(ASH_NATURE)) natureMaterial(name).color.setHex(ashen ? ASH_NATURE[name] : NATURE_PALETTE[name]);
+        ashOverlay.material.opacity = ashen ? 1 : 0;
+        ashOverlay.visible = ashen;
+        for (const p of lampPosts) {
+            p.obj.rotation.x = ashen ? p.rx : 0;
+            p.obj.rotation.z = ashen ? p.rz : 0;
+        }
     }
+    const propWanted = (pr, p) => p >= pr.min && p <= pr.max && !pr.gone && !pr.covered && !pr.ore && !pr.cleared && (!ashen || pr.ashKeep);
+    const landColours = (p) => (ashen ? ASH : LAND[Math.max(0, Math.min(p, LAND.length - 1))]);
+    // The river after the dam burst runs grey with ash.
+    const waterColour = (land) => (ashen || burst !== null ? ASH.water : land.water);
 
     /**
      * The epilogue's goals done so far (0–4). One step forward animates: the camp fire catches
@@ -1579,7 +1992,7 @@ export function buildEnvironment(scene, assets, effects) {
         } else if (stage < 2 && was >= 2) {
             compound.forEach((c) => {
                 c.sink = null;
-                c.shown = phase >= c.appear;
+                c.shown = phase >= c.appear && !c.razed;
                 c.obj.visible = c.shown;
                 c.obj.position.y = 0;
                 c.obj.scale.setScalar(c.obj.userData.baseScale);
@@ -1647,21 +2060,176 @@ export function buildEnvironment(scene, assets, effects) {
         const shaking = rise > 0 && rise < 1;
         dam.position.x = damPt.x + (shaking ? (Math.random() - 0.5) * 0.04 : 0);
         dam.position.z = damPt.z + (shaking ? (Math.random() - 0.5) * 0.04 : 0);
+        if (burst !== null) { // NIHIL's dam is a broken stump after the Overload ending's shot
+            dam.visible = false;
+            damRuin.visible = true;
+        }
         let reedsMoved = false;
         for (const c of reedClumps) {
-            const want = c.s < S_DAM || c.s > front + 0.6 || c.s < fill - 0.6 ? 1 : 0;
+            // (After the dam burst the flood brings no reeds back: they died with the bed.)
+            const want = !ashen && (c.s < S_DAM || (burst === null && (c.s > front + 0.6 || c.s < fill - 0.6))) ? 1 : 0;
             if (c.k === want) continue;
             c.k = snap ? want : c.k + Math.sign(want - c.k) * Math.min(Math.abs(want - c.k), 0.05);
             reedsMoved = true;
         }
         if (reedsMoved) writeReeds();
         for (const l of lilies) {
-            const want = l.s < S_DAM || l.s > front + 0.4 || l.s < fill - 0.4 ? 1 : 0;
+            const want = !ashen && (l.s < S_DAM || (burst === null && (l.s > front + 0.4 || l.s < fill - 0.4))) ? 1 : 0;
             if (l.k === want) continue;
             l.k = snap ? want : l.k + Math.sign(want - l.k) * Math.min(Math.abs(want - l.k), 0.06);
             l.obj.visible = l.k > 0.001;
             l.obj.scale.setScalar(l.obj.userData.baseScale * ease(l.k));
             l.obj.position.y = 0.016 - 0.03 * (1 - l.k);
+        }
+    }
+
+    // ---- The Overload ending: the dam burst, the ash world, the castle's cleared site --------
+    /**
+     * The shell hits NIHIL's dam: a blast of concrete and fire, its middle thrown down the bed,
+     * and the reservoir floods back down it, grey with ash. `instant` (a load) leaves the ruin
+     * and the river running.
+     */
+    function burstDam(instant = false) {
+        if (burst !== null && !instant) return;
+        const animate = !instant && phase >= 0;
+        burst = animate ? clock : -Infinity;
+        freed = burst;      // the epilogue's refill, sooner and faster
+        blasted = true;     // (not its small charges)
+        fillAt = 250;
+        fillMs = 3800;
+        dam.visible = false;
+        damRuin.visible = true;
+        for (const c of damChunks) c.t = animate ? 0 : 1;
+        writeDamChunks();
+        rubbleDirty = true;
+        if (animate) {
+            const at = new THREE.Vector3(damPt.x, 0.6, damPt.z);
+            fireball(at, 7, 1200);
+            fireball(at, 3, 450, 0xfff2c8);
+            fireball(at.clone().setY(1.6), 4.2, 1600, 0xff6a20);
+            effects.sparkle(at, { color: 0xffc04a, count: 50, power: 3.2, size: 0.15 });
+            effects.sparkle(at, { color: 0xff4a1a, count: 24, power: 2.4, size: 0.12 });
+            for (let i = 0; i < 7; i++) {
+                const a = (Math.random() - 0.5) * 3.6;
+                effects.puff(new THREE.Vector3(damPt.x + damPt.nx * a, 0.3, damPt.z + damPt.nz * a), { color: i % 2 ? 0xb4aea2 : 0x4a4644, count: 9, size: 0.85, spread: 1.4 });
+            }
+            hooks.flash?.(at, { color: 0xffb060, peak: 700, ms: 1000 });
+            // A moment later the reservoir breaks through in a wall of spray.
+            pending.push({ at: clock + 260, blast: true, run: () => {
+                for (let i = 0; i < 10; i++) {
+                    const a = (Math.random() - 0.5) * 2.4;
+                    effects.smoke(new THREE.Vector3(damPt.x + damPt.nx * a + damPt.nz * 0.6, 0.2, damPt.z + damPt.nz * a - damPt.nx * 0.6), { color: 0xdfe6ea, size: 0.5, rise: 0.6, opacity: 0.55 });
+                }
+            } });
+        } else applyRiver(true);
+    }
+    /** NIHIL's dam whole again, the bed dry (a replayed ending). */
+    function restoreDam() {
+        burst = null;
+        freed = null;
+        blasted = false;
+        fillAt = FILL_AT;
+        fillMs = FILL_MS;
+        damRuin.visible = false;
+        rubbleDirty = true;
+        applyRiver(true);
+    }
+
+    /**
+     * The ash world (the Overload ending): the land goes grey and charred, every tree burns
+     * (most to stumps, a few stand on bare and black), flowers, crops, reeds and tents are gone,
+     * the camp fire and the floodlights are out. One call animates: the ash creeps in over a
+     * few seconds and the trees come down; `instant` snaps.
+     */
+    function setAshen(on, instant = false) {
+        if (on === ashen && !instant) return;
+        ashen = on;
+        const animate = !instant && phase >= 0;
+        retargetTrees(animate, 5200);
+        if (!animate) {
+            applyRiver(true);
+            snapLand();
+        }
+    }
+
+    /** Clear (or bring back) the trees, props and rubble within `r` of a point (the castle's site). */
+    function clearAround(x, z, r, on) {
+        for (const t of trees) {
+            if (Math.hypot(t.x - x, t.z - z) >= r) continue;
+            t.cleared = on;
+            const target = treeTarget(t, landP());
+            if (target !== t.state) {
+                t.anim = null;
+                setTree(t, target);
+            }
+        }
+        for (const pr of props) if (Math.hypot(pr.x - x, pr.z - z) < r) pr.cleared = on;
+        for (const c of compound) {
+            if (Math.hypot(c.obj.position.x - x, c.obj.position.z - z) >= r + 0.6) continue;
+            c.cleared = on;
+            c.pile.cleared = on;
+            c.obj.visible = c.shown && !c.razed && !on;
+        }
+        rubbleDirty = true;
+    }
+    /** The castle's site (after the Overload ending): the HQ's ruin and everything round it cleared away. */
+    let hqCleared = false;
+    function setHQCleared(on) {
+        if (on === hqCleared) return;
+        hqCleared = on;
+        hq.g.visible = !on;
+        clearAround(HQ.x, HQ.z, 3.7, on);
+    }
+
+    let ruinSmoke = 0;
+    let damSmoke = 0;
+    /** Per frame: fireballs, the rubble's rise, the piles' fires and smoke, the broken dam's dust. */
+    function updateRuins(dt) {
+        updateFireballs(dt);
+        let flying = false;
+        for (const c of damChunks) {
+            if (c.t >= 1) continue;
+            c.t = Math.min(1, c.t + dt / 950);
+            flying = true;
+            if (c.t >= 1 && Math.random() < 0.5) {
+                const p = c.to.clone().applyEuler(damRuin.rotation).add(damRuin.position);
+                effects.puff(p, { color: 0xb4aea2, count: 3, size: 0.3, spread: 0.3 });
+            }
+        }
+        if (flying) writeDamChunks();
+        if (rubbleDirty) writeRubble();
+        if (razed) {
+            for (const c of compound) {
+                const f = c.pile.fire;
+                if (!f) continue;
+                const on = c.razed && c.pile.k > 0.5 && !c.pile.cleared;
+                f.visible = on || f.material.opacity > 0.01;
+                const goal = on ? 0.5 + 0.35 * Math.sin(clock / (60 + (c.obj.position.x % 7) * 9) + c.obj.position.z) : 0;
+                f.material.opacity += (goal - f.material.opacity) * Math.min(1, dt / 200);
+            }
+            ruinSmoke += dt;
+            if (ruinSmoke > 150) {
+                ruinSmoke = 0;
+                const live = compound.filter((c) => c.razed && c.pile.k > 0.5 && !c.pile.cleared);
+                const c = live[Math.floor(Math.random() * live.length)];
+                if (c) {
+                    const p = c.obj.position;
+                    effects.smoke(new THREE.Vector3(p.x + (Math.random() - 0.5) * 1.2, 0.35, p.z + (Math.random() - 0.5) * 1.2), { color: 0x34302e, size: 0.6, rise: 1.05, opacity: 0.55 });
+                    if (Math.random() < 0.25) effects.sparkle(new THREE.Vector3(p.x, 0.3, p.z), { color: 0xff6a2a, count: 3, power: 0.8, size: 0.07 });
+                }
+            }
+        }
+        if (burst !== null) {
+            const since = clock - burst;
+            damSmoke += dt;
+            const every = since < 7000 ? 120 : 900;
+            if (damSmoke > every) {
+                damSmoke = 0;
+                const a = (Math.random() - 0.5) * 3.2;
+                effects.smoke(new THREE.Vector3(damPt.x + damPt.nx * a, 0.3, damPt.z + damPt.nz * a), since < 7000
+                    ? { color: 0x4a4644, size: 0.55, rise: 0.9, opacity: 0.5 }
+                    : { color: 0x7a7570, size: 0.35, rise: 0.5, opacity: 0.3 });
+            }
         }
     }
 
@@ -1681,15 +2249,17 @@ export function buildEnvironment(scene, assets, effects) {
             }
         }
         for (const t of trees) {
-            if (!t.anim) continue;
+            if (!t.anim || !t.obj) continue;
             t.anim.t += dt;
             if (t.anim.kind === 'fall') {
                 const k = Math.min(1, t.anim.t / 900);
                 const tilt = (Math.PI / 2) * k * k;
                 t.obj.rotation.set(Math.cos(t.anim.axis) * tilt, t.rot, Math.sin(t.anim.axis) * tilt);
                 if (k >= 1) {
+                    const burn = t.anim.burn;
                     setTree(t, 'stump');
-                    effects.puff(t.obj.position, { count: 10, size: 0.4, spread: 0.8, color: 0x9e8a6a });
+                    effects.puff(t.obj.position, { count: burn ? 8 : 10, size: 0.4, spread: 0.8, color: burn ? 0x4a4644 : 0x9e8a6a });
+                    if (burn) effects.sparkle(new THREE.Vector3(t.x, 0.2, t.z), { color: 0xff6a2a, count: 5, power: 0.9, size: 0.07 });
                     t.anim = null;
                 }
             } else if (t.anim.kind === 'grow') { // back out of its stump (the epilogue)
@@ -1703,6 +2273,29 @@ export function buildEnvironment(scene, assets, effects) {
             }
         }
         for (const c of compound) {
+            if (c.fall) { // blown up (the Overload ending): it lurches over and drops into its burning rubble
+                c.fall.t += dt;
+                const k = Math.min(1, c.fall.t / 1250);
+                const tilt = 0.55 * k * k;
+                c.obj.rotation.x = Math.cos(c.fall.axis) * tilt;
+                c.obj.rotation.z = Math.sin(c.fall.axis) * tilt;
+                c.obj.position.y = -k * k * (c.fall.h + 0.3);
+                const pk = clamp01((k - 0.3) / 0.7);
+                if (pk !== c.pile.k) {
+                    c.pile.k = pk;
+                    rubbleDirty = true;
+                }
+                if (Math.random() < dt / 120) {
+                    effects.puff(new THREE.Vector3(c.obj.position.x + (Math.random() - 0.5) * 1.4, 0.1, c.obj.position.z + (Math.random() - 0.5) * 1.4), { count: 4, size: 0.6, spread: 0.8, color: 0x8a7f74 });
+                }
+                if (k >= 1) {
+                    c.fall = null;
+                    c.obj.visible = false;
+                    c.obj.position.y = 0;
+                    c.obj.rotation.x = c.obj.rotation.z = 0;
+                }
+                continue;
+            }
             if (c.sink != null) { // taken down (the epilogue): it judders and sinks into its dust
                 c.sink = Math.min(1, c.sink + dt / 1300);
                 const k = c.sink * c.sink;
@@ -1726,7 +2319,7 @@ export function buildEnvironment(scene, assets, effects) {
         }
         const lp = landP();
         for (const pr of props) {
-            const want = lp >= pr.min && lp <= pr.max && !pr.gone && !pr.covered && !pr.ore;
+            const want = propWanted(pr, lp);
             if (want !== pr.shown) pr.shown = want;
             const target = pr.shown ? 1 : 0;
             if (pr.k === target) continue;
@@ -1734,14 +2327,19 @@ export function buildEnvironment(scene, assets, effects) {
             pr.obj.visible = pr.k > 0.001;
             pr.obj.scale.setScalar(pr.obj.userData.baseScale * ease(pr.k));
         }
-        const land = LAND[Math.max(0, Math.min(lp, LAND.length - 1))];
+        const land = landColours(lp);
         const k = 1 - Math.exp(-dt / 1800);
         lerpHex(groundMat.color, land.ground, k);
         lerpHex(natureMaterial('grass').color, land.grass, k);
         lerpHex(natureMaterial('leafsGreen').color, land.leafs, k);
         lerpHex(natureMaterial('dirt').color, land.dirt, k);
-        lerpHex(waterMat.color, land.water, k);
+        lerpHex(waterMat.color, waterColour(land), k);
         riverU.uBankWet.value.lerp(bankTarget(bankGoal, land), k);
+        // The ash: the other nature colours burn too, and the charred, ash-drifted ground creeps in.
+        for (const name of Object.keys(ASH_NATURE)) lerpHex(natureMaterial(name).color, ashen ? ASH_NATURE[name] : NATURE_PALETTE[name], k);
+        const ov = ashOverlay.material;
+        ov.opacity += ((ashen ? 1 : 0) - ov.opacity) * (1 - Math.exp(-dt / 1400));
+        ashOverlay.visible = ov.opacity > 0.004;
 
         // The river: flowing, or being dammed and running off.
         riverU.uTime.value = clock / 1000;
@@ -1816,12 +2414,13 @@ export function buildEnvironment(scene, assets, effects) {
         for (const [i, h] of damHalos.entries()) { // NIHIL's beacons blink, alternately
             h.material.opacity = dam.position.y > -0.2 ? (Math.sin(clock / 260 + i * Math.PI) > 0 ? 0.85 : 0.08) : 0;
         }
+        updateRuins(dt);
 
         updateFence(dt);
         updateShade(dt);
 
         // The campfire burns until the reveal; then the camp is abandoned (until the epilogue relights it).
-        const fireOn = phase < 4 || healed >= 1;
+        const fireOn = (phase < 4 || healed >= 1) && !ashen;
         const flick = 0.75 + Math.sin(clock / 90) * 0.12 + Math.sin(clock / 37) * 0.08;
         fireHalo.material.opacity = fireOn ? flick * (phase >= 2 ? 1 : 0.6) : Math.max(0, fireHalo.material.opacity - dt / 2000);
         campfire.visible = true;
@@ -1832,10 +2431,22 @@ export function buildEnvironment(scene, assets, effects) {
                 effects.smoke(new THREE.Vector3(-2.2, 0.35, 12.5), { color: 0xa09a94, size: 0.16, rise: 0.45, opacity: 0.4 });
             }
         }
-        const lampsOn = phase >= 2 && healed < 2; // NIHIL's floodlights go out with its compound
+        const lampsOn = phase >= 2 && healed < 2 && !ashen && !razed; // NIHIL's floodlights go out with its compound
         for (const l of lamps) {
             const target = lampsOn ? 0.75 + Math.sin(clock / 400 + l.position.x) * 0.05 : 0;
             l.material.opacity += (target - l.material.opacity) * Math.min(1, dt / 800);
+        }
+        const lk = Math.min(1, dt / 500);
+        for (const p of lampPosts) { // knocked askew in the ash world
+            const rx = ashen ? p.rx : 0;
+            const rz = ashen ? p.rz : 0;
+            if (p.obj.rotation.x === rx && p.obj.rotation.z === rz) continue;
+            p.obj.rotation.x += (rx - p.obj.rotation.x) * lk;
+            p.obj.rotation.z += (rz - p.obj.rotation.z) * lk;
+            if (Math.abs(rx - p.obj.rotation.x) + Math.abs(rz - p.obj.rotation.z) < 1e-3) {
+                p.obj.rotation.x = rx;
+                p.obj.rotation.z = rz;
+            }
         }
     }
 
@@ -1857,6 +2468,24 @@ export function buildEnvironment(scene, assets, effects) {
         /** The tower comes down (animated), or is set standing / ruined at once (`setHQRuined`). */
         ruinHQ,
         setHQRuined,
+        // The Overload ending (see the functions above).
+        /** The ash world on/off (one call animates the creep; `instant` snaps). */
+        setAshen,
+        isAshen: () => ashen,
+        /** The dam bursts and the river floods back, ash-grey; `restoreDam` makes it whole (a replay). */
+        burstDam,
+        restoreDam,
+        /** The point to aim at on NIHIL's dam (world). */
+        damPoint: () => new THREE.Vector3(damPt.x, 0.55, damPt.z),
+        /** The compound goes up building by building from `from` (returns ms until done); `restoreCompound` undoes it. */
+        razeCompound,
+        restoreCompound,
+        compoundTarget,
+        compoundNear,
+        /** The castle's site: the HQ's ruin and its surroundings cleared (or back). */
+        setHQCleared,
+        /** A swelling, fading fireball at a world point. */
+        fireball,
         paveCell,
         scorch,
         /** Hide (or restore) a cell's flowers without paving it — under conveyors. */
